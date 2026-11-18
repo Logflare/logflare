@@ -387,6 +387,75 @@ defmodule LogflareWeb.SourceControllerTest do
       assert %{bigquery_table_ttl: 2} = Sources.get_by(name: "MyApp.Logs")
     end
 
+    test "new sources default to the account's default ingest backend", %{
+      conn: conn,
+      user: user
+    } do
+      conn
+      |> login_user(user)
+      |> visit(~p"/sources/new")
+      |> assert_has(
+        "input[type='checkbox'][name='source[default_ingest_backend_enabled?]'][checked]"
+      )
+      |> fill_in("Source Name", with: "MyApp.DefaultIngest")
+      |> submit()
+      |> assert_path(~p"/sources/*", query_params: %{new: true})
+
+      assert %{default_ingest_backend_enabled?: true} =
+               Sources.get_by(name: "MyApp.DefaultIngest")
+    end
+
+    test "unticking default ingest creates the source opted out", %{conn: conn, user: user} do
+      conn
+      |> login_user(user)
+      |> visit(~p"/sources/new")
+      |> fill_in("Source Name", with: "MyApp.NoDefaultIngest")
+      |> uncheck("Send this source's events to the account's default ingest backend")
+      |> submit()
+      |> assert_path(~p"/sources/*", query_params: %{new: true})
+
+      assert %{default_ingest_backend_enabled?: false} =
+               Sources.get_by(name: "MyApp.NoDefaultIngest")
+    end
+
+    test "keeps an unticked default ingest checkbox when the form is re-rendered with errors", %{
+      conn: conn,
+      user: user
+    } do
+      conn
+      |> login_user(user)
+      |> visit(~p"/sources/new")
+      |> uncheck("Send this source's events to the account's default ingest backend")
+      |> submit()
+      |> assert_path(~p"/sources")
+      |> assert_has(".help-block", text: "can't be blank")
+      |> assert_has("input[type='checkbox'][name='source[default_ingest_backend_enabled?]']")
+      |> refute_has(
+        "input[type='checkbox'][name='source[default_ingest_backend_enabled?]'][checked]"
+      )
+    end
+
+    test "hides the default ingest checkbox without the multibackend flag and still opts in", %{
+      conn: conn,
+      user: user
+    } do
+      stub(Logflare.Utils, :flag, fn
+        "multibackend", _ -> false
+        _feature, _identifier -> true
+      end)
+
+      conn
+      |> login_user(user)
+      |> visit(~p"/sources/new")
+      |> refute_has("input[name='source[default_ingest_backend_enabled?]']")
+      |> fill_in("Source Name", with: "MyApp.HiddenDefaultIngest")
+      |> submit()
+      |> assert_path(~p"/sources/*", query_params: %{new: true})
+
+      assert %{default_ingest_backend_enabled?: true} =
+               Sources.get_by(name: "MyApp.HiddenDefaultIngest")
+    end
+
     test "shows an error when the retention exceeds the plan limit", %{
       conn: conn,
       user: user

@@ -152,8 +152,7 @@ defmodule LogflareWeb.OpenApiSchemas do
       bigquery_clustering_fields: %Schema{type: :string, nullable: true},
       default_ingest_backend_enabled?: %Schema{
         type: :boolean,
-        description:
-          "Whether this source sends events to the account's default ingest backends. Defaults to false."
+        description: "Whether this source sends events to the account's default ingest backends."
       },
       notifications_every: %Schema{type: :integer},
       lock_schema: %Schema{type: :boolean},
@@ -188,7 +187,7 @@ defmodule LogflareWeb.OpenApiSchemas do
       default_ingest_backend_enabled?: %Schema{
         type: :boolean,
         description:
-          "Whether this source sends events to the account's default ingest backends. Defaults to false."
+          "Whether this source sends events to the account's default ingest backends. Defaults to true on creation. Omitting this field on update leaves the current value unchanged."
       },
       notifications_every: %Schema{type: :integer},
       lock_schema: %Schema{type: :boolean},

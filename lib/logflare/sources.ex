@@ -135,8 +135,8 @@ defmodule Logflare.Sources do
   def create_source(source_params, user) do
     source_params =
       source_params
-      |> Enum.map(fn {k, v} -> {to_string(k), v} end)
-      |> Map.new()
+      |> Map.new(fn {k, v} -> {to_string(k), v} end)
+      |> Map.put_new("default_ingest_backend_enabled?", true)
 
     with {:ok, source} <-
            user

@@ -23,12 +23,32 @@ defmodule Logflare.SourcesTest do
       {:ok, user: user}
     end
 
-    test "new sources are opted out by default", %{user: user} do
-      assert {:ok, %Source{default_ingest_backend_enabled?: false}} =
-               Sources.create_source(%{name: "opted-out"}, user)
+    test "new sources are opted in by default", %{user: user} do
+      assert {:ok, %Source{default_ingest_backend_enabled?: true} = source} =
+               Sources.create_source(%{name: "opted-in"}, user)
+
+      assert Sources.get(source.id).default_ingest_backend_enabled? == true
     end
 
-    test "new sources can be created opted in", %{user: user} do
+    test "new sources can be created opted out", %{user: user} do
+      assert {:ok, %Source{default_ingest_backend_enabled?: false} = source} =
+               Sources.create_source(
+                 %{name: "opted-out", default_ingest_backend_enabled?: false},
+                 user
+               )
+
+      assert Sources.get(source.id).default_ingest_backend_enabled? == false
+    end
+
+    test "new sources can be created opted out with string keys", %{user: user} do
+      assert {:ok, %Source{default_ingest_backend_enabled?: false}} =
+               Sources.create_source(
+                 %{"name" => "opted-out", "default_ingest_backend_enabled?" => "false"},
+                 user
+               )
+    end
+
+    test "new sources opted in explicitly stay opted in", %{user: user} do
       assert {:ok, %Source{default_ingest_backend_enabled?: true}} =
                Sources.create_source(
                  %{name: "opted-in", default_ingest_backend_enabled?: true},
