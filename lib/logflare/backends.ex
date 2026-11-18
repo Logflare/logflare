@@ -22,6 +22,7 @@ defmodule Logflare.Backends do
   alias Logflare.Backends.Spool.Health, as: SpoolHealth
   alias Logflare.ContextCache
   alias Logflare.Cluster
+  alias Logflare.EnrichmentRules
   alias Logflare.LogEvent
   alias Logflare.PubSubRates
   alias Logflare.QueryContext
@@ -756,9 +757,14 @@ defmodule Logflare.Backends do
   end
 
   defp dispatch_to_backend_path(source, backend, log_events) do
+    enrich_route_and_dispatch(source, backend, log_events)
+    :ok
+  end
+
+  defp enrich_route_and_dispatch(source, backend, log_events) do
+    log_events = EnrichmentRules.apply_rules(log_events, source)
     maybe_broadcast_and_route(source, log_events)
     dispatch_to_backends(source, backend, log_events)
-    :ok
   end
 
   @default_spool_append_timeout 15_000
@@ -855,8 +861,7 @@ defmodule Logflare.Backends do
       %{}
     )
 
-    maybe_broadcast_and_route(source, log_events)
-    dispatch_to_backends(source, nil, log_events)
+    enrich_route_and_dispatch(source, nil, log_events)
     {:ok, count}
   end
 

@@ -153,6 +153,8 @@ At ingestion, the pipeline will perform the following in sequence:
 
 5. If set, configured fields will be dropped from the event body. See [drop fields](#drop-fields) for more details.
 
+After ingestion, when events are dispatched to backends and before routing rules are evaluated, [enrichment rules](#enrichment-rules) set fields on matching events.
+
 ### Key Transformation
 
 When logging object, your object keys will be transformed automatically to comply with the respective backend in use. For example, BigQuery column requirements require that names only contain letters (a-z, A-Z), numbers (0-9), or underscores (\_), and it must start with a letter or underscore. This will be automatically handled for you when ingesting data.
@@ -262,6 +264,27 @@ Key-value pairs can be managed via the [Management API](https://logflare.app/swa
 :::note
 Key-value enrichment runs after field copying, so copied fields can be used as lookup sources.
 :::
+
+### Enrichment Rules
+
+An enrichment rule sets fields on every event of a source that matches an LQL filter. Rules are managed in the source settings, under **Enrichment Rules**.
+
+Each rule has:
+
+- an **LQL filter**, using the same syntax as [routing rules](#rules). Filters can match fields that the source schema does not have yet, such as a field added by key-value enrichment.
+- **set fields**, one `field=value` per line. Dot syntax addresses nested paths, and `m.` is shorthand for `metadata.`. `true`, `false` and numbers are stored as booleans and numbers. Anything else is a string. The `id`, `event_message` and `timestamp` fields cannot be set.
+
+Enrichment rules run when events are dispatched, before routing rules, so routing rules and drain rules can match the fields they set. With spooling enabled, they run on the spool consumer, not during the ingest request. When several rules match an event, they are applied in the order they were created, so a later rule wins when two set the same field. A path that crosses a non-map value is skipped. Events routed into a source by a routing rule are not enriched again.
+
+For example, combined with the key-value enrichment rule `project:debug_mode:debug_mode`, this rule flags non-error events from projects set to `errors_only`:
+
+```text
+# LQL filter
+debug_mode:errors_only -m.level:~"^(error|fatal)$"
+
+# Set fields
+excluded_by_user_config=true
+```
 
 ### Drop Fields
 

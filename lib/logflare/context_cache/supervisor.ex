@@ -13,6 +13,7 @@ defmodule Logflare.ContextCache.Supervisor do
   alias Logflare.ContextCache.CatalogCache
   alias Logflare.ContextCache.Tombstones
   alias Logflare.Endpoints
+  alias Logflare.EnrichmentRules
   alias Logflare.GenSingleton
   alias Logflare.KeyValues
   alias Logflare.Partners
@@ -86,6 +87,7 @@ defmodule Logflare.ContextCache.Supervisor do
       {Auth.Cache, :auth},
       {Endpoints.Cache, :endpoints},
       {Rules.Cache, :rules},
+      {EnrichmentRules.Cache, :enrichment_rules},
       {KeyValues.Cache, :key_values},
       {SavedSearches.Cache, :saved_searches},
       {Tombstones.Cache, :context_cache_tombstones},
