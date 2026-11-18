@@ -100,6 +100,7 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Supervisor do
      storage_mod: storage_mod,
      queue_mod: queue_mod,
      queue_ref: queue_ref,
+     queue_name: ProviderConfig.queue_name(spool_config, queue_mod),
      compress: Keyword.get(spool_config, :compress, true)}
   end
 end
