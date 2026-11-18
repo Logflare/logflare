@@ -118,7 +118,7 @@ defmodule Logflare.KeyValues.Cache do
     value =
       case Cachex.get(worker, {:lookup, [user_id, key, nil]}) do
         {:ok, {:cached, full_value}} -> KeyValues.extract_value(full_value, accessor_path)
-        {:ok, nil} -> read_through(key_args)
+        {:ok, nil} -> read_through(key_args, tombstoned_before_read?)
       end
 
     if not tombstoned_before_read? do
@@ -144,7 +144,7 @@ defmodule Logflare.KeyValues.Cache do
     if tombstoned?(user_id, key), do: Cachex.del(cache, cache_key)
   end
 
-  defp read_through([user_id, key, accessor_path] = key_args) do
+  defp read_through([user_id, key, accessor_path] = key_args, tombstoned_before_read?) do
     full_key = {:lookup, [user_id, key, nil]}
 
     case L2.lookup(full_key) do
@@ -153,7 +153,7 @@ defmodule Logflare.KeyValues.Cache do
 
       :miss ->
         full_value = from_db(:miss, [user_id, key, nil])
-        L2.fill(full_key, full_value)
+        if not tombstoned_before_read?, do: L2.fill(full_key, full_value)
         extract_value(full_value, accessor_path)
 
       l2_unavailable ->
