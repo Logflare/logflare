@@ -211,7 +211,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryClassExecutionTest do
         user: Logflare.Users.get(context.backend.user_id),
         backend: context.backend,
         language: :ch_sql,
-        query: "SELECT 'cached-policy' AS value",
+        query: "SELECT 'cached-policy' AS value SETTINGS max_threads = 3",
         cache_duration_seconds: 60,
         proactive_requerying_seconds: 60
       )
@@ -231,6 +231,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryClassExecutionTest do
 
     assert_received {:executed, first_sql}
     assert first_sql =~ "priority = 10"
+    assert first_sql =~ "max_threads = 3"
 
     assert {:ok, %{rows: [%{"value" => "cached-policy"}]}} =
              Endpoints.run_cached_query(endpoint, %{}, read_cluster: "dashboard_logs_paid")

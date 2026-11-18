@@ -67,13 +67,15 @@ Successful result caches remain class-agnostic: changing the class does not crea
 
 ## Lower-only settings in endpoint SQL
 
-Endpoint queries can request tighter limits directly in the outer `SETTINGS` clause, without separate editor fields or permission to change administrator-enforced policy:
+Endpoint queries, including test runs in the endpoint editor, can request tighter limits directly in the outer `SETTINGS` clause without permission to change administrator-enforced policy:
 
 ```sql
 SELECT count() AS events
 FROM my_source
 SETTINGS max_execution_time = 2.5, max_threads = 2, priority = 10
 ```
+
+Ad hoc queries, including `/api/query` and `/api/query/parse`, do not support these requests.
 
 The supported keys are `max_execution_time`, `max_memory_usage`, `max_rows_to_read`, `max_bytes_to_read`, `max_threads`, and `priority`. Requests must be positive numeric literals; only execution time accepts fractions. The execution time must be at least one microsecond and fit in ClickHouse's signed 64-bit microsecond range. Zero, negative values, strings, parameter placeholders, expressions, and case-insensitive duplicate request keys are rejected. Existing allowlisted optimizer settings can remain in the same clause.
 

@@ -209,6 +209,7 @@ defmodule Logflare.Endpoints.ClickHouseSqlSettingsTest do
       assert {:ok, sql} =
                ClickHouseAdaptor.prepare_query(backend, query,
                  query_type: :endpoint,
+                 allow_clickhouse_sql_settings: true,
                  read_cluster: label,
                  validated_clickhouse_sql: true
                )
@@ -220,6 +221,7 @@ defmodule Logflare.Endpoints.ClickHouseSqlSettingsTest do
     assert {:ok, sql} =
              ClickHouseAdaptor.prepare_query(backend, query,
                query_type: :endpoint,
+               allow_clickhouse_sql_settings: true,
                read_cluster: "api_paid",
                enforced_clickhouse_settings: %{"max_threads" => 1, "priority" => 15}
              )
@@ -232,6 +234,7 @@ defmodule Logflare.Endpoints.ClickHouseSqlSettingsTest do
     assert {:ok, sql} =
              ClickHouseAdaptor.prepare_query(updated, query,
                query_type: :endpoint,
+               allow_clickhouse_sql_settings: true,
                read_cluster: "api_paid"
              )
 
@@ -283,17 +286,20 @@ defmodule Logflare.Endpoints.ClickHouseSqlSettingsTest do
   test "raw adaptor policy still rejects overrides rather than treating them as endpoint requests" do
     backend = %Backend{config: %{query_class_settings: %{"default" => @limits}}}
 
+    query = "SELECT 1 AS a SETTINGS priority = 10"
+
+    for opts <- [[], [query_type: :endpoint], [allow_clickhouse_sql_settings: true]] do
+      assert {:error, reason} = ClickHouseAdaptor.prepare_query(backend, query, opts)
+      assert reason =~ "priority is enforced"
+    end
+
     assert {:error, reason} =
-             ClickHouseAdaptor.prepare_query(backend, "SELECT 1 AS a SETTINGS priority = 10")
-
-    assert reason =~ "priority is enforced"
-
-    assert {:error, _} =
-             ClickHouseAdaptor.prepare_query(
-               %Backend{config: %{}},
-               "SELECT 1 AS a SETTINGS priority = 1",
-               query_type: :endpoint
+             ClickHouseAdaptor.prepare_query(%Backend{config: %{}}, query,
+               query_type: :endpoint,
+               allow_clickhouse_sql_settings: true
              )
+
+    assert reason =~ "requires an explicit inherited policy limit"
   end
 
   test "SQL request validation and sandbox rejection do not require policy or database access" do
