@@ -1,9 +1,16 @@
 defmodule Logflare.ShutdownSignalIntegrationTest do
   use ExUnit.Case, async: false
 
-  @tag timeout: 30_000
-  test "real SIGTERM preserves an HTTP/2 response held beyond the withdrawal window" do
-    {port, os_pid, conn} = start_probe()
+  alias Logflare.Backends.Spool.Encoder
+
+  @moduletag timeout: 30_000
+  @moduletag :tmp_dir
+
+  test "SIGTERM preserves an admitted HTTP/2 response and flushes its event before stopping", %{
+    tmp_dir: tmp_dir
+  } do
+    spool_path = Path.join(tmp_dir, "accepted-event")
+    {port, os_pid, conn} = start_probe("normal", spool_path)
     {:ok, conn, ref} = Mint.HTTP.request(conn, "GET", "/hold", [], nil)
     await_line(port, "SHUTDOWN_PROBE_HELD", 5_000)
 
@@ -11,30 +18,52 @@ defmodule Logflare.ShutdownSignalIntegrationTest do
     await_line(port, "withdrawing from traffic", 5_000)
     assert {_output, 0} = System.cmd("kill", ["-TERM", os_pid])
     await_line(port, "ignoring repeated sigterm", 5_000)
-    await_line(port, "SHUTDOWN_PROBE_CLOSED", 5_000)
+    await_line(port, "SHUTDOWN_PROBE_CLOSED ready=false", 5_000)
+    refute File.exists?(spool_path)
 
     Port.command(port, "release\n")
     {conn, responses} = response(conn, ref)
     assert {:status, ref, 200} in responses
     assert {:data, ref, "ok"} in responses
-    assert_receive {^port, {:exit_status, 0}}, 10_000
+    await_line(port, "shutdown: supervised drain finished result=drained", 5_000)
+    assert_receive {^port, {:exit_status, 0}}, 5_000
+
+    assert {[segment], _valid_bytes, <<>>} =
+             spool_path |> File.read!() |> Encoder.decode_segments()
+
+    assert [%{body: %{"message" => "accepted-event"}}] = :erlang.binary_to_term(segment, [:safe])
     Mint.HTTP.close(conn)
   end
 
-  @tag timeout: 30_000
-  test "real SIGTERM times out on a stuck admitted request rather than hanging indefinitely" do
-    {port, os_pid, conn} = start_probe()
+  test "SIGTERM times out on a stuck admitted request rather than hanging indefinitely", %{
+    tmp_dir: tmp_dir
+  } do
+    {port, os_pid, conn} = start_probe("normal", Path.join(tmp_dir, "stuck-request"))
     {:ok, conn, _ref} = Mint.HTTP.request(conn, "GET", "/hold", [], nil)
     await_line(port, "SHUTDOWN_PROBE_HELD", 5_000)
     started = System.monotonic_time(:millisecond)
     assert {_output, 0} = System.cmd("kill", ["-TERM", os_pid])
     await_line(port, "ingress result=timeout", 5_000)
+    await_line(port, "shutdown: supervised drain finished result=timeout", 5_000)
     assert_receive {^port, {:exit_status, 0}}, 5_000
     assert System.monotonic_time(:millisecond) - started < 8_000
     Mint.HTTP.close(conn)
   end
 
-  defp start_probe do
+  test "the supervisor kills a drain blocked in the final flush after SIGQUIT", %{
+    tmp_dir: tmp_dir
+  } do
+    {port, os_pid, conn} = start_probe("blocked_flush", Path.join(tmp_dir, "blocked-flush"))
+    started = System.monotonic_time(:millisecond)
+
+    assert {_output, 0} = System.cmd("kill", ["-QUIT", os_pid])
+    await_line(port, "SHUTDOWN_PROBE_FLUSH_BLOCKED", 5_000)
+    assert_receive {^port, {:exit_status, 0}}, 5_000
+    assert System.monotonic_time(:millisecond) - started < 6_000
+    Mint.HTTP.close(conn)
+  end
+
+  defp start_probe(mode, spool_path) do
     paths = Enum.flat_map(:code.get_path(), &["-pa", List.to_string(&1)])
     script = Path.expand("../support/shutdown_vm_probe.exs", __DIR__)
     executable = System.find_executable("elixir")
@@ -45,7 +74,7 @@ defmodule Logflare.ShutdownSignalIntegrationTest do
         :exit_status,
         :stderr_to_stdout,
         {:line, 4096},
-        args: paths ++ [script]
+        args: paths ++ [script, mode, spool_path]
       ])
 
     on_exit(fn -> if Port.info(port), do: Port.close(port) end)

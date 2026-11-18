@@ -1,10 +1,52 @@
 defmodule Logflare.Shutdown do
-  @moduledoc false
+  @moduledoc """
+  Drains ingress and ingestion before the supervisor stops their dependencies.
+  Start this child last so it is stopped first; the child shutdown timeout
+  bounds the drain even if a dependency stops responding.
+  """
+
+  use GenServer
 
   require Logger
 
   alias Logflare.IngressDrain
+  alias Logflare.IngressGate
   alias Logflare.ShutdownDrain
+
+  @spec child_spec(keyword()) :: Supervisor.child_spec()
+  def child_spec([]) do
+    timeout = timeout_ms()
+    %{id: __MODULE__, start: {__MODULE__, :start_link, [timeout]}, shutdown: timeout}
+  end
+
+  @spec start_link(non_neg_integer()) :: GenServer.on_start()
+  def start_link(timeout), do: GenServer.start_link(__MODULE__, timeout)
+
+  @impl GenServer
+  def init(timeout) do
+    Process.flag(:trap_exit, true)
+    {:ok, timeout}
+  end
+
+  @impl GenServer
+  def terminate(:shutdown, timeout) do
+    deadline = System.monotonic_time(:millisecond) + timeout
+    Logger.warning("shutdown: starting supervised drain with budget=#{timeout}ms")
+
+    result =
+      run(
+        deadline_ms: deadline,
+        withdrawal_ms: Application.fetch_env!(:logflare, :sigterm_shutdown_grace_period_ms),
+        request_timeout_ms: Application.get_env(:logflare, :shutdown_request_timeout_ms, 30_000),
+        drain_timeout_ms: Application.get_env(:logflare, :shutdown_drain_timeout_ms)
+      )
+
+    Logger.warning("shutdown: supervised drain finished result=#{result}")
+  after
+    IngressGate.close()
+  end
+
+  def terminate(_reason, _timeout), do: :ok
 
   @spec timeout_ms() :: non_neg_integer()
   def timeout_ms do

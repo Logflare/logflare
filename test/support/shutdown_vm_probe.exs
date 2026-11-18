@@ -1,43 +1,51 @@
-Application.ensure_all_started(:bandit)
-Application.ensure_all_started(:cowboy)
+alias Logflare.Backends.Spool.SpoolAck
+alias Logflare.IngressGate
+alias Logflare.Readiness
+alias Logflare.Test.ShutdownProbeApplication
+
+[mode, spool_path] = System.argv()
 Application.put_env(:logflare, :sigterm_shutdown_grace_period_ms, 200)
-Application.put_env(:logflare, :shutdown_timeout_ms, 3_000)
+
+Application.put_env(
+  :logflare,
+  :shutdown_timeout_ms,
+  if(mode == "blocked_flush", do: 1_500, else: 4_000)
+)
+
 Application.put_env(:logflare, :shutdown_request_timeout_ms, 2_000)
-Application.delete_env(:logflare, :shutdown_drain_timeout_ms)
+Application.put_env(:logflare, :shutdown_drain_timeout_ms, 500)
 
-Logflare.Readiness.initialize()
-Logflare.Readiness.mark_ready()
-Logflare.IngressGate.initialize()
+if mode == "blocked_flush" do
+  {:ok, _apps} = Application.ensure_all_started(:ex_unit)
+  {:ok, _apps} = Application.ensure_all_started(:mimic)
+  Mimic.copy(SpoolAck)
+  Mimic.set_mimic_global()
 
-spec =
-  Supervisor.child_spec(
-    {Bandit,
-     plug: {Logflare.Test.ShutdownProbePlug, self()},
-     ip: {127, 0, 0, 1},
-     port: 0,
-     startup_log: false},
-    id: {LogflareWeb.Endpoint, :http}
-  )
-
-{:ok, _supervisor} =
-  Supervisor.start_link([spec], name: LogflareWeb.Endpoint, strategy: :one_for_one)
-
-{:ok, server} = Bandit.PhoenixAdapter.bandit_pid(LogflareWeb.Endpoint)
-{:ok, {_address, port}} = ThousandIsland.listener_info(server)
+  Mimic.stub(SpoolAck, :pending_count, fn ->
+    IO.binwrite(:stdio, "SHUTDOWN_PROBE_FLUSH_BLOCKED\n")
+    Process.sleep(:infinity)
+  end)
+end
 
 :ok =
-  :gen_event.swap_sup_handler(
-    :erl_signal_server,
-    {:erl_signal_handler, []},
-    {Logflare.SigtermHandler, []}
+  :application.load(
+    {:application, :shutdown_probe,
+     [
+       mod: {ShutdownProbeApplication, {self(), spool_path}},
+       applications: [:kernel, :stdlib, :elixir, :bandit, :cowboy, :durable_buffer]
+     ]}
   )
+
+{:ok, _apps} = Application.ensure_all_started(:shutdown_probe)
+{:ok, server} = Bandit.PhoenixAdapter.bandit_pid(LogflareWeb.Endpoint)
+{:ok, {_address, port}} = ThousandIsland.listener_info(server)
 
 parent = self()
 
 spawn(fn ->
   case IO.gets("") do
     "release\n" -> send(parent, :release)
-    _ -> send(parent, :stop)
+    _ -> System.stop()
   end
 end)
 
@@ -51,20 +59,16 @@ loop = fn loop, held ->
       loop.(loop, pid)
 
     :check_gate ->
-      if Logflare.IngressGate.open?() do
+      if IngressGate.open?() do
         Process.send_after(self(), :check_gate, 10)
       else
-        IO.binwrite(:stdio, "SHUTDOWN_PROBE_CLOSED\n")
+        IO.binwrite(:stdio, "SHUTDOWN_PROBE_CLOSED ready=#{Readiness.ready?()}\n")
       end
 
       loop.(loop, held)
 
     :release ->
       send(held, :release)
-      loop.(loop, held)
-
-    :stop ->
-      System.stop()
       loop.(loop, held)
   end
 end

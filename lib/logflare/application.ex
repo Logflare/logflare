@@ -14,6 +14,7 @@ defmodule Logflare.Application do
   alias Logflare.ContextCache
   alias Logflare.Logs
   alias Logflare.NaturalLanguageLql.AnthropicClient
+  alias Logflare.Shutdown
   alias Logflare.SingleTenant
   alias Logflare.SystemMetricsSup
   alias Logflare.Sources.Counters
@@ -48,7 +49,7 @@ defmodule Logflare.Application do
 
     # Routes user-specific logs to their respective system source, when appliable
 
-    children = get_children(env)
+    children = get_children(env) ++ [Shutdown]
 
     if Application.get_env(:logflare, :opentelemetry_enabled?) do
       OpentelemetryBandit.setup()
@@ -136,8 +137,8 @@ defmodule Logflare.Application do
          adapter_opts: [
            cred: grpc_creds,
            goaway_initial_timeout: 0,
-           goaway_complete_timeout: Logflare.Shutdown.timeout_ms(),
-           shutdown_timeout: Logflare.Shutdown.timeout_ms()
+           goaway_complete_timeout: Shutdown.timeout_ms(),
+           shutdown_timeout: Shutdown.timeout_ms()
          ],
          exception_log_filter: {LogflareGrpc.ExceptionLogFilter, :emit_log?}},
         # Monitor system level metrics
