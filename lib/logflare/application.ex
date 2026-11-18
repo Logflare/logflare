@@ -12,7 +12,6 @@ defmodule Logflare.Application do
   alias Logflare.Backends.Spool.SpoolAck
   alias Logflare.Backends.UserMonitoring
   alias Logflare.ContextCache
-  alias Logflare.IngressDrain
   alias Logflare.IngressGate
   alias Logflare.IngressGate.Sweeper
   alias Logflare.Logs
@@ -137,7 +136,7 @@ defmodule Logflare.Application do
          endpoint: LogflareGrpc.Endpoint,
          port: grpc_port,
          start_server: true,
-         adapter_opts: [cred: grpc_creds] ++ IngressDrain.grpc_protocol_options(),
+         adapter_opts: [cred: grpc_creds] ++ LogflareGrpc.Shutdown.protocol_options(),
          exception_log_filter: {LogflareGrpc.ExceptionLogFilter, :emit_log?}},
         # Monitor system level metrics
         SystemMetricsSup,
@@ -150,7 +149,8 @@ defmodule Logflare.Application do
         {Task, fn -> startup_tasks() end},
         # active users tracking for UserMetricsPoller
         {Logflare.ActiveUserTracker,
-         [name: Logflare.ActiveUserTracker, pubsub_server: Logflare.PubSub]}
+         [name: Logflare.ActiveUserTracker, pubsub_server: Logflare.PubSub]},
+        {LogflareGrpc.Shutdown, wait?: Shutdown.timeout_ms() > 0}
       ]
   end
 

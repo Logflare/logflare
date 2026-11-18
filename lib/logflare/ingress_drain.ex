@@ -7,18 +7,6 @@ defmodule Logflare.IngressDrain do
   alias Logflare.Shutdown.Budget
   alias Logflare.Utils.Tasks
 
-  @grpc_goaway_ms 5_000
-  @grpc_wire_timeout_ms 6_000
-
-  @spec grpc_protocol_options() :: keyword()
-  def grpc_protocol_options do
-    [
-      goaway_initial_timeout: 0,
-      goaway_complete_timeout: @grpc_goaway_ms,
-      shutdown_timeout: @grpc_goaway_ms
-    ]
-  end
-
   @spec run(integer(), keyword()) :: :drained | :timeout | :error
   def run(deadline, opts \\ []) do
     IngressGate.quiesce()
@@ -99,7 +87,9 @@ defmodule Logflare.IngressDrain do
         do: pid
   end
 
-  defp grpc_listener do
+  @doc false
+  @spec grpc_listener() :: String.t() | nil
+  def grpc_listener do
     ref = inspect(LogflareGrpc.Endpoint)
     _ = :ranch.get_addr(ref)
     ref
@@ -109,14 +99,5 @@ defmodule Logflare.IngressDrain do
 
   defp suspend_grpc(nil), do: :ok
 
-  defp suspend_grpc(ref) do
-    budget = suspend({:grpc_wire_budget, ref}, fn -> set_grpc_wire_budget(ref) end)
-    listener = suspend(ref, fn -> :ranch.suspend_listener(ref) end)
-    if budget == :ok and listener == :ok, do: :ok, else: :error
-  end
-
-  defp set_grpc_wire_budget(ref) do
-    opts = :ranch.get_transport_options(ref)
-    :ranch.set_transport_options(ref, Map.put(opts, :shutdown, @grpc_wire_timeout_ms))
-  end
+  defp suspend_grpc(ref), do: :ranch.suspend_listener(ref)
 end

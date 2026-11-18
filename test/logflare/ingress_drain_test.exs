@@ -9,6 +9,7 @@ defmodule Logflare.IngressDrainTest do
   alias Logflare.Test.ShutdownProbePlug
   alias Opentelemetry.Proto.Collector.Logs.V1.ExportLogsServiceRequest
   alias LogflareGrpc.Endpoint, as: GrpcEndpoint
+  alias LogflareGrpc.Shutdown, as: GrpcShutdown
   alias LogflareWeb.Plugs.Shutdown
 
   setup do
@@ -111,31 +112,30 @@ defmodule Logflare.IngressDrainTest do
     assert Task.await(task) == :drained
     assert Process.alive?(supervisor)
     assert :ranch.get_status(ref) == :suspended
-    assert :ranch.get_transport_options(ref).shutdown > 0
     Mint.HTTP.close(conn)
   end
 
-  test "gRPC: a zero callback wait preserves a response queued for the wire during teardown" do
+  test "gRPC: responses in separate Ranch groups get a concurrent wire drain" do
     :persistent_term.put({ShutdownProbeGrpc, :test_pid}, self())
     on_exit(fn -> :persistent_term.erase({ShutdownProbeGrpc, :test_pid}) end)
 
-    {server, ref} = grpc_server()
+    ref = inspect(ShutdownProbeEndpoint)
 
-    {:ok, conn} =
-      Mint.HTTP.connect(:http, "127.0.0.1", :ranch.get_port(ref),
-        protocols: [:http2],
-        mode: :passive,
-        client_settings: [initial_window_size: 0]
-      )
+    children = [
+      grpc_child(ShutdownProbeEndpoint, num_acceptors: 2),
+      {GrpcShutdown, listener: ref}
+    ]
 
-    encoded = ExportLogsServiceRequest.encode(%ExportLogsServiceRequest{})
-    body = <<0, byte_size(encoded)::32, encoded::binary>>
-    headers = [{"content-type", "application/grpc"}, {"te", "trailers"}]
-    path = "/opentelemetry.proto.collector.logs.v1.LogsService/Export"
-    {:ok, conn, rpc} = Mint.HTTP.request(conn, "POST", path, headers, body)
-    assert_receive {:held_rpc, handler}, 2_000
-    send(handler, :release)
-    {conn, responses} = until_headers(conn, rpc)
+    server =
+      start_supervised!(%{
+        id: :grpc_wire_drain,
+        start: {Supervisor, :start_link, [children, [strategy: :one_for_one]]},
+        type: :supervisor,
+        restart: :temporary
+      })
+
+    clients = hold_rpcs_in_two_groups(ref)
+    assert IngressGate.active_count() == 0
 
     assert IngressDrain.run(System.monotonic_time(:millisecond),
              http_listeners: [],
@@ -145,11 +145,21 @@ defmodule Logflare.IngressDrainTest do
 
     shutdown = Task.async(fn -> Supervisor.stop(server) end)
 
-    {conn, responses} = until_goaway(conn, responses)
-    {:ok, conn} = Mint.HTTP2.put_settings(conn, initial_window_size: 65_535)
-    {conn, responses} = until_done(conn, rpc, responses)
-    assert grpc_status(responses, rpc) == "0"
-    Mint.HTTP.close(conn)
+    closing =
+      Enum.map(clients, fn {conn, rpc, responses} ->
+        {conn, responses} = until_goaway(conn, responses)
+        {conn, rpc, responses}
+      end)
+
+    assert :ranch.get_transport_options(ref).shutdown == :brutal_kill
+
+    Enum.each(closing, fn {conn, rpc, responses} ->
+      {:ok, conn} = Mint.HTTP2.put_settings(conn, initial_window_size: 65_535)
+      {conn, responses} = until_done(conn, rpc, responses)
+      assert grpc_status(responses, rpc) == "0"
+      Mint.HTTP.close(conn)
+    end)
+
     assert Task.await(shutdown) == :ok
   end
 
@@ -207,7 +217,6 @@ defmodule Logflare.IngressDrainTest do
 
       assert IngressDrain.run(cutoff, http_listeners: []) == :drained
       assert :ranch.get_status(ref) == :suspended
-      assert :ranch.get_transport_options(ref).shutdown == 6_000
     after
       :ok = :sys.resume(conns_sup)
     end
@@ -255,16 +264,53 @@ defmodule Logflare.IngressDrainTest do
   end
 
   defp grpc_server(endpoint \\ ShutdownProbeEndpoint) do
-    server =
-      start_supervised!(
-        {GRPC.Server.Supervisor,
-         endpoint: endpoint,
-         port: 0,
-         start_server: true,
-         adapter_opts: [ip: {127, 0, 0, 1}] ++ IngressDrain.grpc_protocol_options()}
+    {start_supervised!(grpc_child(endpoint, [])), inspect(endpoint)}
+  end
+
+  defp grpc_child(endpoint, adapter_opts) do
+    {GRPC.Server.Supervisor,
+     endpoint: endpoint,
+     port: 0,
+     start_server: true,
+     adapter_opts: [ip: {127, 0, 0, 1}] ++ adapter_opts ++ GrpcShutdown.protocol_options()}
+  end
+
+  defp hold_rpcs_in_two_groups(ref) do
+    Enum.reduce_while(1..12, [], fn _, clients ->
+      {conn, rpc} = request_held_rpc(:ranch.get_port(ref))
+      assert_receive {:held_rpc, handler}, 2_000
+      send(handler, :release)
+      {conn, responses} = until_headers(conn, rpc)
+      clients = [{conn, rpc, responses} | clients]
+
+      groups =
+        Enum.count(:ranch.info(ref).metrics, fn
+          {{:conns_sup, _, :accept}, count} -> count > 0
+          _ -> false
+        end)
+
+      if groups == 2, do: {:halt, {:ok, clients}}, else: {:cont, clients}
+    end)
+    |> then(fn result ->
+      assert {:ok, clients} = result
+      clients
+    end)
+  end
+
+  defp request_held_rpc(port) do
+    {:ok, conn} =
+      Mint.HTTP.connect(:http, "127.0.0.1", port,
+        protocols: [:http2],
+        mode: :passive,
+        client_settings: [initial_window_size: 0]
       )
 
-    {server, inspect(endpoint)}
+    encoded = ExportLogsServiceRequest.encode(%ExportLogsServiceRequest{})
+    body = <<0, byte_size(encoded)::32, encoded::binary>>
+    headers = [{"content-type", "application/grpc"}, {"te", "trailers"}]
+    path = "/opentelemetry.proto.collector.logs.v1.LogsService/Export"
+    {:ok, conn, rpc} = Mint.HTTP.request(conn, "POST", path, headers, body)
+    {conn, rpc}
   end
 
   defp h2(port) do
