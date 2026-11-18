@@ -162,7 +162,7 @@ defmodule Logflare.Endpoints.ClickHouseSqlSettings do
     parsed =
       case Integer.parse(value) do
         {_integer, ""} = parsed -> parsed
-        _ when key == "max_execution_time" -> Float.parse(value)
+        _ when key == "max_execution_time" -> parse_timeout_literal(value)
         _ -> :error
       end
 
@@ -174,6 +174,14 @@ defmodule Logflare.Endpoints.ClickHouseSqlSettings do
 
   defp numeric_literal(key, _value),
     do: {:error, "ClickHouse setting #{key} requires a positive numeric literal"}
+
+  @spec parse_timeout_literal(String.t()) :: {float(), String.t()} | :error
+  defp parse_timeout_literal(value) do
+    value
+    |> String.replace_prefix(".", "0.")
+    |> String.replace(~r/\.(?=[eE]|$)/, ".0")
+    |> Float.parse()
+  end
 
   @spec reject_nested(map()) :: :ok | {:error, String.t()}
   defp reject_nested(statement) do

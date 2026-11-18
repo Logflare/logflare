@@ -75,6 +75,18 @@ defmodule Logflare.Endpoints.ClickHouseSqlSettingsTest do
     assert sql =~ "read_overflow_mode = 'throw'"
   end
 
+  test "accepts fractional timeouts with an omitted digit before or after the point" do
+    for {literal, expected} <- [{".5", "0.5"}, {"2.", "2.0"}, {"2.e1", "20.0"}] do
+      assert {:ok, sql} =
+               ClickHouseSqlSettings.enforce(
+                 "SELECT 1 AS a SETTINGS max_execution_time = #{literal}",
+                 %{"max_execution_time" => 25}
+               )
+
+      assert sql =~ "max_execution_time = #{expected},"
+    end
+  end
+
   test "rejects requested or effective timeouts outside ClickHouse's microsecond range" do
     error =
       {:error,
