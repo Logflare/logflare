@@ -96,7 +96,7 @@ defmodule Logflare.Backends.DynamicPipeline do
         max(state.resolve_count.(args), state.min_pipelines)
       rescue
         err ->
-          fallback = max(current, state.min_pipelines)
+          fallback = fallback_pipeline_count(state, current)
 
           Logger.error(
             "Error when resolving DynamicPipeline counts, falling back to #{fallback} | err: #{inspect(err)}"
@@ -118,6 +118,19 @@ defmodule Logflare.Backends.DynamicPipeline do
 
       desired == current ->
         {:noop, desired, state}
+    end
+  end
+
+  @spec fallback_pipeline_count(state(), non_neg_integer()) :: non_neg_integer()
+  defp fallback_pipeline_count(state, current) do
+    fallback = max(current, state.min_pipelines)
+
+    with 0 <- fallback,
+         key when not is_nil(key) <- pipeline_args_sid_bid(state.pipeline_args),
+         pending when pending > 0 <- IngestEventQueue.queues_pending_size(key) do
+      1
+    else
+      _ -> fallback
     end
   end
 
