@@ -166,5 +166,5 @@ If a query on a non-default read cluster fails with a connection error, such as 
 Edit the backend and change, add, or remove rows, then save. Removing a label sends its traffic to the default read cluster until the row is restored, so callers do not need to change their headers first.
 
 :::note
-Saving a ClickHouse backend's configuration restarts its read connection pools on every Logflare node. Queries running on those pools fail and need to be retried. New pools start on the next query.
+Saving a change to a ClickHouse backend's connection settings replaces its read connection pools on every Logflare node. New pools start on the next query. Queries already running finish on the old pools. Each old pool closes once it is idle, or when its drain budget of 65 seconds runs out; queries still running then fail and need to be retried. Until the old pools close, each node holds connections for the active pool plus every pool still draining, so saving again during a drain adds another pool's worth of connections.
 :::

@@ -3505,11 +3505,32 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
   describe "read pool refresh during a query" do
     setup do
+      config = Application.get_env(:logflare, ConnectionManager)
+      Application.put_env(:logflare, ConnectionManager, drain_check_interval: 10)
+      on_exit(fn -> Application.put_env(:logflare, ConnectionManager, config) end)
+
       insert(:plan, name: "Free")
       {_source, backend} = setup_clickhouse_test(config: %{read_pool_size: 1})
 
       start_supervised!({ClickHouseAdaptor, backend})
       [backend: backend]
+    end
+
+    test "query running on the pool when its options change", %{backend: backend} do
+      {:ok, _} = ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1")
+      pool = ConnectionManager.get_pool_pid(backend)
+
+      query =
+        Task.async(fn ->
+          ClickHouseAdaptor.execute_ch_query(backend, "SELECT sleep(0.5), 3 AS result")
+        end)
+
+      await_pool_queue(backend, 0, 0)
+
+      backend = save_backend_config!(backend, %{read_pool_size: 2})
+      assert :ok == ConnectionManager.refresh_pool(backend)
+      assert {:ok, {[%{"result" => 3}], _bytes}} = Task.await(query)
+      TestUtils.retry_assert(fn -> refute Process.alive?(pool) end)
     end
 
     test "query waiting for a connection when the pool is refreshed", %{backend: backend} do

@@ -238,13 +238,20 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManagerTest do
 
   describe "refresh_pool/2" do
     setup context do
+      config = Application.get_env(:logflare, ConnectionManager)
+      Application.put_env(:logflare, ConnectionManager, drain_check_interval: 10)
+      on_exit(fn -> Application.put_env(:logflare, ConnectionManager, config) end)
+
       {:ok, _manager_pid} = ConnectionManager.start_link(context.backend)
       assert :ok == ConnectionManager.ensure_pool_started(context.backend)
 
-      context
+      Map.put(context, :pool, ConnectionManager.get_pool_pid(context.backend))
     end
 
-    test "backend whose read pool size changed since the pool started", %{backend: backend} do
+    test "backend whose read pool size changed since the pool started", %{
+      backend: backend,
+      pool: pool
+    } do
       backend = save_backend_config!(backend, %{read_pool_size: 2})
 
       assert :ok == ConnectionManager.refresh_pool(backend)
@@ -252,6 +259,78 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManagerTest do
 
       assert :ok == ConnectionManager.ensure_pool_started(backend)
       assert ConnectionManager.pool_active?(backend)
+      TestUtils.retry_assert(fn -> refute Process.alive?(pool) end)
+    end
+
+    test "connections checked out across two option changes", %{backend: backend, pool: pool} do
+      first_holder = hold_connection(pool)
+      backend = save_backend_config!(backend, %{read_pool_size: 2})
+
+      for _applied <- 1..2, do: assert(:ok == ConnectionManager.refresh_pool(backend))
+
+      assert :ok == ConnectionManager.ensure_pool_started(backend)
+      next_pool = ConnectionManager.get_pool_pid(backend)
+      second_holder = hold_connection(next_pool)
+
+      backend = save_backend_config!(backend, %{read_pool_size: 3})
+      assert :ok == ConnectionManager.refresh_pool(backend)
+
+      assert Process.alive?(pool)
+      assert Process.alive?(next_pool)
+
+      send(first_holder, :release)
+      send(second_holder, :release)
+
+      TestUtils.retry_assert(fn ->
+        refute Process.alive?(pool)
+        refute Process.alive?(next_pool)
+      end)
+    end
+
+    test "connection checked out past the drain limit", %{backend: backend, pool: pool} do
+      Application.put_env(:logflare, ConnectionManager,
+        drain_check_interval: 10,
+        drain_budget: 0
+      )
+
+      holder = hold_connection(pool)
+      backend = save_backend_config!(backend, %{read_pool_size: 2})
+
+      assert :ok == ConnectionManager.refresh_pool(backend)
+      TestUtils.retry_assert(fn -> refute Process.alive?(pool) end)
+      send(holder, :release)
+    end
+
+    test "draining pool that stops responding", %{backend: backend, pool: pool} do
+      Application.put_env(:logflare, ConnectionManager,
+        drain_check_interval: 10,
+        drain_budget: 200
+      )
+
+      pool_ref = Process.monitor(pool)
+      :ok = :sys.suspend(pool)
+      backend = save_backend_config!(backend, %{read_pool_size: 2})
+
+      assert :ok == ConnectionManager.refresh_pool(backend)
+      Process.sleep(50)
+
+      assert {:ok, next_pool} = ConnectionManager.fetch_pool(backend)
+      assert {:ok, %Ch.Result{rows: [[1]]}} = Ch.query(next_pool, "SELECT 1")
+      assert_receive {:DOWN, ^pool_ref, :process, ^pool, :killed}, 1_000
+    end
+
+    test "draining pool that crashes", %{backend: backend, pool: pool} do
+      holder = hold_connection(pool)
+      backend = save_backend_config!(backend, %{read_pool_size: 2})
+      assert :ok == ConnectionManager.refresh_pool(backend)
+      assert {:ok, next_pool} = ConnectionManager.fetch_pool(backend)
+
+      Process.exit(pool, :kill)
+      send(holder, :release)
+
+      TestUtils.retry_assert(fn -> refute Process.alive?(pool) end)
+      assert {:ok, ^next_pool} = ConnectionManager.fetch_pool(backend)
+      assert {:ok, %Ch.Result{rows: [[1]]}} = Ch.query(next_pool, "SELECT 1")
     end
 
     test "cache still holding the backend from before a read pool size change", %{
@@ -460,6 +539,24 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManagerTest do
 
       assert backend_id == backend.id
     end
+  end
+
+  defp hold_connection(pool) do
+    test_pid = self()
+
+    holder =
+      spawn(fn ->
+        DBConnection.run(pool, fn _conn ->
+          send(test_pid, {:checked_out, self()})
+
+          receive do
+            :release -> :ok
+          end
+        end)
+      end)
+
+    assert_receive {:checked_out, ^holder}
+    holder
   end
 
   defp start_pool_credentials(backend) do
