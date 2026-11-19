@@ -123,21 +123,21 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup do
 
   Only started pools are listed; a `ConnectionManager` whose pool has been stopped for
   inactivity or refresh is not included. The label is `nil` for the unlabeled pool.
-  `pool_size` is the size the pool was started with, read from its registry value, so
-  it reflects the running pool rather than whatever the backend config says now.
+  `pool_size` is the size the pool was started with, so it reflects the running pool
+  rather than whatever the backend config says now.
   """
   @spec list_read_pools() :: [
           {backend_id :: pos_integer(), String.t() | nil, pid(), pos_integer()}
         ]
   def list_read_pools do
-    pool = CHReadPool
+    manager = ConnectionManager
 
     ms =
       Ex2ms.fun do
-        {{^pool, backend_id}, pid, %{pool_size: pool_size}} ->
+        {{^manager, backend_id}, _manager_pid, %{pool: pid, pool_size: pool_size}} ->
           {backend_id, nil, pid, pool_size}
 
-        {{^pool, backend_id, label}, pid, %{pool_size: pool_size}} ->
+        {{^manager, backend_id, label}, _manager_pid, %{pool: pid, pool_size: pool_size}} ->
           {backend_id, label, pid, pool_size}
       end
 

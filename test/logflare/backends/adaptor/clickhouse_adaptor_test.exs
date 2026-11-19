@@ -2799,7 +2799,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       backend_id = backend.id
 
       stub(Ch, :query, fn pool, statement, params, opts ->
-        {:via, Registry, {_registry, {_mod, ^backend_id, label}}} = pool
+        {:ok, label} = read_pool_label(backend_id, pool)
         send(parent, {:ch_query, label, Keyword.get(opts, :headers, [])})
 
         case label do
@@ -3563,8 +3563,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       {:ok, _} = ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1 as result")
 
       manager_pid = GenServer.whereis(via)
-      pool_via = ConnectionManager.connection_pool_via(backend)
-      pool_pid = GenServer.whereis(pool_via)
+      pool_pid = ConnectionManager.get_pool_pid(backend)
 
       assert is_pid(manager_pid)
       assert is_pid(pool_pid)
@@ -3578,7 +3577,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
         assert GenServer.whereis(via) == manager_pid,
                "ConnectionManager PID should be reused across queries"
 
-        assert GenServer.whereis(pool_via) == pool_pid,
+        assert ConnectionManager.get_pool_pid(backend) == pool_pid,
                "Connection pool PID should be reused across queries"
       end
 
@@ -3590,8 +3589,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
       {:ok, _} = ClickHouseAdaptor.execute_ch_query(backend, "SELECT 0 as result")
       manager_pid = GenServer.whereis(via)
-      pool_via = ConnectionManager.connection_pool_via(backend)
-      pool_pid = GenServer.whereis(pool_via)
+      pool_pid = ConnectionManager.get_pool_pid(backend)
 
       assert is_pid(manager_pid)
       assert is_pid(pool_pid)
@@ -3610,7 +3608,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert GenServer.whereis(via) == manager_pid,
              "ConnectionManager PID should be reused across concurrent queries"
 
-      assert GenServer.whereis(pool_via) == pool_pid,
+      assert ConnectionManager.get_pool_pid(backend) == pool_pid,
              "Connection pool PID should be reused across concurrent queries"
 
       assert ConnectionManager.pool_active?(backend)
@@ -3774,11 +3772,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
         send(notify, {:ch_query, pool, IO.iodata_to_binary(statement)})
       end
 
-      case pool do
-        {:via, Registry, {_registry, {_mod, ^backend_id, label}}} ->
+      case read_pool_label(backend_id, pool) do
+        {:ok, label} ->
           stubbed_read_cluster_response(label in labels, pool, statement, params, opts)
 
-        _ ->
+        :error ->
           Mimic.call_original(Ch, :query, [pool, statement, params, opts])
       end
     end)
@@ -3797,19 +3795,19 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
   end
 
   defp stub_read_cluster_pool_start_error(%Backend{id: backend_id}, label) do
-    stub(ConnectionManager, :ensure_pool_started, fn
+    stub(ConnectionManager, :fetch_pool, fn
       %Backend{id: ^backend_id}, ^label ->
         {:error, :pool_start_failed}
 
       backend, other_label ->
-        Mimic.call_original(ConnectionManager, :ensure_pool_started, [backend, other_label])
+        Mimic.call_original(ConnectionManager, :fetch_pool, [backend, other_label])
     end)
   end
 
   defp stub_read_cluster_queue_timeout(%Backend{id: backend_id}, label) do
     stub(Ch, :query, fn pool, statement, params, opts ->
-      case pool do
-        {:via, Registry, {_registry, {_mod, ^backend_id, ^label}}} ->
+      case read_pool_label(backend_id, pool) do
+        {:ok, ^label} ->
           {:error,
            %DBConnection.ConnectionError{
              message: "connection not available and request was dropped from queue",
@@ -3819,6 +3817,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
         _ ->
           Mimic.call_original(Ch, :query, [pool, statement, params, opts])
       end
+    end)
+  end
+
+  defp read_pool_label(backend_id, pool) do
+    Enum.find_value(QueryConnectionSup.list_read_pools(), :error, fn
+      {^backend_id, label, ^pool, _pool_size} -> {:ok, label}
+      _read_pool -> nil
     end)
   end
 
@@ -3870,7 +3875,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     TestUtils.retry_assert(fn ->
       assert [%{ready_conn_count: ^ready, checkout_queue_length: ^queued}] =
                backend
-               |> ConnectionManager.connection_pool_via()
+               |> ConnectionManager.get_pool_pid()
                |> DBConnection.get_connection_metrics()
     end)
   end

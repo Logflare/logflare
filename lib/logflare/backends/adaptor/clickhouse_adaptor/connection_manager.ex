@@ -18,6 +18,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
   dedicated query user when one is configured.
 
   Managers are registered through `Registry`, so they carry no registered name.
+  A manager's registry value is `%{pool: pid, pool_size: pos_integer}` while its
+  pool runs, and `nil` otherwise. Pools themselves are not registered.
   Each labels itself `{:ch_read_pool_manager, backend_id, read_cluster_tag}` with
   `Process.set_label/1` so that `observer`, `:recon`, crash reports, and the
   `Logflare.Telemetry` top-process metrics can attribute it to a backend and read
@@ -34,6 +36,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.Backend
+  alias Logflare.Backends.BackendRegistry
 
   @inactivity_timeout :timer.minutes(5)
   @resolve_interval :timer.seconds(30)
@@ -50,6 +53,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
     field :backend_id, pos_integer(), enforce: true
     field :label, String.t() | nil, default: nil
     field :pool_pid, pid() | nil, default: nil
+    field :pool_size, pos_integer() | nil, default: nil
     field :last_activity, integer() | nil, default: nil
     field :resolve_timer_ref, reference() | nil, default: nil
     field :next_recycle_at, integer() | nil, default: nil
@@ -89,15 +93,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
   def telemetry_listener_name, do: @telemetry_listener
 
   @doc """
-  Generates a unique ClickHouse connection pool via tuple based on a `Backend` and
-  an optional read-cluster label.
-  """
-  @spec connection_pool_via(Backend.t(), String.t() | nil) :: tuple()
-  def connection_pool_via(%Backend{} = backend, label \\ nil) do
-    Backends.via_backend(backend, CHReadPool, label)
-  end
-
-  @doc """
   Notifies the connection manager of activity.
 
   This resets the inactivity timer for connections.
@@ -116,6 +111,18 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
   """
   @spec ensure_pool_started(Backend.t(), String.t() | nil) :: :ok | {:error, term()}
   def ensure_pool_started(%Backend{} = backend, label \\ nil) do
+    with {:ok, _pool} <- fetch_pool(backend, label), do: :ok
+  end
+
+  @doc """
+  Returns the pool that new queries should run on, starting it if needed, and
+  records activity.
+
+  The pool is replaced when it stops or its connection options change, so fetch it
+  per query rather than caching the pid.
+  """
+  @spec fetch_pool(Backend.t(), String.t() | nil) :: {:ok, pid()} | {:error, term()}
+  def fetch_pool(%Backend{} = backend, label \\ nil) do
     backend
     |> connection_manager_via(label)
     |> GenServer.call(:ensure_pool)
@@ -275,21 +282,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
   end
 
   @impl true
-  def handle_call(:ensure_pool, _from, %__MODULE__{pool_pid: pool_pid} = state)
-      when is_pid(pool_pid) do
-    {result, new_state} =
-      if Process.alive?(pool_pid) do
-        {:ok, record_activity(state)}
-      else
-        start_pool(state)
-      end
-
-    {:reply, result, new_state}
-  end
-
   def handle_call(:ensure_pool, _from, %__MODULE__{} = state) do
-    {result, new_state} = start_pool(state)
-    {:reply, result, new_state}
+    case ensure_pool(state) do
+      {:ok, new_state} -> {:reply, {:ok, new_state.pool_pid}, new_state}
+      {error, new_state} -> {:reply, error, new_state}
+    end
   end
 
   @impl true
@@ -397,7 +394,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
     %{state | last_activity: System.system_time(:millisecond)}
   end
 
-  @spec start_pool(__MODULE__.t()) :: {:ok, __MODULE__.t()} | {:error, any()}
+  @spec ensure_pool(__MODULE__.t()) :: {:ok | {:error, term()}, __MODULE__.t()}
+  defp ensure_pool(%__MODULE__{pool_pid: pool_pid} = state) when is_pid(pool_pid) do
+    if Process.alive?(pool_pid), do: {:ok, record_activity(state)}, else: start_pool(state)
+  end
+
+  defp ensure_pool(%__MODULE__{} = state), do: start_pool(state)
+
+  @spec start_pool(__MODULE__.t()) :: {:ok | {:error, term()}, __MODULE__.t()}
   defp start_pool(%__MODULE__{backend_id: backend_id, label: label} = state) do
     backend = Backends.Cache.get_backend(backend_id)
 
@@ -410,7 +414,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
       )
 
       new_state =
-        %__MODULE__{state | pool_pid: pid, pool_opts_hash: pool_opts_hash(ch_opts)}
+        %__MODULE__{
+          state
+          | pool_pid: pid,
+            pool_size: Keyword.fetch!(ch_opts, :pool_size),
+            pool_opts_hash: pool_opts_hash(ch_opts)
+        }
+        |> publish_pool()
         |> record_activity()
         |> schedule_next_recycle(System.system_time(:millisecond))
 
@@ -429,8 +439,28 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
   end
 
   @spec clear_pool(__MODULE__.t()) :: __MODULE__.t()
-  defp clear_pool(%__MODULE__{} = state),
-    do: %__MODULE__{state | pool_pid: nil, pool_opts_hash: nil, next_recycle_at: nil}
+  defp clear_pool(%__MODULE__{} = state) do
+    publish_pool(%__MODULE__{
+      state
+      | pool_pid: nil,
+        pool_size: nil,
+        pool_opts_hash: nil,
+        next_recycle_at: nil
+    })
+  end
+
+  @spec publish_pool(__MODULE__.t()) :: __MODULE__.t()
+  defp publish_pool(%__MODULE__{pool_pid: nil} = state), do: put_registry_value(state, nil)
+
+  defp publish_pool(%__MODULE__{pool_pid: pool_pid, pool_size: pool_size} = state),
+    do: put_registry_value(state, %{pool: pool_pid, pool_size: pool_size})
+
+  @spec put_registry_value(__MODULE__.t(), map() | nil) :: __MODULE__.t()
+  defp put_registry_value(%__MODULE__{backend_id: backend_id, label: label} = state, value) do
+    {:via, Registry, {BackendRegistry, key}} = Backends.via_backend(backend_id, __MODULE__, label)
+    Registry.update_value(BackendRegistry, key, fn _value -> value end)
+    state
+  end
 
   @spec pool_opts_current?(__MODULE__.t(), Backend.t() | nil) :: boolean()
   defp pool_opts_current?(%__MODULE__{label: label} = state, backend) do
@@ -441,10 +471,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
   end
 
   @spec pool_opts_hash(Keyword.t()) :: binary()
-  defp pool_opts_hash(ch_opts) do
-    opts_binary = ch_opts |> Keyword.delete(:name) |> :erlang.term_to_binary([:deterministic])
-    :crypto.hash(:sha256, opts_binary)
-  end
+  defp pool_opts_hash(ch_opts),
+    do: :crypto.hash(:sha256, :erlang.term_to_binary(ch_opts, [:deterministic]))
 
   @spec resolve_connection_state(%__MODULE__{}) :: %__MODULE__{}
   defp resolve_connection_state(
@@ -544,7 +572,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
       {username, password} = ClickHouseAdaptor.query_credentials(config)
 
       ch_opts = [
-        name: pool_registration_name(backend, label, pool_size),
         scheme: scheme,
         hostname: hostname,
         port: port,
@@ -562,12 +589,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
 
       {:ok, ch_opts}
     end
-  end
-
-  @spec pool_registration_name(Backend.t(), String.t() | nil, pos_integer()) :: tuple()
-  defp pool_registration_name(%Backend{} = backend, label, pool_size) do
-    {:via, Registry, {registry, key}} = connection_pool_via(backend, label)
-    {:via, Registry, {registry, key, %{pool_size: pool_size}}}
   end
 
   @spec pool_size_key(map(), String.t() | nil) :: :read_pool_size | :labeled_read_pool_size

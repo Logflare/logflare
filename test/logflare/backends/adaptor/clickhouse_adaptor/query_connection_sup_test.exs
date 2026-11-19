@@ -275,16 +275,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSupTest do
   end
 
   describe "label-aware read pools" do
-    test "connection_pool_via/2 is distinct per label and matches /1 for nil", %{backend: backend} do
-      default_via = ConnectionManager.connection_pool_via(backend)
-      api_via = ConnectionManager.connection_pool_via(backend, "api")
-      mcp_via = ConnectionManager.connection_pool_via(backend, "mcp")
-
-      assert default_via == ConnectionManager.connection_pool_via(backend, nil)
-      assert default_via != api_via
-      assert api_via != mcp_via
-    end
-
     test "starts a distinct manager per label for the same backend", %{backend: backend} do
       {:ok, default_pid} =
         QueryConnectionSup.start_connection_manager(ConnectionManager.child_spec(backend))
