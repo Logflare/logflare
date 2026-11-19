@@ -141,6 +141,9 @@ defmodule LogflareWeb.Backends.QueryClassSettingsComponent do
   end
 
   @spec parse_value(String.t(), term()) :: term()
+  defp parse_value("max_execution_time", "." <> value),
+    do: parse_value("max_execution_time", "0." <> value)
+
   defp parse_value("max_execution_time", value) when is_binary(value) do
     case Float.parse(value) do
       {number, ""} -> number

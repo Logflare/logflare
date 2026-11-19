@@ -52,7 +52,7 @@ defmodule E2e.Features.QueryClassSettingsTest do
       session
       |> fill_in("#query-class-default_priority", "Priority", with: "5")
       |> fill_in("#query-class-default_max_execution_time", "Max execution time (seconds)",
-        with: "2.5"
+        with: ".5"
       )
       |> fill_in("#query-class-api_paid_priority", "Priority", with: "10")
       |> click_button("Save query-class settings")
@@ -61,7 +61,7 @@ defmodule E2e.Features.QueryClassSettingsTest do
     assert Backends.get_backend(backend.id).config.query_class_settings == %{
              "default" => %{
                "priority" => 5,
-               "max_execution_time" => 2.5,
+               "max_execution_time" => 0.5,
                "timeout_overflow_mode" => "throw"
              },
              "api_paid" => %{"priority" => 10, "max_threads" => 4}
