@@ -39,8 +39,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup do
   `recycle_backend/1` triggers an immediate connection recycle of a backend's read pool
   on every node in the cluster. Useful after scaling an upstream ClickHouse service.
 
-  `refresh_backend/1` stops a backend's read pool on every node so the pools restart
-  with freshly loaded backend configuration.
+  `refresh_backend/1` stops, on every node, a backend's read pools whose connection
+  options changed, so they restart with the current backend configuration.
 
   `terminate_backend/1` terminates a backend's read `ConnectionManager` on every node,
   e.g. after a backend is deleted.
@@ -206,10 +206,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup do
   end
 
   @doc """
-  Stops the read connection pool for a backend on every node in the cluster so that
-  each node's next query restarts it with freshly loaded backend configuration.
+  Stops, on every node, the backend's read pools whose connection options differ
+  from the saved backend. Each node starts new pools on its next query.
 
-  Pools restart lazily on demand.
+  Returns without waiting for the nodes to finish.
   """
   @spec refresh_backend(Backend.t() | pos_integer()) :: :ok
   def refresh_backend(%Backend{id: backend_id}), do: refresh_backend(backend_id)
@@ -224,24 +224,29 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup do
   end
 
   @doc """
-  Busts the local backend cache and stops the backend's read pool on the local node.
+  Busts the local backend cache and stops each of the backend's read pools on the local
+  node whose connection options differ from the saved backend.
 
-  Invoked on each node by `refresh_backend/1`.
+  The saved backend is read from the primary database, since a read replica can still
+  hold the row from before the change.
   """
   @spec refresh_backend_local(pos_integer()) :: :ok
   def refresh_backend_local(backend_id) when is_pos_integer(backend_id) do
     ContextCache.bust_keys([{Backends, backend_id}])
 
-    backend_id
-    |> lookup_managers()
-    |> Enum.each(&safe_refresh/1)
+    case lookup_managers(backend_id) do
+      [] ->
+        :ok
 
-    :ok
+      manager_pids ->
+        backend = Backends.get_backend(backend_id)
+        Enum.each(manager_pids, &safe_refresh(&1, backend))
+    end
   end
 
-  @spec safe_refresh(pid()) :: :ok
-  defp safe_refresh(manager_pid) do
-    ConnectionManager.refresh_pool(manager_pid)
+  @spec safe_refresh(pid(), Backend.t() | nil) :: :ok
+  defp safe_refresh(manager_pid, backend) do
+    ConnectionManager.refresh_manager_pool(manager_pid, backend)
   catch
     :exit, _reason -> :ok
   end

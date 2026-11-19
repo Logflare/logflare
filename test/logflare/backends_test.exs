@@ -383,7 +383,7 @@ defmodule Logflare.BackendsTest do
                    database: "logflare_test",
                    username: "logflare",
                    password: "logflare",
-                   pool_size: 5
+                   read_pool_size: 5
                  }
                })
 
@@ -394,15 +394,21 @@ defmodule Logflare.BackendsTest do
       Backends.ConsolidatedSup.stop_pipeline(updated)
     end
 
-    test "update_backend/2 leaves read pools running when config is unchanged", %{
-      backend: backend
-    } do
-      assert {:ok, updated} = Backends.update_backend(backend, %{name: "Updated Name"})
+    for {scenario, attrs} <- [
+          {"a new name", %{name: "Updated Name"}},
+          {"new batch limits", %{config: %{batch_size: 1_000, batch_timeout: 1_500}}}
+        ] do
+      test "update_backend/2 with #{scenario}", %{backend: backend} do
+        pool_pid = ConnectionManager.get_pool_pid(backend)
 
-      Process.sleep(200)
-      assert ConnectionManager.pool_active?(backend)
+        assert {:ok, updated} = Backends.update_backend(backend, unquote(Macro.escape(attrs)))
 
-      Backends.ConsolidatedSup.stop_pipeline(updated)
+        Process.sleep(200)
+        assert ^pool_pid = ConnectionManager.get_pool_pid(backend)
+        assert Process.alive?(pool_pid)
+
+        Backends.ConsolidatedSup.stop_pipeline(updated)
+      end
     end
 
     test "delete_backend/1 terminates read connection managers", %{
