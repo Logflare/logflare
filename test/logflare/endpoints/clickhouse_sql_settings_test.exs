@@ -107,6 +107,17 @@ defmodule Logflare.Endpoints.ClickHouseSqlSettingsTest do
              )
   end
 
+  test "an unrelated SQL request leaves the inherited timeout unchanged" do
+    assert {:ok, sql} =
+             ClickHouseSqlSettings.enforce(
+               "SELECT 1 AS a SETTINGS max_threads = 2",
+               %{@limits | "max_execution_time" => 9.0e-7}
+             )
+
+    assert sql =~ "max_threads = 2"
+    assert sql =~ "max_execution_time = 9.0e-7"
+  end
+
   test "rejects unlimited values, wrong types, expressions and numeric overflow" do
     for key <- Map.keys(@limits),
         value <- ["0", "-1", "'1'", "true", "1 + 1", "{limit:Int64}", "1e1000"] do

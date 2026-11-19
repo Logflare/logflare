@@ -73,12 +73,13 @@ defmodule Logflare.Endpoints.ClickHouseSqlSettings do
   defp enforce_requests(_query, statement, inherited, requests, opts) do
     with :ok <- require_baselines(inherited, requests),
          {:ok, effective} <- ClickHouseSettings.normalize(merge_requests(inherited, requests)),
-         :ok <- validate_timeout(effective),
+         effective_requests = Map.take(effective, Map.keys(requests)),
+         :ok <- validate_timeout(effective_requests),
          {:ok, query} <- Parser.to_string([statement]),
          {:ok, query} <- enforce_policy(query, effective, opts) do
       Logger.debug("Applied lower-only ClickHouse SQL settings",
         clickhouse_requested_settings: inspect(requests),
-        clickhouse_effective_settings: inspect(Map.take(effective, Map.keys(requests)))
+        clickhouse_effective_settings: inspect(effective_requests)
       )
 
       {:ok, query}
