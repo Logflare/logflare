@@ -28,6 +28,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   require Ex2ms
 
   @ets_table_mapper :ingest_event_queue_mapping
+  @ets_last_active :ingest_event_queue_last_active
   @ets_table :source_ingest_events
   @ets_generations :ingest_event_queue_generations
   @ets_current_generation :ingest_event_queue_current_generation
@@ -110,7 +111,22 @@ defmodule Logflare.Backends.IngestEventQueue do
       {:decentralized_counters, false}
     ])
 
+    :ets.new(@ets_last_active, [:public, :named_table, :set, write_concurrency: :auto])
+
     {:ok, %{}}
+  end
+
+  @doc "Records node-local activity by the calling producer."
+  @spec touch_active(queues_key()) :: :ok
+  def touch_active(key) do
+    :ets.insert(@ets_last_active, {key, self(), System.monotonic_time(:millisecond)})
+    :ok
+  end
+
+  @doc "Returns the most recent local producer activity in monotonic milliseconds."
+  @spec last_active(queues_key()) :: integer() | nil
+  def last_active(key) do
+    :ets.lookup_element(@ets_last_active, key, 3, nil)
   end
 
   # --- Generation store ---
@@ -875,6 +891,7 @@ defmodule Logflare.Backends.IngestEventQueue do
     with tid when tid != nil <- get_tid(sid_bid_pid) do
       :ets.delete(tid)
       :ets.select_delete(@ets_table_mapper, [{{{sid, bid}, pid, tid, :_}, [], [true]}])
+      :ets.match_delete(@ets_last_active, {{sid, bid}, pid, :_})
       :ok
     else
       nil -> {:error, :not_initialized}
@@ -1687,6 +1704,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   @spec delete_all_mappings() :: :ok
   def delete_all_mappings do
     :ets.delete_all_objects(@ets_table_mapper)
+    :ets.delete_all_objects(@ets_last_active)
     :ok
   end
 
@@ -1711,6 +1729,7 @@ defmodule Logflare.Backends.IngestEventQueue do
     for {{sid, bid}, pid, tid, status} <- to_check do
       if :ets.info(tid, :name) == :undefined do
         :ets.delete_object(@ets_table_mapper, {{sid, bid}, pid, tid, status})
+        :ets.match_delete(@ets_last_active, {{sid, bid}, pid, :_})
       end
     end
 

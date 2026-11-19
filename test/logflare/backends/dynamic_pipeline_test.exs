@@ -322,11 +322,17 @@ defmodule Logflare.Backends.DynamicPipelineTest do
     assert IngestEventQueue.total_pending(surviving_key) == 2
   end
 
-  test "remove_pipeline/1 migrates to a live survivor even when a stale mapper entry is also a candidate",
+  test "remove_pipeline/1 migrates to a live shard or startup queue despite stale mapper entries",
        %{name: name, pipeline_args: pipeline_args} do
+    stub(IngestEventQueue, :pop_pending_pointers, fn _key, _n -> {:ok, [], nil} end)
+
     start_supervised!(
       {DynamicPipeline,
-       name: name, pipeline: Pipeline, pipeline_args: pipeline_args, min_pipelines: 1}
+       name: name,
+       pipeline: Pipeline,
+       pipeline_args: pipeline_args,
+       initial_count: 1,
+       resolve_interval: 60_000}
     )
 
     source = Keyword.fetch!(pipeline_args, :source)
@@ -371,10 +377,17 @@ defmodule Logflare.Backends.DynamicPipelineTest do
 
     assert IngestEventQueue.total_pending({source.id, backend.id}) == 2
 
-    {_id, surviving_sid_bid_pid} =
+    {surviving_id, surviving_sid_bid_pid} =
       Enum.find(shard_producers, fn {id, _key} -> id != removed_id end)
 
     assert IngestEventQueue.total_pending(surviving_sid_bid_pid) == 2
+    assert {:ok, :draining, ^surviving_id} = DynamicPipeline.remove_pipeline(name)
+
+    TestUtils.retry_assert(fn ->
+      assert DynamicPipeline.pipeline_count(name) == 0
+    end)
+
+    assert IngestEventQueue.total_pending({source.id, backend.id, nil}) == 2
   end
 
   test ":initial_count will determine number of pipelines at the start",

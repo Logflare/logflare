@@ -349,9 +349,7 @@ defmodule Logflare.Backends.DynamicPipeline do
 
   defp move_to_any_survivor(_sid_bid_pid, [], _id), do: :ok
 
-  defp move_to_any_survivor(sid_bid_pid, survivors, id) do
-    {survivor_key, _tid} = candidate = Enum.random(survivors)
-
+  defp move_to_any_survivor(sid_bid_pid, [{survivor_key, _tid} | survivors], id) do
     case IngestEventQueue.move(sid_bid_pid, survivor_key) do
       {:ok, 0} ->
         :ok
@@ -362,7 +360,7 @@ defmodule Logflare.Backends.DynamicPipeline do
         )
 
       {:error, :not_initialized} ->
-        move_to_any_survivor(sid_bid_pid, survivors -- [candidate], id)
+        move_to_any_survivor(sid_bid_pid, survivors, id)
     end
   end
 
@@ -372,10 +370,10 @@ defmodule Logflare.Backends.DynamicPipeline do
       |> IngestEventQueue.list_queues_with_tids()
       |> Enum.reject(fn {table_key, _tid} -> elem(table_key, 2) == doomed_pid end)
 
-    case Enum.filter(targets, fn {table_key, _tid} -> elem(table_key, 2) != nil end) do
-      [] -> targets
-      live -> live
-    end
+    {shards, startup} =
+      Enum.split_with(targets, fn {table_key, _tid} -> elem(table_key, 2) != nil end)
+
+    Enum.shuffle(shards) ++ startup
   end
 
   defp shard_sid_bid_pid(id, state) do

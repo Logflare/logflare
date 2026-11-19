@@ -843,6 +843,25 @@ for {env, key} <- [
   config :logflare, [{key, Utils.parse_non_neg_integer!(value)}]
 end
 
+if groups = System.get_env("LOGFLARE_SCALE_TO_ZERO_ADAPTORS") do
+  allowed = %{"webhook" => :webhook, "http_based" => :http_based}
+
+  adaptors =
+    groups
+    |> String.split(",")
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.map(fn group ->
+      Map.get(allowed, group) || raise "unknown LOGFLARE_SCALE_TO_ZERO_ADAPTORS value: #{group}"
+    end)
+
+  config :logflare, :scale_to_zero_adaptors, adaptors
+end
+
+if idle_ms = System.get_env("LOGFLARE_SCALE_TO_ZERO_IDLE_MS") do
+  config :logflare, :scale_to_zero_idle_ms, Utils.parse_non_neg_integer!(idle_ms)
+end
+
 spool_ack_stale? =
   case System.get_env("SPOOL_ACK_STALE") do
     v when v in [nil, ""] -> true
