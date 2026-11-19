@@ -206,7 +206,7 @@ defmodule Logflare.DataCase do
   @doc """
   Builds ClickHouse connection options for testing.
   """
-  def build_clickhouse_connection_opts(source, backend, type) when type in [:ingest, :query] do
+  def build_clickhouse_connection_opts(_source, _backend, type) when type in [:ingest, :query] do
     base_opts = [
       scheme: "http",
       hostname: "localhost",
@@ -222,15 +222,7 @@ defmodule Logflare.DataCase do
         :query -> [pool_size: 3, timeout: 60_000]
       end
 
-    connection_name =
-      case type do
-        :ingest -> ClickHouseAdaptor.connection_pool_via({source, backend})
-        :query -> ClickHouseAdaptor.connection_pool_via(backend)
-      end
-
-    base_opts
-    |> Keyword.merge(type_specific_opts)
-    |> Keyword.put(:name, connection_name)
+    Keyword.merge(base_opts, type_specific_opts)
   end
 
   @doc """
