@@ -328,6 +328,23 @@ defmodule Logflare.BackendsTest do
       Backends.ConsolidatedSup.stop_pipeline(backend)
     end
 
+    for {scenario, config_changes} <- [
+          {"unchanged config", %{}},
+          {"a changed database", %{database: "other_db"}}
+        ] do
+      test "replace_pipelines_with_latest/1 for a backend saved with #{scenario}", %{user: user} do
+        assert {:ok, backend} = Backends.create_backend(user, clickhouse_backend_attrs())
+        on_exit(fn -> Backends.ConsolidatedSup.stop_pipeline(backend) end)
+        pipeline_sup = Backends.via_backend(backend, ClickHousePipeline)
+        pipelines = DynamicPipeline.list_pipelines(pipeline_sup)
+        save_backend_config!(backend, unquote(Macro.escape(config_changes)))
+
+        assert :ok = Backends.replace_pipelines_with_latest(backend.id)
+
+        assert ^pipelines = DynamicPipeline.list_pipelines(pipeline_sup)
+      end
+    end
+
     test "replace_pipelines_with_latest/1 is a no-op for a deleted backend" do
       assert :ok = Backends.replace_pipelines_with_latest(-1)
     end
