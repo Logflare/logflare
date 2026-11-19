@@ -41,7 +41,20 @@ Contains application logs related to your sources, backends, and endpoints.
 
 ### system.traces
 
-Reserved for traces of queries that Logflare executes on your behalf. The source is created with the other system sources, and query tracing will be added in upcoming releases.
+Contains one event per query that Logflare executes on your behalf. Endpoint queries are traced, including background refreshes of cached results. Requests served from the results cache are not traced.
+
+Each event includes:
+
+- **`event_message`** - Query kind, such as `query.endpoint`
+- **`query`** - The SQL executed on the backend
+- **`query_language`** - Language of the endpoint query: `bq_sql`, `pg_sql`, or `ch_sql`
+- **`backend_type`** and **`backend_id`** - The backend that ran the query
+- **`total_bytes_processed`** - Bytes scanned, for backends that report it (BigQuery, ClickHouse)
+- **`duration_ms`** - Query execution time
+- **`status`** and **`error`** - `ok` or `error`, with the error message
+- **`params`** - Query parameters, as strings
+- **`labels`** - Endpoint labels
+- **`endpoint_id`** and **`endpoint_uuid`** - The endpoint that ran the query
 
 ## Metrics Collected
 
