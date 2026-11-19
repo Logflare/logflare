@@ -13,6 +13,7 @@ defmodule Logflare.Endpoints do
   alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Backends.Backend
   alias Logflare.Backends.QueryError
+  alias Logflare.Backends.UserMonitoring.QueryTraces
   alias Logflare.ContextCache
   alias Logflare.Endpoints.Cache
   alias Logflare.Endpoints.ClickHouseSettings
@@ -1223,16 +1224,35 @@ defmodule Logflare.Endpoints do
         |> Keyword.put(:filesystem_cache_settings, settings)
         |> Keyword.put(:validated_clickhouse_sql, endpoint_query.language == :ch_sql)
 
-      case adaptor.execute_query(backend, query_args, query_opts) do
-        {:ok, %QueryResult{rows: rows} = result} ->
-          redacted_rows = PiiRedactor.redact_query_result(rows, redact_pii)
-          {:ok, result |> Map.put(:rows, redacted_rows) |> Map.from_struct()}
+      trace_attrs = %{
+        query_type: :endpoint,
+        query: final_query,
+        query_language: sql_language,
+        backend_type: backend.type,
+        backend_id: backend.id,
+        endpoint_id: endpoint_query.id,
+        endpoint_uuid: endpoint_query.token && Utils.stringify(endpoint_query.token),
+        params: input_params,
+        labels: endpoint_query.parsed_labels
+      }
 
-        {:error, error} ->
-          {:error, redact_query_error(error, redact_pii)}
-      end
+      QueryTraces.measure(endpoint_query.user_id, trace_attrs, fn ->
+        backend
+        |> adaptor.execute_query(query_args, query_opts)
+        |> redact_query_result(redact_pii)
+      end)
     end
   end
+
+  @spec redact_query_result({:ok, QueryResult.t()} | {:error, term()}, boolean()) ::
+          run_query_return()
+  defp redact_query_result({:ok, %QueryResult{rows: rows} = result}, redact_pii) do
+    redacted_rows = PiiRedactor.redact_query_result(rows, redact_pii)
+    {:ok, result |> Map.put(:rows, redacted_rows) |> Map.from_struct()}
+  end
+
+  defp redact_query_result({:error, error}, redact_pii),
+    do: {:error, redact_query_error(error, redact_pii)}
 
   @spec redact_query_error(term(), boolean()) :: term()
   defp redact_query_error(%QueryError{description: description} = error, true)
