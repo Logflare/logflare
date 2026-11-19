@@ -257,9 +257,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryClassExecutionTest do
     TestUtils.retry_assert(fn -> assert :sys.get_state(pid).query_tasks == [] end)
   end
 
-  test "a caller can recover from a cold cache whose class lacks its baseline", %{
-    backend: backend
-  } do
+  test "concurrent cross-class retries share one successful cache fill", %{backend: backend} do
     endpoint =
       insert(:endpoint,
         user: Logflare.Users.get(backend.user_id),
@@ -270,33 +268,73 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryClassExecutionTest do
         proactive_requerying_seconds: 60
       )
 
-    TestUtils.attach_forwarder([:logflare, :clickhouse, :read_pool, :query_error])
+    test_pid = self()
+    backend_id = backend.id
+    handler_id = make_ref()
 
-    for label <- ["dashboard_logs_paid", "api_paid"] do
-      pid =
-        start_supervised!(
-          {Endpoints.ResultsCache, {endpoint, %{}, [read_cluster: "dashboard_logs_paid"]}},
-          id: label
-        )
+    :ok =
+      :telemetry.attach(
+        handler_id,
+        [:logflare, :clickhouse, :read_pool, :query_error],
+        fn _event, _measurements, metadata, _config ->
+          if metadata.backend_id == backend_id and metadata.error_kind == :policy_rejection do
+            send(test_pid, {:policy_rejection, self()})
 
-      ref = Process.monitor(pid)
-      result = Endpoints.run_cached_query(endpoint, %{}, read_cluster: label)
-      assert_receive {:DOWN, ^ref, :process, ^pid, :normal}
+            receive do
+              :continue -> :ok
+            after
+              5_000 -> raise "test did not release rejected query"
+            end
+          end
+        end,
+        nil
+      )
 
-      assert_receive {:telemetry_event, [:logflare, :clickhouse, :read_pool, :query_error],
-                      %{count: 1}, %{error_kind: :policy_rejection}}
+    on_exit(fn -> :telemetry.detach(handler_id) end)
+    TestUtils.attach_forwarder([:logflare, :endpoints, :query])
 
-      if label == "api_paid" do
-        assert {:ok, %{rows: [%{"threads" => 3}]}} = result
-      else
-        assert {:error, %QueryError{description: reason}} = result
+    pid =
+      start_supervised!(
+        {Endpoints.ResultsCache, {endpoint, %{}, [read_cluster: "dashboard_logs_paid"]}}
+      )
 
-        assert reason ==
-                 "ClickHouse setting max_threads requires an explicit inherited policy limit"
+    first =
+      Task.async(fn ->
+        Endpoints.run_cached_query(endpoint, %{}, read_cluster: "dashboard_logs_paid")
+      end)
+
+    assert_receive {:policy_rejection, rejected_task}, 5_000
+
+    callers =
+      for _ <- 1..3 do
+        Task.async(fn -> Endpoints.run_cached_query(endpoint, %{}, read_cluster: "api_paid") end)
       end
 
-      refute_received {:telemetry_event, [:logflare, :clickhouse, :read_pool, :query_error], _, _}
+    TestUtils.retry_assert(fn -> assert length(:sys.get_state(pid).waiting_callers) == 4 end)
+    send(rejected_task, :continue)
+
+    assert {:error, %QueryError{description: reason}} = Task.await(first)
+    assert reason == "ClickHouse setting max_threads requires an explicit inherited policy limit"
+
+    for caller <- callers do
+      assert {:ok, %{rows: [%{"threads" => 3}]}} = Task.await(caller)
     end
+
+    endpoint_id = endpoint.id
+
+    assert_received {:telemetry_event, [:logflare, :endpoints, :query], _,
+                     %{"endpoint_id" => ^endpoint_id}}
+
+    refute_received {:telemetry_event, [:logflare, :endpoints, :query], _,
+                     %{"endpoint_id" => ^endpoint_id}}
+
+    assert {:ok, %{rows: [%{"threads" => 3}]}} =
+             Endpoints.run_cached_query(endpoint, %{}, read_cluster: "dashboard_logs_paid")
+
+    refute_received {:telemetry_event, [:logflare, :endpoints, :query], _,
+                     %{"endpoint_id" => ^endpoint_id}}
+
+    refute_received {:policy_rejection, _}
   end
 
   test "endpoint previews and execution merge class policy with endpoint policy",

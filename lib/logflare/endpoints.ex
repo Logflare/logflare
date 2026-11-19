@@ -945,8 +945,8 @@ defmodule Logflare.Endpoints do
              backend: ClickHouseAdaptor,
              raw_error: {:missing_clickhouse_sql_baseline, executed_class}
            }}
-          when requested_class != executed_class ->
-            run_query(query, params, opts)
+          when requested_class != executed_class and attempts > 1 ->
+            query_results_cache(query, params, opts, attempts - 1, node(pid))
 
           response ->
             response
