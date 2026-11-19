@@ -4,13 +4,21 @@ title: ClickHouse query-class policy
 
 # ClickHouse query-class policy
 
-Operators can configure scheduling and resource limits independently of ClickHouse read-cluster routing. The backend configuration key is `query_class_settings`. It is disabled by default; an empty map removes the class policy without removing endpoint-owned limits.
+Backend owners and team members can configure scheduling and resource limits independently of ClickHouse read-cluster routing. The backend configuration key is `query_class_settings`. It is disabled by default; an empty map removes the class policy without removing endpoint-owned limits.
 
-## Operator configuration
+## Backend editor
 
-Use the internal operator function with a persisted admin user. The admin flag is provisioned out of band and rechecked on every save. Customer backend changesets, the backend API, and customer forms cannot introduce, change, or clear this configuration. Public backend JSON omits it. An operator must clear this policy before changing backend type. Ordinary saves merge under a row lock so stale customer snapshots cannot erase newer operator policy. No new customer-supplied ClickHouse settings are enabled.
+Open an existing ClickHouse backend's edit page and use **Query-class settings** below the connection form. Backend owners and team members with backend access can save or disable this policy. Each save rechecks the persisted actor and current backend ownership; a revoked membership cannot save through an already-open editor. Platform admins retain internal cross-account configuration access.
 
-Endpoint-owned policy also requires a persisted admin `User`. Use the administrator's own account context, not a team-member context: matching email addresses or an admin team owner grant no operator privileges. Team profile edits can change display/contact preferences, not authentication identity.
+Set a positive **Default policy** priority, then expand individual classes to configure overrides. Priority 1 is highest; larger numbers are lower priority. The form supports priority, maximum threads, memory usage in bytes, execution time in seconds (including fractions), and rows/bytes scanned. Blank numeric class fields inherit defaults. A class cannot relax a stricter default resource limit. The editor indicates when an existing filesystem-cache override is present and preserves it on ordinary edits. Use **Reset class to defaults**, then save, to remove all overrides for that class. Numeric limits automatically set the corresponding overflow modes. Clearing a numeric limit keeps any existing overflow mode, whether it was set explicitly or added automatically. Reset an individual class or disable the policy to remove those modes in the editor.
+
+Use **Save query-class settings** to update only this policy, without saving connection changes or restarting ingestion. **Disable query-class policy** clears class settings but leaves endpoint limits and ClickHouse profile constraints in place. If someone changed the policy while the editor was open, reload and reapply your changes before saving or disabling. If the editor reconnects, unsaved changes are discarded so they cannot overwrite a newer policy. Updates propagate eventually across instances, so this editor is not an immediate emergency-throttling control.
+
+This permission change applies only to backend query-class settings. Endpoint-owned policy still requires a persisted admin `User`. Use the administrator's own account context, not a team-member context: matching email addresses or an admin team owner grant no operator privileges. Team profile edits can change display/contact preferences, not authentication identity.
+
+## Internal configuration
+
+`configure_query_class_settings/3` accepts an owner, team-member actor, or persisted platform admin. The backend API and ordinary backend changesets still cannot introduce, change, or clear this configuration; use the dedicated editor or internal function. Public backend JSON continues to omit it. Clear the policy before changing backend type. Ordinary saves merge under a row lock so stale connection-form snapshots cannot erase newer query-class settings. The ClickHouse settings allowlist is unchanged.
 
 ```elixir
 admin = Logflare.Users.get(admin_id)
@@ -49,13 +57,13 @@ The header is a scheduling hint, not an authorization boundary. Selecting a labe
 | `max_memory_usage` | Positive integer bytes |
 | `max_bytes_to_read` | Positive integer bytes |
 | `max_rows_to_read` | Positive integer rows |
-| `max_execution_time` | Positive integer or fractional seconds |
+| `max_execution_time` | Positive integer or fractional seconds; backend policy requires at least one microsecond and must fit in a signed 64-bit microsecond duration |
 | `read_overflow_mode` | Only `throw`; inserted automatically with byte or row limits |
 | `timeout_overflow_mode` | Only `throw`; inserted automatically with an execution-time limit |
 
 Zero (unlimited or no priority), negative values, wrong types, unknown keys, and overflow modes returning partial results are rejected. String values are serialized only from the fixed enum allowlist. Output-format, join semantics, sandbox permissions, and external table/URL settings are not allowed.
 
-ClickHouse profile defaults supply settings not specified by Logflare. Logflare combines class default, selected class, and endpoint-owned settings. Resource limits use the smallest configured value across all three policies; non-limit settings such as priority use the later policy. Hard profile ceilings must be ClickHouse constraints, not merely default values. The server still enforces those constraints after merging.
+ClickHouse profile defaults supply settings not specified by Logflare. Logflare combines class default, selected class, and endpoint-owned settings. Resource limits use the smallest configured value across all three policies; non-limit settings such as priority use the later policy. Hard profile ceilings must be ClickHouse constraints, not merely default values. The server still enforces those constraints after merging. Legacy backend timeouts outside the supported range are ignored when resolving policy so they cannot override a valid timeout.
 
 Endpoint-owned policy is passed separately from consumer SQL. Consumer SQL cannot override enforced keys, including in nested SETTINGS clauses. The adaptor injects the combined policy once. Supported `EXPLAIN SELECT` wrappers are preserved. Previews show only endpoint-owned settings, not operator class policy. The actual request class and backend policy obtained through the metadata cache are applied at execution time, subject to the consistency limitations below.
 
