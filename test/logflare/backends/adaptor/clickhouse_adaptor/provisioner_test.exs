@@ -66,29 +66,65 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ProvisionerTest do
     end
   end
 
-  describe "connection test failure handling" do
+  describe "failed provisioning steps" do
+    setup do
+      Application.put_env(:logflare, Provisioner, initial_retry_ms: 10, max_retry_ms: 50)
+      on_exit(fn -> Application.delete_env(:logflare, Provisioner) end)
+    end
+
     @tag capture_log: true
-    test "stops when the ingest grant check encounters a connection error", %{
-      backend: backend
-    } do
+    test "a step failing once" do
       grant_check_statement = QueryTemplates.grant_check_statement()
+
+      for {failing_statement?, error} <- [
+            {&(&1 == grant_check_statement),
+             %DBConnection.ConnectionError{message: "unreachable"}},
+            {&String.contains?(&1, "CREATE TABLE"),
+             %Ch.Error{code: 497, message: "Not enough privileges"}}
+          ] do
+        {_source, backend} = setup_clickhouse_test()
+        failures = :counters.new(1, [])
+
+        stub(Ch, :query, fn pool, statement, params, opts ->
+          if failing_statement?.(statement) and :counters.get(failures, 1) == 0 do
+            :counters.add(failures, 1, 1)
+            {:error, error}
+          else
+            Mimic.call_original(Ch, :query, [pool, statement, params, opts])
+          end
+        end)
+
+        pid = start_provisioner!(backend)
+        ref = Process.monitor(pid)
+
+        assert_receive {:DOWN, ^ref, :process, ^pid, :normal}, 5_000
+        assert 1 = :counters.get(failures, 1)
+        assert_tables_exist(backend)
+      end
+    end
+
+    @tag capture_log: true
+    test "an ingest grant check failing on every attempt", %{backend: backend} do
+      grant_check_statement = QueryTemplates.grant_check_statement()
+      test_pid = self()
 
       stub(Ch, :query, fn
         _pool, ^grant_check_statement, _params, _opts ->
+          send(test_pid, :grant_checked)
           {:error, %DBConnection.ConnectionError{message: "unreachable"}}
 
         pool, statement, params, opts ->
           Mimic.call_original(Ch, :query, [pool, statement, params, opts])
       end)
 
-      pid = start_supervised!({Provisioner, backend}, restart: :transient)
-      ref = Process.monitor(pid)
+      pid = start_provisioner!(backend)
 
-      assert_receive {:DOWN, ^ref, :process, ^pid,
-                      {:shutdown, {:error, :grant_check_unknown_failure}}},
-                     1_000
+      for _attempt <- 1..3, do: assert_receive(:grant_checked, 1_000)
+      assert Process.alive?(pid)
     end
+  end
 
+  describe "connection test failure handling" do
     @tag capture_log: true
     test "provisions tables even when the read grant check fails" do
       {_source, read_backend} =
@@ -284,6 +320,19 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ProvisionerTest do
 
       timestamp_col = Enum.find(columns, &(&1["name"] == "timestamp"))
       assert %{"type" => "DateTime64(9)"} = timestamp_col
+    end
+  end
+
+  defp start_provisioner!(backend) do
+    start_supervised!(Supervisor.child_spec({Provisioner, backend}, id: backend.id))
+  end
+
+  defp assert_tables_exist(backend) do
+    for event_type <- [:log, :metric, :trace] do
+      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, event_type)
+
+      assert {:ok, {[%{"result" => 1}], _bytes}} =
+               ClickHouseAdaptor.execute_ch_query(backend, "EXISTS TABLE #{table_name}")
     end
   end
 end
