@@ -90,6 +90,22 @@ defmodule LogflareWeb.Backends.QueryClassSettingsLiveTest do
            }
   end
 
+  test "sub-microsecond timeouts cannot be saved through the editor", context do
+    {:ok, view, _html} =
+      live_with_redirect(context.conn, ~p"/backends/#{context.backend.id}/edit")
+
+    view
+    |> form("#query-class-settings-form",
+      query_class_settings: %{
+        "default" => %{"priority" => "5", "max_execution_time" => ".0000005"}
+      }
+    )
+    |> render_submit()
+
+    assert has_element?(view, "#query-class-settings-error", "microsecond")
+    assert Backends.get_backend(context.backend.id).config[:query_class_settings] in [nil, %{}]
+  end
+
   test "blank overrides inherit defaults and disable clears only class policy", context do
     {:ok, _backend} =
       Backends.configure_query_class_settings(context.owner, context.backend, %{
@@ -223,7 +239,7 @@ defmodule LogflareWeb.Backends.QueryClassSettingsLiveTest do
            }
   end
 
-  test "ordinary edits preserve standalone overflow modes but not modes derived from cleared limits",
+  test "ordinary edits keep overflow modes even after the associated numeric limits are cleared",
        context do
     policy = %{
       "default" => %{"priority" => 5, "read_overflow_mode" => "throw"},
@@ -240,18 +256,32 @@ defmodule LogflareWeb.Backends.QueryClassSettingsLiveTest do
     view
     |> form("#query-class-settings-form",
       query_class_settings: %{
-        "default" => %{"priority" => "6"},
-        "api_paid" => %{"max_rows_to_read" => ""},
-        "mcp" => %{"max_execution_time" => ""}
+        "default" => %{"priority" => "6", "max_rows_to_read" => "100"}
       }
     )
     |> render_submit()
 
     defaults = %{"priority" => 6, "read_overflow_mode" => "throw"}
 
+    assert Backends.get_backend(context.backend.id).config.query_class_settings["default"] ==
+             Map.put(defaults, "max_rows_to_read", 100)
+
+    view
+    |> form("#query-class-settings-form",
+      query_class_settings: %{
+        "default" => %{"max_rows_to_read" => ""},
+        "api_paid" => %{"max_rows_to_read" => ""},
+        "mcp" => %{"max_execution_time" => ""}
+      }
+    )
+    |> render_submit()
+
+    mcp = %{"timeout_overflow_mode" => "throw"}
+
     assert Backends.get_backend(context.backend.id).config.query_class_settings == %{
              "default" => defaults,
-             "api_paid" => %{"timeout_overflow_mode" => "throw"}
+             "api_paid" => %{"read_overflow_mode" => "throw", "timeout_overflow_mode" => "throw"},
+             "mcp" => mcp
            }
 
     view
@@ -262,7 +292,8 @@ defmodule LogflareWeb.Backends.QueryClassSettingsLiveTest do
     view |> form("#query-class-settings-form") |> render_submit()
 
     assert Backends.get_backend(context.backend.id).config.query_class_settings == %{
-             "default" => defaults
+             "default" => defaults,
+             "mcp" => mcp
            }
 
     view |> element("button", "Disable query-class policy") |> render_click()

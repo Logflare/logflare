@@ -15,10 +15,7 @@ defmodule LogflareWeb.Backends.QueryClassSettingsComponent do
   @numeric_keys Enum.map(@fields, &elem(&1, 0))
   @override_classes QueryClassSettings.classes()
   @cache_key "read_from_filesystem_cache_if_exists_otherwise_bypass_cache"
-  @overflow_mode_limits [
-    {"read_overflow_mode", ~w(max_rows_to_read max_bytes_to_read)},
-    {"timeout_overflow_mode", ~w(max_execution_time)}
-  ]
+  @hidden_keys [@cache_key, "read_overflow_mode", "timeout_overflow_mode"]
 
   @impl true
   def update(assigns, socket) do
@@ -180,21 +177,11 @@ defmodule LogflareWeb.Backends.QueryClassSettingsComponent do
          class_resets: class_resets
        }) do
     Enum.reduce(Map.drop(original, Map.keys(class_resets)), settings, fn {class, policy}, acc ->
-      case hidden_overrides(policy) do
+      case Map.take(policy, @hidden_keys) do
         overrides when overrides == %{} -> acc
         overrides -> Map.update(acc, class, overrides, &Map.merge(&1, overrides))
       end
     end)
-  end
-
-  @spec hidden_overrides(map()) :: map()
-  defp hidden_overrides(policy) do
-    standalone_modes =
-      for {mode, limits} <- @overflow_mode_limits,
-          not Enum.any?(limits, &Map.has_key?(policy, &1)),
-          do: mode
-
-    Map.take(policy, [@cache_key | standalone_modes])
   end
 
   @spec cache_override(map(), map(), String.t()) :: 0 | 1 | nil
