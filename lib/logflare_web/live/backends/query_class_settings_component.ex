@@ -14,6 +14,7 @@ defmodule LogflareWeb.Backends.QueryClassSettingsComponent do
   ]
   @numeric_keys Enum.map(@fields, &elem(&1, 0))
   @override_classes QueryClassSettings.classes()
+  @invalid_params_shape "Query-class settings must contain named classes and numeric fields."
   @cache_key "read_from_filesystem_cache_if_exists_otherwise_bypass_cache"
   @overflow_mode_limits [
     {"read_overflow_mode", ~w(max_rows_to_read max_bytes_to_read)},
@@ -40,18 +41,16 @@ defmodule LogflareWeb.Backends.QueryClassSettingsComponent do
   @impl true
   def handle_event("save", %{"reset_class" => class, "query_class_settings" => params}, socket)
       when class in @override_classes and is_map(params) do
-    case parse_settings(params) do
-      {:ok, _settings} ->
-        {:noreply,
-         assign(socket,
-           params: Map.delete(params, class),
-           class_resets: Map.put(socket.assigns.class_resets, class, Ecto.UUID.generate()),
-           error: nil,
-           message: "Class reset in this draft. Save query-class settings to apply it."
-         )}
-
-      {:error, reason} ->
-        {:noreply, assign(socket, :error, reason)}
+    if Enum.all?(params, fn {_class, fields} -> is_map(fields) end) do
+      {:noreply,
+       assign(socket,
+         params: Map.delete(params, class),
+         class_resets: Map.put(socket.assigns.class_resets, class, Ecto.UUID.generate()),
+         error: nil,
+         message: "Class reset in this draft. Save query-class settings to apply it."
+       )}
+    else
+      {:noreply, assign(socket, :error, @invalid_params_shape)}
     end
   end
 
@@ -142,7 +141,7 @@ defmodule LogflareWeb.Backends.QueryClassSettingsComponent do
         {:cont, {:ok, settings}}
 
       _entry, _acc ->
-        {:halt, {:error, "Query-class settings must contain named classes and numeric fields."}}
+        {:halt, {:error, @invalid_params_shape}}
     end)
   end
 
