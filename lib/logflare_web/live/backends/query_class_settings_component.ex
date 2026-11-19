@@ -31,7 +31,8 @@ defmodule LogflareWeb.Backends.QueryClassSettingsComponent do
      |> assign_new(:params, fn -> assigns.backend.config[:query_class_settings] || %{} end)
      |> assign_new(:error, fn -> nil end)
      |> assign_new(:message, fn -> nil end)
-     |> assign_new(:reset_classes, &MapSet.new/0)
+     |> assign_new(:input_revision, &Ecto.UUID.generate/0)
+     |> assign_new(:class_resets, fn -> %{} end)
      |> assign(:classes, ["default" | @override_classes])
      |> assign(:fields, @fields)}
   end
@@ -44,7 +45,7 @@ defmodule LogflareWeb.Backends.QueryClassSettingsComponent do
         {:noreply,
          assign(socket,
            params: Map.delete(params, class),
-           reset_classes: MapSet.put(socket.assigns.reset_classes, class),
+           class_resets: Map.put(socket.assigns.class_resets, class, Ecto.UUID.generate()),
            error: nil,
            message: "Class reset in this draft. Save query-class settings to apply it."
          )}
@@ -96,7 +97,8 @@ defmodule LogflareWeb.Backends.QueryClassSettingsComponent do
            backend: backend,
            original_policy: policy,
            params: policy,
-           reset_classes: MapSet.new(),
+           input_revision: input_revision_after_save(policy, socket.assigns.input_revision),
+           class_resets: %{},
            error: nil,
            message: message
          )}
@@ -121,6 +123,10 @@ defmodule LogflareWeb.Backends.QueryClassSettingsComponent do
          assign(socket, :error, "Unable to save query-class settings. Reload and try again.")}
     end
   end
+
+  @spec input_revision_after_save(map(), String.t()) :: String.t()
+  defp input_revision_after_save(policy, _revision) when policy == %{}, do: Ecto.UUID.generate()
+  defp input_revision_after_save(_policy, revision), do: revision
 
   @spec parse_settings(map()) :: {:ok, map()} | {:error, String.t()}
   defp parse_settings(params) do
@@ -160,21 +166,20 @@ defmodule LogflareWeb.Backends.QueryClassSettingsComponent do
 
   defp parse_value(_key, value), do: value
 
-  @spec class_form(map(), String.t()) :: Phoenix.HTML.Form.t()
-  defp class_form(params, class) do
+  @spec class_form(map(), String.t(), String.t()) :: Phoenix.HTML.Form.t()
+  defp class_form(params, class, revision) do
     to_form(Map.get(params, class, %{}),
       as: "query_class_settings[#{class}]",
-      id: "query-class-#{class}"
+      id: "query-class-#{class}-#{revision}"
     )
   end
 
   @spec restore_hidden_overrides(map(), map()) :: map()
   defp restore_hidden_overrides(settings, %{
          original_policy: original,
-         reset_classes: reset_classes
+         class_resets: class_resets
        }) do
-    Enum.reduce(Map.drop(original, MapSet.to_list(reset_classes)), settings, fn {class, policy},
-                                                                                acc ->
+    Enum.reduce(Map.drop(original, Map.keys(class_resets)), settings, fn {class, policy}, acc ->
       case hidden_overrides(policy) do
         overrides when overrides == %{} -> acc
         overrides -> Map.update(acc, class, overrides, &Map.merge(&1, overrides))
@@ -192,8 +197,8 @@ defmodule LogflareWeb.Backends.QueryClassSettingsComponent do
     Map.take(policy, [@cache_key | standalone_modes])
   end
 
-  @spec cache_override(map(), MapSet.t(String.t()), String.t()) :: 0 | 1 | nil
-  defp cache_override(original, reset_classes, class) do
-    unless MapSet.member?(reset_classes, class), do: get_in(original, [class, @cache_key])
+  @spec cache_override(map(), map(), String.t()) :: 0 | 1 | nil
+  defp cache_override(original, class_resets, class) do
+    unless Map.has_key?(class_resets, class), do: get_in(original, [class, @cache_key])
   end
 end

@@ -59,8 +59,8 @@ defmodule LogflareWeb.Backends.QueryClassSettingsLiveTest do
     assert saved.config.url == "http://localhost:8123"
 
     {:ok, reloaded, _html} = live_with_redirect(context.conn, ~p"/backends/#{saved.id}/edit")
-    assert has_element?(reloaded, "#query-class-default_priority[value='5']")
-    assert has_element?(reloaded, "#query-class-api_paid_max_threads[value='4']")
+    assert has_element?(reloaded, "#{policy_input("default", "priority")}[value='5']")
+    assert has_element?(reloaded, "#{policy_input("api_paid", "max_threads")}[value='4']")
   end
 
   test "invalid policy is rejected without losing entered values or stored policy", context do
@@ -82,8 +82,8 @@ defmodule LogflareWeb.Backends.QueryClassSettingsLiveTest do
     |> render_submit()
 
     assert has_element?(view, "#query-class-settings-error")
-    assert has_element?(view, "#query-class-default_priority[value='0']")
-    assert has_element?(view, "#query-class-api_paid_max_threads[value='4']")
+    assert has_element?(view, "#{policy_input("default", "priority")}[value='0']")
+    assert has_element?(view, "#{policy_input("api_paid", "max_threads")}[value='4']")
 
     assert Backends.get_backend(context.backend.id).config.query_class_settings == %{
              "default" => %{"priority" => 5}
@@ -150,7 +150,7 @@ defmodule LogflareWeb.Backends.QueryClassSettingsLiveTest do
     |> render_submit()
 
     assert has_element?(second, "#query-class-settings-error", "policy changed")
-    assert has_element?(second, "#query-class-default_priority[value='6']")
+    assert has_element?(second, "#{policy_input("default", "priority")}[value='6']")
 
     assert Backends.get_backend(context.backend.id).config.query_class_settings == %{
              "default" => %{"priority" => 5, "max_threads" => 4}
@@ -209,7 +209,7 @@ defmodule LogflareWeb.Backends.QueryClassSettingsLiveTest do
     |> render_submit()
 
     refute has_element?(view, "#query-class-api_paid-cache-override")
-    assert has_element?(view, "#query-class-default_priority[value='6']")
+    assert has_element?(view, "#{policy_input("default", "priority")}[value='6']")
     assert Backends.get_backend(context.backend.id).config.query_class_settings == saved
 
     view |> form("#query-class-settings-form") |> render_submit()
@@ -313,4 +313,7 @@ defmodule LogflareWeb.Backends.QueryClassSettingsLiveTest do
     {:ok, view, _html} = live_with_redirect(context.conn, ~p"/backends/#{backend.id}/edit")
     refute has_element?(view, "#query-class-settings-form")
   end
+
+  @spec policy_input(String.t(), String.t()) :: String.t()
+  defp policy_input(class, key), do: "input[name='query_class_settings[#{class}][#{key}]']"
 end

@@ -32,7 +32,7 @@
             do: "Fallback for missing, unknown, or unconfigured query-class labels.",
             else: "Optional overrides for #{class}. Blank numeric fields inherit defaults."}
         </p>
-        <% f = class_form(@params, class) %>
+        <% f = class_form(@params, class, Map.get(@class_resets, class, @input_revision)) %>
         <div class="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-x-6">
           <div :for={{key, label} <- @fields} class="form-group">
             {label(f, key, label)}
@@ -44,7 +44,7 @@
             )}
           </div>
         </div>
-        <p :if={not is_nil(cache_override(@original_policy, @reset_classes, class))} id={"query-class-#{class}-cache-override"} class="form-text text-muted">
+        <p :if={not is_nil(cache_override(@original_policy, @class_resets, class))} id={"query-class-#{class}-cache-override"} class="form-text text-muted">
           This policy has a filesystem-cache override set through internal configuration.
         </p>
         <button :if={class != "default"} type="submit" name="reset_class" value={class} formnovalidate class="btn btn-outline-secondary">
