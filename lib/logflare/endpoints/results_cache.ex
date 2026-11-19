@@ -5,6 +5,7 @@ defmodule Logflare.Endpoints.ResultsCache do
 
   require Logger
 
+  alias Logflare.Backends.QueryError
   alias Logflare.Endpoints
   alias Logflare.Endpoints.EndpointQuery
   alias Logflare.Utils
@@ -208,6 +209,20 @@ defmodule Logflare.Endpoints.ResultsCache do
       timer = refresh(proactive_querying_ms(query))
       {:noreply, %{state | cached_result: results, refresh_timer: timer}}
     end
+  end
+
+  def handle_info(
+        {ref,
+         {:error, %QueryError{raw_error: {:missing_clickhouse_sql_baseline, _class}} = response,
+          _query}},
+        %__MODULE__{draining?: false} = state
+      )
+      when is_reference(ref) do
+    {:via, :syn, {scope, key}} = state.cache_name
+    pid = self()
+    if match?({^pid, _meta}, :syn.lookup(scope, key)), do: :syn.unregister(scope, key)
+
+    {:stop, :normal, complete_query(state, ref, {:error, response})}
   end
 
   def handle_info({ref, {:error, response, _query}}, state) when is_reference(ref) do

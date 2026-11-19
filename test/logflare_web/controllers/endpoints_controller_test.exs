@@ -94,6 +94,50 @@ defmodule LogflareWeb.EndpointsControllerTest do
       end
     end
 
+    test "a referenced endpoint's lower-only settings return an actionable error", %{
+      conn: conn,
+      user: user
+    } do
+      reject(&ClickHouseAdaptor.execute_query/3)
+      backend = insert(:backend, type: :clickhouse, user: user)
+
+      upstream =
+        insert(:endpoint,
+          user: user,
+          backend: backend,
+          language: :ch_sql,
+          name: "upstream_query",
+          query: "SELECT 1 AS value"
+        )
+
+      downstream =
+        insert(:endpoint,
+          user: user,
+          backend: backend,
+          language: :ch_sql,
+          enable_auth: true,
+          query: "SELECT value FROM upstream_query"
+        )
+
+      assert {:ok, _} =
+               Endpoints.update_query(
+                 user,
+                 upstream,
+                 %{query: "SELECT 1 AS value SETTINGS max_threads = 2"},
+                 user
+               )
+
+      conn =
+        conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> get(~p"/api/endpoints/query/#{downstream.name}")
+
+      assert %{
+               "error" =>
+                 "Lower-only ClickHouse settings are only supported in the outer SETTINGS clause. Remove them from any referenced endpoint or subquery."
+             } = json_response(conn, 200)
+    end
+
     test "GET query", %{conn: init_conn, user: user} do
       endpoint = insert(:endpoint, user: user, enable_auth: false)
       pid = self()
@@ -811,6 +855,33 @@ defmodule LogflareWeb.EndpointsControllerTest do
 
       assert json_response(conn, 200)["error"] == ~s(Table "function_logs" does not exist.)
       refute json_response(conn, 200)["result"]
+    end
+
+    test "unsupported ClickHouse settings return the sandbox validation message", %{
+      conn: conn,
+      user: user
+    } do
+      reject(&ClickHouseAdaptor.execute_query/3)
+
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          backend: insert(:backend, type: :clickhouse, user: user),
+          language: :ch_sql,
+          enable_auth: true,
+          sandboxable: true,
+          query: "WITH a AS (SELECT 1 AS b) SELECT b FROM a"
+        )
+
+      conn =
+        conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> get(~p"/api/endpoints/query/#{endpoint.name}", %{
+          sql: "SELECT b FROM a SETTINGS max_threads = 1"
+        })
+
+      assert %{"error" => "ClickHouse setting max_threads is not supported in sandboxed SQL"} =
+               json_response(conn, 200)
     end
 
     test "sql that fails to parse returns the parser error", %{conn: conn, user: user} do
