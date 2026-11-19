@@ -71,6 +71,12 @@ All browser authentication will be disabled when in single-tenant mode.
 
 Additional environment variable configurations for the OpenTelemetry libraries used can be found [here](https://hexdocs.pm/opentelemetry_exporter/readme.html).perf/bq-pipeline-sharding
 
+### Idle webhook and HTTP delivery pipelines
+
+Set `LOGFLARE_SCALE_TO_ZERO_ADAPTORS=webhook,http_based` to enable scale-to-zero for both adaptor groups, or specify just one. Unset or leave it blank to keep the pipelines running. Each node stops its own idle pipelines and starts them again when events queue up locally. The number of concurrent requests per pipeline does not increase.
+
+`LOGFLARE_SCALE_TO_ZERO_IDLE_MS` sets the idle window in milliseconds (default: `600000`, or 10 minutes). Restart the workload to change either setting. The first delivery after an idle period can take several extra seconds while the pipeline starts.
+
 ### Upgrading
 
 #### v1.51.0

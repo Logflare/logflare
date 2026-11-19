@@ -116,7 +116,10 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptorTest do
       :ok
     end
 
-    test "sends logs via REST API", %{source: source} do
+    test "sends logs via REST API", %{source: source, backend: backend} do
+      name = Backends.via_source(source, HttpBased.Pipeline, backend)
+      assert [_producer] = Broadway.producer_names(name)
+
       this = self()
       ref = make_ref()
 

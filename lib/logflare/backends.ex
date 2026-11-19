@@ -1646,6 +1646,23 @@ defmodule Logflare.Backends do
     |> Enum.take(-n)
   end
 
+  @doc "Resolves the count of a single-shard pipeline using only node-local activity."
+  @spec resolve_idle_count(
+          %{pipeline_count: 0 | 1},
+          non_neg_integer(),
+          integer() | nil,
+          non_neg_integer()
+        ) :: 0 | 1
+  def resolve_idle_count(%{pipeline_count: count}, pending, last_active_ms, idle_ms) do
+    cond do
+      pending > 0 -> 1
+      count == 0 -> 0
+      is_nil(last_active_ms) -> 1
+      System.monotonic_time(:millisecond) - last_active_ms >= idle_ms -> 0
+      true -> 1
+    end
+  end
+
   @doc """
   Pipeline count resolution logic, for DynamicPipeline, shared across BigQuery and ClickHouse.
   """

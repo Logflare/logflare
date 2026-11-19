@@ -53,7 +53,10 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
       [source: source, backend: backend]
     end
 
-    test "ingest through the full source supervision tree", %{source: source} do
+    test "ingest through the full source supervision tree", %{source: source, backend: backend} do
+      name = Backends.via_source(source, @subject.Pipeline, backend)
+      assert [_producer] = Broadway.producer_names(name)
+
       this = self()
       ref = make_ref()
 

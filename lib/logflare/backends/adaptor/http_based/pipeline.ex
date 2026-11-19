@@ -4,11 +4,13 @@ defmodule Logflare.Backends.Adaptor.HttpBased.Pipeline do
   """
 
   use Broadway
-  alias Logflare.Backends.Adaptor.HttpBased
   alias Broadway.Message
   alias Logflare.Backends
+  alias Logflare.Backends.Adaptor.HttpBased
+  alias Logflare.Backends.Adaptor.IdlePipeline
   alias Logflare.Backends.Backend
   alias Logflare.Backends.BufferProducer
+  alias Logflare.Backends.DynamicPipeline
   alias Logflare.Sources
   alias Logflare.Sources.Source
   alias Logflare.Utils
@@ -18,8 +20,32 @@ defmodule Logflare.Backends.Adaptor.HttpBased.Pipeline do
 
   @spec start_link(Source.t(), Backend.t(), module()) :: Broadway.on_start()
   def start_link(source, backend, client) do
+    if IdlePipeline.enabled?(:http_based) do
+      DynamicPipeline.start_link(
+        IdlePipeline.dynamic_pipeline_opts(source, backend, __MODULE__, client: client)
+      )
+    else
+      name = Backends.via_source(source, __MODULE__, backend)
+      start_pipeline(source, backend, client, name, false)
+    end
+  end
+
+  @spec start_link(keyword()) :: Broadway.on_start()
+  def start_link(opts) do
+    start_pipeline(
+      opts[:source],
+      opts[:backend],
+      opts[:client],
+      Keyword.fetch!(opts, :name),
+      true
+    )
+  end
+
+  @spec start_pipeline(Source.t(), Backend.t(), module(), tuple(), boolean()) ::
+          Broadway.on_start()
+  defp start_pipeline(source, backend, client, name, track_activity?) do
     Broadway.start_link(__MODULE__,
-      name: Backends.via_source(source.id, __MODULE__, backend.id),
+      name: name,
       hibernate_after: 5_000,
       spawn_opt: [
         fullsweep_after: 100
@@ -30,6 +56,7 @@ defmodule Logflare.Backends.Adaptor.HttpBased.Pipeline do
            [
              backend_id: backend.id,
              source_id: source.id,
+             track_activity: track_activity?,
              interval: @producer_interval
            ]},
         transformer: {__MODULE__, :transform, []},

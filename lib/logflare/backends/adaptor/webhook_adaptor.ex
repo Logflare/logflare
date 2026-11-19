@@ -32,9 +32,11 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
 
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor
-  alias Logflare.Backends.Backend
   alias Logflare.Backends.Adaptor.HttpBased.Headers
   alias Logflare.Backends.Adaptor.HttpBased.NdjsonFormatter
+  alias Logflare.Backends.Adaptor.IdlePipeline
+  alias Logflare.Backends.Backend
+  alias Logflare.Backends.DynamicPipeline
   alias Logflare.LogEvent
   alias Logflare.Utils
   alias Logflare.Utils.SSRF
@@ -58,13 +60,21 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
 
   @impl GenServer
   def init({source, backend}) do
-    args = %{
-      config: backend.config,
-      source: source,
-      backend: backend
-    }
+    {:ok, _pipeline_pid} =
+      if IdlePipeline.enabled?(:webhook) do
+        DynamicPipeline.start_link(
+          IdlePipeline.dynamic_pipeline_opts(source, backend, __MODULE__.Pipeline,
+            config: backend.config
+          )
+        )
+      else
+        __MODULE__.Pipeline.start_link(%{
+          config: backend.config,
+          source: source,
+          backend: backend
+        })
+      end
 
-    {:ok, _pipeline_pid} = __MODULE__.Pipeline.start_link(args)
     {:ok, %{}}
   end
 
@@ -408,9 +418,20 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
     @batch_timeout if Application.compile_env(:logflare, :env) == :test, do: 10, else: 1_000
     @producer_interval if Application.compile_env(:logflare, :env) == :test, do: 10, else: 1_000
 
-    def start_link(args) do
+    @spec start_link(map() | keyword()) :: Broadway.on_start()
+    def start_link(%{} = args) do
+      name = Backends.via_source(args.source, __MODULE__, args.backend)
+      start_pipeline(args, name, false)
+    end
+
+    def start_link(opts) when is_list(opts) do
+      start_pipeline(Map.new(opts), Keyword.fetch!(opts, :name), true)
+    end
+
+    @spec start_pipeline(map(), tuple(), boolean()) :: Broadway.on_start()
+    defp start_pipeline(args, name, track_activity?) do
       Broadway.start_link(__MODULE__,
-        name: Backends.via_source(args.source, __MODULE__, args.backend),
+        name: name,
         hibernate_after: 5_000,
         spawn_opt: [
           fullsweep_after: 10
@@ -421,6 +442,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
              [
                backend_id: Map.get(args.backend || %{}, :id),
                source_id: args.source.id,
+               track_activity: track_activity?,
                interval: @producer_interval
              ]},
           transformer: {__MODULE__, :transform, []},

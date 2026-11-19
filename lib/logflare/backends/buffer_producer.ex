@@ -17,6 +17,7 @@ defmodule Logflare.Backends.BufferProducer do
   alias Logflare.Sources
 
   @type standard_state :: %{
+          optional(:track_activity) => boolean(),
           consolidated: boolean(),
           id_passing: boolean(),
           demand: non_neg_integer(),
@@ -218,6 +219,7 @@ defmodule Logflare.Backends.BufferProducer do
       demand: 0,
       source_id: opts[:source_id],
       source_token: source.token,
+      track_activity: Keyword.get(opts, :track_activity, false),
       backend_id: opts[:backend_id],
       last_discard_log_dt: nil,
       interval: interval,
@@ -230,6 +232,7 @@ defmodule Logflare.Backends.BufferProducer do
     startup_table_key = {state.source_id, state.backend_id, nil}
     IngestEventQueue.upsert_tid(table_key)
     seed_from_startup(startup_table_key, table_key, max_in_flight, opts[:seed_batch_size])
+    record_activity(state)
     reschedule(state, false, false)
   end
 
@@ -475,6 +478,8 @@ defmodule Logflare.Backends.BufferProducer do
 
     {events, event_count} = do_fetch(state, fetch_amount)
 
+    if event_count > 0, do: record_activity(state)
+
     capped? = event_count < total_demand
 
     if state.in_flight_ref != nil and event_count > 0 do
@@ -490,6 +495,12 @@ defmodule Logflare.Backends.BufferProducer do
 
     {events, %{state | demand: new_demand}, capped?}
   end
+
+  @spec record_activity(state()) :: :ok
+  defp record_activity(%{track_activity: true, source_id: sid, backend_id: bid}),
+    do: IngestEventQueue.touch_active({sid, bid})
+
+  defp record_activity(_state), do: :ok
 
   # A generous safety valve, not a fine-grained flow-control knob: caps how much a
   # producer will claim from IngestEventQueue once too much already-claimed work is
