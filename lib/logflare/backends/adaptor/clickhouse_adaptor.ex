@@ -118,7 +118,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   @impl Logflare.Backends.Adaptor
   def on_backend_config_changed(%Backend{id: backend_id}) do
-    _ = reprovision(backend_id)
+    with {:error, reason} <- reprovision(backend_id) do
+      Logger.error("ClickHouse re-provisioning failed: #{inspect(reason)}",
+        backend_id: backend_id
+      )
+    end
+
     QueryConnectionSup.refresh_backend(backend_id)
   end
 
