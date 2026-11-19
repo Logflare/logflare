@@ -1410,7 +1410,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
     children =
       if(Application.get_env(:logflare, :env) != :test,
-        do: [Provisioner.child_spec(backend)],
+        do: [Provisioner.child_spec(backend.id)],
         else: []
       ) ++
         [
