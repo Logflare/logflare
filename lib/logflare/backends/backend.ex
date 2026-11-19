@@ -28,6 +28,7 @@ defmodule Logflare.Backends.Backend do
     otlp: Adaptor.OtlpAdaptor,
     last9: Adaptor.Last9Adaptor,
     signoz: Adaptor.SigNozAdaptor,
+    dash0: Adaptor.Dash0Adaptor,
     syslog: Adaptor.SyslogAdaptor,
     splunk: Adaptor.SplunkAdaptor,
     google_secops: Adaptor.GoogleSecOpsAdaptor
@@ -37,6 +38,7 @@ defmodule Logflare.Backends.Backend do
     axiom: "Axiom",
     bigquery: "BigQuery",
     clickhouse: "ClickHouse",
+    dash0: "Dash0",
     datadog: "Datadog",
     elastic: "Elastic",
     google_secops: "Google SecOps",

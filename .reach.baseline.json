@@ -52,6 +52,14 @@
     },
     {
       "source": "smells",
+      "kind": "behaviour_candidate",
+      "fingerprint": "sha256:c278aa26da577590dcb06e3eb3cbd42a734759add52b05179e51a06710969bdf",
+      "message": "3 modules expose the same 7 public callbacks; consider extracting a behaviour if these modules are interchangeable implementations",
+      "file": "lib/logflare/backends/adaptor/axiom_adaptor.ex",
+      "line": 1
+    },
+    {
+      "source": "smells",
       "kind": "unsafe_atom_creation",
       "fingerprint": "sha256:93f956466d2104ebb0755dd02906db8ea451deaf37b91fe965e0d3d4c60f3b37",
       "message": "String.to_atom/1 on dynamic input can exhaust the atom table; use explicit mapping or String.to_existing_atom/1",
