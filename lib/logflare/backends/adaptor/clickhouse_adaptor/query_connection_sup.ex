@@ -39,8 +39,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup do
   `recycle_backend/1` triggers an immediate connection recycle of a backend's read pool
   on every node in the cluster. Useful after scaling an upstream ClickHouse service.
 
-  `refresh_backend/1` stops, on every node, a backend's read pools whose connection
-  options changed, so they restart with the current backend configuration.
+  `refresh_backend/1` drains, on every node, a backend's read pools whose connection
+  options changed, so new queries run on pools with the current backend configuration.
 
   `terminate_backend/1` terminates a backend's read `ConnectionManager` on every node,
   e.g. after a backend is deleted.
@@ -188,10 +188,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup do
   end
 
   @doc """
-  Stops, on every node, the backend's read pools whose connection options differ
+  Drains, on every node, the backend's read pools whose connection options differ
   from the saved backend. Each node starts new pools on its next query.
 
-  Returns without waiting for the nodes to finish.
+  Returns without waiting for the nodes to finish. See
+  `ConnectionManager.refresh_pool/2`.
   """
   @spec refresh_backend(Backend.t() | pos_integer()) :: :ok
   def refresh_backend(%Backend{id: backend_id}), do: refresh_backend(backend_id)
@@ -206,7 +207,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup do
   end
 
   @doc """
-  Busts the local backend cache and stops each of the backend's read pools on the local
+  Busts the local backend cache and drains each of the backend's read pools on the local
   node whose connection options differ from the saved backend.
 
   The saved backend is read from the primary database, since a read replica can still

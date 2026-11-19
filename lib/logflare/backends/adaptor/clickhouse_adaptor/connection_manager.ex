@@ -9,9 +9,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
   "least-connections" load balancers can redistribute them across replicas as
   the ClickHouse service scales. See `recycle_pool/1`.
 
-  Pools capture backend configuration when they start. `refresh_pool/2` stops an
-  active pool whose connection options no longer match the given backend, so that
-  the next query restarts it with the current ones.
+  Pools capture backend configuration when they start. When the options change,
+  `refresh_pool/2` routes new queries to a new pool and drains the old one: it
+  finishes the queries it already has, within a time budget, and then stops.
+
+  Pools are isolated from each other: a draining pool that fails or hangs affects
+  neither new queries nor the active pool.
 
   Pools authenticate with the credentials resolved by
   `ClickHouseAdaptor.query_credentials/1`, which prefers a
@@ -45,6 +48,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
   @recycle_interval :timer.minutes(10)
   @recycle_spread :timer.seconds(60)
   @ch_idle_interval :timer.seconds(3)
+  @drain_budget :timer.seconds(65)
+  @drain_check_interval :timer.seconds(1)
   @default_read_pool_size 50
   @default_labeled_read_pool_size 32
   @telemetry_listener __MODULE__.TelemetryListener
@@ -58,6 +63,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
     field :resolve_timer_ref, reference() | nil, default: nil
     field :next_recycle_at, integer() | nil, default: nil
     field :pool_opts_hash, binary() | nil, default: nil
+    field :draining, %{optional(pid()) => pid()}, default: %{}
   end
 
   @doc """
@@ -86,8 +92,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
   Registered name of the `DBConnection.TelemetryListener` that read pools report
   connect and disconnect events to.
 
-  The listener is supervised by `QueryConnectionSup` so that it outlives the pools,
-  which are stopped and restarted on config refresh, inactivity, and recycle.
+  The listener is supervised by `QueryConnectionSup` so that it outlives individual
+  pools, which come and go.
   """
   @spec telemetry_listener_name() :: atom()
   def telemetry_listener_name, do: @telemetry_listener
@@ -146,7 +152,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
   Returns the pool each manager on this node routes new queries to, as
   `{backend_id, label, pool_pid, pool_size}`.
 
-  Managers without a running pool are left out.
+  Managers without a running pool are left out, as are pools draining after a refresh.
   `pool_size` is the size the pool started with, which may differ from the backend's
   current config.
   """
@@ -190,11 +196,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
   end
 
   @doc """
-  Stops the backend's active pool for `label` when `backend` yields different
+  Drains the backend's active pool for `label` when `backend` yields different
   connection options than it was started with.
 
-  The next query starts a new pool with the new options. Unlike `recycle_pool/1`,
-  this is a hard restart: queries running on the stopped pool fail.
+  The next query starts a new pool with the new options. The drained pool stops once
+  it has no checked-out connections or queued callers, or is killed when the drain
+  budget runs out, whichever comes first. Queries still running at that point fail.
   """
   @spec refresh_pool(Backend.t(), String.t() | nil) :: :ok
   def refresh_pool(%Backend{} = backend, label \\ nil) do
@@ -206,7 +213,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
   @doc """
   Same as `refresh_pool/2`, for the connection manager running as `manager`.
 
-  A `nil` backend, such as one deleted since, always stops the pool. A backend
+  A `nil` backend, such as one deleted since, always drains the pool. A backend
   without a loaded `config` raises `FunctionClauseError`.
   """
   @spec refresh_manager_pool(GenServer.server(), Backend.t() | nil) :: :ok
@@ -290,6 +297,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
 
   @impl true
   def init({backend_id, label}) do
+    Process.flag(:trap_exit, true)
+
     Process.set_label(
       {:ch_read_pool_manager, backend_id, ClickHouseAdaptor.read_cluster_tag(label)}
     )
@@ -352,8 +361,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
         {:reply, :ok, state}
 
       true ->
-        GenServer.stop(pool_pid)
-        {:reply, :ok, clear_pool(state)}
+        {:reply, :ok, drain_pool(state)}
     end
   end
 
@@ -404,19 +412,41 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
   end
 
   @impl true
-  def handle_info({:DOWN, _ref, :process, pid, _reason}, %__MODULE__{pool_pid: pid} = state)
-      when is_pid(pid) do
+  def handle_info({:EXIT, pid, reason}, %__MODULE__{pool_pid: pid} = state) when is_pid(pid) do
     Logger.warning("ClickHouse connection pool died",
       backend_id: state.backend_id,
-      host: connection_host(state.backend_id, state.label)
+      host: connection_host(state.backend_id, state.label),
+      reason: reason
     )
 
     {:noreply, clear_pool(state)}
   end
 
-  def handle_info({:DOWN, _ref, :process, _pid, _reason}, %__MODULE__{} = state) do
+  def handle_info({:EXIT, pid, reason}, %__MODULE__{draining: draining} = state)
+      when is_map_key(draining, pid) do
+    Logger.info("Stopped draining ClickHouse connection pool",
+      backend_id: state.backend_id,
+      reason: reason
+    )
+
+    {:noreply, %__MODULE__{state | draining: Map.delete(draining, pid)}}
+  end
+
+  def handle_info({:EXIT, _pid, _reason}, %__MODULE__{} = state), do: {:noreply, state}
+
+  @impl true
+  def handle_info({:drain_deadline, pool_pid}, %__MODULE__{draining: draining} = state)
+      when is_map_key(draining, pool_pid) do
+    Logger.warning("Killing ClickHouse connection pool still draining past its budget",
+      backend_id: state.backend_id
+    )
+
+    Process.exit(Map.fetch!(draining, pool_pid), :kill)
+    Process.exit(pool_pid, :kill)
     {:noreply, state}
   end
+
+  def handle_info({:drain_deadline, _pool_pid}, %__MODULE__{} = state), do: {:noreply, state}
 
   @spec record_activity(__MODULE__.t()) :: __MODULE__.t()
   defp record_activity(%__MODULE__{} = state) do
@@ -429,8 +459,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
 
     with {:ok, ch_opts} <- build_ch_opts(backend, label),
          {:ok, pid} <- Ch.start_link(ch_opts) do
-      Process.monitor(pid)
-
       Logger.info("Started ClickHouse connection pool",
         backend_id: state.backend_id
       )
@@ -536,6 +564,55 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
     end
 
     clear_pool(state)
+  end
+
+  @spec drain_pool(__MODULE__.t()) :: __MODULE__.t()
+  defp drain_pool(%__MODULE__{pool_pid: pool_pid, pool_size: pool_size} = state) do
+    interval = drain_check_interval()
+    {:ok, drainer} = Task.start_link(fn -> stop_when_drained(pool_pid, pool_size, interval) end)
+    Process.send_after(self(), {:drain_deadline, pool_pid}, drain_budget())
+
+    Logger.info("Draining ClickHouse connection pool after a config change",
+      backend_id: state.backend_id
+    )
+
+    clear_pool(%__MODULE__{state | draining: Map.put(state.draining, pool_pid, drainer)})
+  end
+
+  @spec stop_when_drained(pid(), pos_integer(), pos_integer()) :: :ok
+  defp stop_when_drained(pool_pid, pool_size, interval) do
+    Process.sleep(interval)
+
+    if drained?(pool_pid, pool_size),
+      do: stop_drained_pool(pool_pid),
+      else: stop_when_drained(pool_pid, pool_size, interval)
+  end
+
+  @spec stop_drained_pool(pid()) :: :ok
+  defp stop_drained_pool(pool_pid) do
+    GenServer.stop(pool_pid, :normal, :infinity)
+  catch
+    :exit, _reason -> :ok
+  end
+
+  @spec drained?(pid(), pos_integer()) :: boolean()
+  defp drained?(pool_pid, pool_size) do
+    match?(
+      [%{ready_conn_count: ^pool_size, checkout_queue_length: 0}],
+      DBConnection.get_connection_metrics(pool_pid)
+    )
+  catch
+    :exit, _reason -> true
+  end
+
+  @spec drain_budget() :: non_neg_integer()
+  defp drain_budget do
+    Application.get_env(:logflare, __MODULE__)[:drain_budget] || @drain_budget
+  end
+
+  @spec drain_check_interval() :: pos_integer()
+  defp drain_check_interval do
+    Application.get_env(:logflare, __MODULE__)[:drain_check_interval] || @drain_check_interval
   end
 
   @spec maybe_recycle_pool(__MODULE__.t(), integer()) :: __MODULE__.t()
