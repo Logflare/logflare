@@ -67,6 +67,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     :replica_routing_param
   ]
   @default_async_insert_busy_timeout_max_ms 3_000
+  @provisioning_config_keys [:url, :port, :database, :username, :password]
   @async_insert_flush_bounds %{
     async_insert_busy_timeout_max_ms: %{min: 200, max: 4_000},
     async_insert_max_data_size: %{min: 52_428_800, max: 268_435_456}
@@ -148,16 +149,24 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
     with pid when is_pid(pid) <- GenServer.whereis(sup),
          %Backend{} = backend <- Backends.get_backend(backend_id),
+         {:ok, %{start: {_mod, _fun, [provisioned]}}} <-
+           :supervisor.get_childspec(pid, Provisioner),
+         false <- provisioning_config(provisioned) == provisioning_config(backend),
          :ok <- Supervisor.terminate_child(pid, Provisioner),
          :ok <- Supervisor.delete_child(pid, Provisioner),
          {:ok, _pid} <- Supervisor.start_child(pid, Provisioner.child_spec(backend)) do
       :ok
     else
       nil -> :ok
+      true -> :ok
       {:error, :not_found} -> :ok
       {:error, _reason} = error -> error
     end
   end
+
+  @spec provisioning_config(Backend.t()) :: map()
+  defp provisioning_config(%Backend{config: config}),
+    do: Map.take(config, @provisioning_config_keys)
 
   @spec latest_pipeline_args(pos_integer()) :: keyword() | nil
   defp latest_pipeline_args(backend_id) do
