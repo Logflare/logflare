@@ -39,7 +39,8 @@ defmodule Logflare.Backends.DynamicPipeline do
           resolve_interval: pos_integer(),
           shutdown: timeout(),
           last_count_increase: NaiveDateTime.t() | nil,
-          last_count_decrease: NaiveDateTime.t() | nil
+          last_count_decrease: NaiveDateTime.t() | nil,
+          replace_pending: boolean()
         }
 
   @resolve_interval if Application.compile_env(:logflare, :env) == :test, do: 500, else: 5_000
@@ -63,7 +64,8 @@ defmodule Logflare.Backends.DynamicPipeline do
         resolve_interval: @resolve_interval,
         shutdown: @default_shutdown_ms,
         last_count_increase: nil,
-        last_count_decrease: nil
+        last_count_decrease: nil,
+        replace_pending: false
       })
 
     pipeline_specs =
@@ -219,13 +221,18 @@ defmodule Logflare.Backends.DynamicPipeline do
   end
 
   @doc """
-  Replaces every pipeline with one started from `pipeline_args`.
+  Replaces each running pipeline that was not started from `pipeline_args`.
+  Pipelines started later, such as on scale-up, use `pipeline_args` too.
 
   `pipeline_args` may be a zero-arity function, which the coordinator calls when the swap
   runs so concurrent swaps always resolve the newest args. A `nil` result skips the swap.
 
   Each outgoing pipeline is drained through the same path as `remove_pipeline/1`, so its
   pending events move to a replacement instead of being destroyed with its queue.
+
+  `{:error, failures}` lists the pipelines whose replacement failed to start. They
+  keep running and their replacement is retried periodically until one starts;
+  `pipeline_args` stay applied.
   """
   @spec replace_pipelines(tuple(), keyword() | (-> keyword() | nil)) ::
           :ok | {:error, [{tuple(), term()}]}
@@ -246,21 +253,37 @@ defmodule Logflare.Backends.DynamicPipeline do
   @doc false
   @spec do_replace_pipelines(tuple(), keyword()) :: :ok | {:error, [{tuple(), term()}]}
   def do_replace_pipelines(name, pipeline_args) do
+    :ok = name |> find_agent() |> Agent.update(&%{&1 | pipeline_args: pipeline_args})
+    replace_stale_pipelines(name)
+  end
+
+  @doc false
+  @spec replace_stale_pipelines(tuple()) :: :ok | {:error, [{tuple(), term()}]}
+  def replace_stale_pipelines(name) do
     state = get_state(name)
-    new_state = %{state | pipeline_args: pipeline_args}
-    :ok = name |> find_agent() |> Agent.update(fn _ -> new_state end)
 
     failures =
       for id <- removal_candidates(name, state),
-          {:error, reason} <- [replace_pipeline(name, id, state, new_state)],
+          stale?(name, id, state),
+          {:error, reason} <- [replace_pipeline(name, id, state)],
           do: {id, reason}
 
     if failures == [], do: :ok, else: {:error, failures}
   end
 
-  @spec replace_pipeline(tuple(), tuple(), state(), state()) :: :ok | {:error, term()}
-  defp replace_pipeline(name, id, state, new_state) do
-    case Supervisor.start_child(name, child_spec(new_state, make_ref())) do
+  defp stale?(name, id, state) do
+    case :supervisor.get_childspec(name, id) do
+      {:ok, %{start: {_module, _fun, [started_args]}}} ->
+        started_args != start_args(state.pipeline_args, id)
+
+      {:error, :not_found} ->
+        false
+    end
+  end
+
+  @spec replace_pipeline(tuple(), tuple(), state()) :: :ok | {:error, term()}
+  defp replace_pipeline(name, id, state) do
+    case Supervisor.start_child(name, child_spec(state, make_ref())) do
       {:ok, _pid} ->
         drain_and_schedule_removal(name, id, state)
         :ok
@@ -390,9 +413,11 @@ defmodule Logflare.Backends.DynamicPipeline do
          ref
        ) do
     sharded_name = sup_name_to_pipeline_name(name, ref)
-    new_args = pipeline_args ++ [name: sharded_name]
-    %{id: sharded_name, start: {pipeline, :start_link, [new_args]}, shutdown: shutdown}
+    start = {pipeline, :start_link, [start_args(pipeline_args, sharded_name)]}
+    %{id: sharded_name, start: start, shutdown: shutdown}
   end
+
+  defp start_args(pipeline_args, sharded_name), do: pipeline_args ++ [name: sharded_name]
 
   @spec ack(via :: term(), successful :: list(), failed :: list()) :: :ok
   def ack(_via, _successful, _failed) do
@@ -501,7 +526,7 @@ defmodule Logflare.Backends.DynamicPipeline do
 
         resolved_args ->
           res = DynamicPipeline.do_replace_pipelines(state.name, resolved_args)
-          {:reply, res, %{state | pipeline_args: resolved_args}}
+          {:reply, res, %{state | pipeline_args: resolved_args, replace_pending: res != :ok}}
       end
     end
 
@@ -513,6 +538,7 @@ defmodule Logflare.Backends.DynamicPipeline do
 
     @impl GenServer
     def handle_info(:check, state) do
+      state = retry_replacements(state)
       pipelines = DynamicPipeline.list_pipelines(state.name)
       pipeline_count = Enum.count(pipelines)
 
@@ -553,6 +579,13 @@ defmodule Logflare.Backends.DynamicPipeline do
       loop(state)
       {:noreply, state}
     end
+
+    @spec retry_replacements(DynamicPipeline.state()) :: DynamicPipeline.state()
+    defp retry_replacements(%{replace_pending: true} = state) do
+      %{state | replace_pending: DynamicPipeline.replace_stale_pipelines(state.name) != :ok}
+    end
+
+    defp retry_replacements(state), do: state
 
     @spec loop(state :: DynamicPipeline.state()) :: reference()
     defp loop(args) do
