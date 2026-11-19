@@ -29,8 +29,21 @@ defmodule Logflare.Endpoints.ClickHouseSqlSettings do
   @spec validate_sandboxed([map()], [map()] | nil) :: :ok | {:error, String.t()}
   def validate_sandboxed(_statements, nil), do: :ok
 
-  def validate_sandboxed(statements, sandboxed_ast) do
-    case requested_setting([statements, sandboxed_ast]) do
+  def validate_sandboxed(statements, sandboxed_ast),
+    do: reject_sandboxed_requests([statements, sandboxed_ast])
+
+  @spec validate_sandboxed_base(String.t()) :: :ok | {:error, String.t()}
+  def validate_sandboxed_base(query) do
+    if Regex.match?(~r/\bsettings\b/i, query) do
+      with {:ok, ast} <- Parser.parse("clickhouse", query), do: reject_sandboxed_requests(ast)
+    else
+      :ok
+    end
+  end
+
+  @spec reject_sandboxed_requests([map() | [map()]]) :: :ok | {:error, String.t()}
+  defp reject_sandboxed_requests(ast) do
+    case requested_setting(ast) do
       nil -> :ok
       key -> {:error, "ClickHouse setting #{key} is not supported in sandboxed SQL"}
     end
