@@ -6,7 +6,8 @@
   </p>
   <p class="form-text text-muted">
     Default priority is required when policy is enabled. Priority 1 is highest; larger numbers are lower priority.
-    Blank class fields inherit defaults. Resource limits use the smallest value across default, class, and endpoint policies.
+    Blank numeric class fields inherit defaults. Resource limits use the smallest value across default, class, and endpoint policies.
+    Clearing a numeric limit keeps any existing overflow mode; use Reset class to defaults or Disable query-class policy to remove it.
     ClickHouse profile constraints still apply.
   </p>
   <p class="form-text text-muted">
@@ -38,7 +39,7 @@
             {label(f, key, label)}
             {number_input(f, key,
               class: "form-control",
-              min: if(key == "max_execution_time", do: "0", else: "1"),
+              min: if(key == "max_execution_time", do: "0.000001", else: "1"),
               step: if(key == "max_execution_time", do: "any", else: "1"),
               placeholder: if(class == "default", do: "Not set", else: "Inherit default")
             )}
