@@ -22,8 +22,19 @@ defmodule LogflareWeb.AlertComponent do
   end
 
   def handle_event("close", %{"flash_key" => key}, socket) do
-    send(self(), {:clear_flash, String.to_atom(key)})
+    case existing_flash_key(key) do
+      {:ok, flash_key} -> send(self(), {:clear_flash, flash_key})
+      :error -> :ok
+    end
 
     {:noreply, socket}
+  end
+
+  # Flash keys are atoms set by our own code. Never create new atoms from
+  # client-supplied event params, atoms are not garbage collected.
+  defp existing_flash_key(key) do
+    {:ok, String.to_existing_atom(key)}
+  rescue
+    ArgumentError -> :error
   end
 end
