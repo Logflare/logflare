@@ -68,6 +68,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     :replica_routing_param
   ]
   @default_async_insert_busy_timeout_max_ms 3_000
+  @provisioning_config_keys [:url, :port, :database, :username, :password]
   @async_insert_flush_bounds %{
     async_insert_busy_timeout_max_ms: %{min: 200, max: 4_000},
     async_insert_max_data_size: %{min: 52_428_800, max: 268_435_456}
@@ -118,6 +119,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   @impl Logflare.Backends.Adaptor
   def on_backend_config_changed(%Backend{id: backend_id}) do
+    with {:error, reason} <- reprovision(backend_id) do
+      Logger.error("ClickHouse re-provisioning failed: #{inspect(reason)}",
+        backend_id: backend_id
+      )
+    end
+
     QueryConnectionSup.refresh_backend(backend_id)
   end
 
@@ -141,6 +148,31 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       _pid -> DynamicPipeline.replace_pipelines(name, fn -> latest_pipeline_args(backend_id) end)
     end
   end
+
+  @spec reprovision(pos_integer()) :: :ok | {:error, term()}
+  defp reprovision(backend_id) do
+    sup = Backends.via_backend(backend_id, __MODULE__)
+
+    with pid when is_pid(pid) <- GenServer.whereis(sup),
+         %Backend{} = backend <- Backends.get_backend(backend_id),
+         {:ok, %{start: {_mod, _fun, [provisioned]}}} <-
+           :supervisor.get_childspec(pid, Provisioner),
+         false <- provisioning_config(provisioned) == provisioning_config(backend),
+         :ok <- Supervisor.terminate_child(pid, Provisioner),
+         :ok <- Supervisor.delete_child(pid, Provisioner),
+         {:ok, _pid} <- Supervisor.start_child(pid, Provisioner.child_spec(backend)) do
+      :ok
+    else
+      nil -> :ok
+      true -> :ok
+      {:error, :not_found} -> :ok
+      {:error, _reason} = error -> error
+    end
+  end
+
+  @spec provisioning_config(Backend.t()) :: map()
+  defp provisioning_config(%Backend{config: config}),
+    do: Map.take(config, @provisioning_config_keys)
 
   @spec latest_pipeline_args(pos_integer()) :: keyword() | nil
   defp latest_pipeline_args(backend_id) do

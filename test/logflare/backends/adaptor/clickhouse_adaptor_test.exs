@@ -9,6 +9,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.Provisioner
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates
   alias Logflare.Backends.Backend
@@ -3503,6 +3504,67 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     end
   end
 
+  describe "on_backend_config_changed/1" do
+    setup do
+      insert(:plan, name: "Free")
+      {_source, backend} = setup_clickhouse_test()
+      adaptor_sup = start_supervised!({ClickHouseAdaptor, backend})
+      provision!(adaptor_sup, backend)
+
+      [backend: backend, adaptor_sup: adaptor_sup]
+    end
+
+    test "backend whose database changed since the adaptor started", %{
+      backend: backend,
+      adaptor_sup: adaptor_sup
+    } do
+      database = "logflare_test_reprovision"
+
+      {:ok, _} =
+        ClickHouseAdaptor.execute_ch_query(backend, "DROP DATABASE IF EXISTS #{database}")
+
+      {:ok, _} = ClickHouseAdaptor.execute_ch_query(backend, "CREATE DATABASE #{database}")
+
+      save_backend_config!(backend, %{database: database})
+
+      assert :ok = ClickHouseAdaptor.on_backend_config_changed(backend)
+
+      TestUtils.retry_assert(fn ->
+        assert {Provisioner, :undefined, :worker, _} =
+                 adaptor_sup
+                 |> Supervisor.which_children()
+                 |> List.keyfind(Provisioner, 0)
+      end)
+
+      for event_type <- [:log, :metric, :trace] do
+        table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, event_type)
+
+        assert {:ok, {[%{"result" => 1}], _bytes}} =
+                 ClickHouseAdaptor.execute_ch_query(
+                   backend,
+                   "EXISTS TABLE #{database}.#{table_name}"
+                 )
+      end
+
+      {:ok, _} = ClickHouseAdaptor.execute_ch_query(backend, "DROP DATABASE #{database}")
+    end
+
+    test "backend whose batch size changed since the adaptor started", %{backend: backend} do
+      test_pid = self()
+
+      stub(ClickHouseAdaptor, :test_ingest_connection, fn _backend ->
+        send(test_pid, :provisioning_started)
+        :ok
+      end)
+
+      save_backend_config!(backend, %{batch_size: 2_000})
+
+      assert :ok = ClickHouseAdaptor.on_backend_config_changed(backend)
+
+      refute_receive :provisioning_started, 500
+    end
+  end
+
   describe "read pool refresh during a query" do
     setup do
       insert(:plan, name: "Free")
@@ -3863,6 +3925,19 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
         0 -> {:ok, false}
       end
     end
+  end
+
+  defp provision!(adaptor_sup, backend) do
+    {:ok, pid} = Supervisor.start_child(adaptor_sup, Provisioner.child_spec(backend))
+    ref = Process.monitor(pid)
+    assert_receive {:DOWN, ^ref, :process, ^pid, :normal}, 5_000
+  end
+
+  defp save_backend_config!(backend, changes) do
+    backend
+    |> Repo.reload!()
+    |> Backend.changeset(%{config: Map.merge(backend.config, changes)})
+    |> Repo.update!()
   end
 
   defp await_pool_queue(backend, ready, queued) do
