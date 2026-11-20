@@ -328,6 +328,23 @@ defmodule Logflare.BackendsTest do
       Backends.ConsolidatedSup.stop_pipeline(backend)
     end
 
+    for {scenario, config_changes} <- [
+          {"unchanged config", %{}},
+          {"a changed database", %{database: "other_db"}}
+        ] do
+      test "replace_pipelines_with_latest/1 for a backend saved with #{scenario}", %{user: user} do
+        assert {:ok, backend} = Backends.create_backend(user, clickhouse_backend_attrs())
+        on_exit(fn -> Backends.ConsolidatedSup.stop_pipeline(backend) end)
+        pipeline_sup = Backends.via_backend(backend, ClickHousePipeline)
+        pipelines = DynamicPipeline.list_pipelines(pipeline_sup)
+        save_backend_config!(backend, unquote(Macro.escape(config_changes)))
+
+        assert :ok = Backends.replace_pipelines_with_latest(backend.id)
+
+        assert ^pipelines = DynamicPipeline.list_pipelines(pipeline_sup)
+      end
+    end
+
     test "replace_pipelines_with_latest/1 is a no-op for a deleted backend" do
       assert :ok = Backends.replace_pipelines_with_latest(-1)
     end
@@ -383,7 +400,7 @@ defmodule Logflare.BackendsTest do
                    database: "logflare_test",
                    username: "logflare",
                    password: "logflare",
-                   pool_size: 5
+                   read_pool_size: 5
                  }
                })
 
@@ -394,15 +411,21 @@ defmodule Logflare.BackendsTest do
       Backends.ConsolidatedSup.stop_pipeline(updated)
     end
 
-    test "update_backend/2 leaves read pools running when config is unchanged", %{
-      backend: backend
-    } do
-      assert {:ok, updated} = Backends.update_backend(backend, %{name: "Updated Name"})
+    for {scenario, attrs} <- [
+          {"a new name", %{name: "Updated Name"}},
+          {"new batch limits", %{config: %{batch_size: 1_000, batch_timeout: 1_500}}}
+        ] do
+      test "update_backend/2 with #{scenario}", %{backend: backend} do
+        pool_pid = ConnectionManager.get_pool_pid(backend)
 
-      Process.sleep(200)
-      assert ConnectionManager.pool_active?(backend)
+        assert {:ok, updated} = Backends.update_backend(backend, unquote(Macro.escape(attrs)))
 
-      Backends.ConsolidatedSup.stop_pipeline(updated)
+        Process.sleep(200)
+        assert ^pool_pid = ConnectionManager.get_pool_pid(backend)
+        assert Process.alive?(pool_pid)
+
+        Backends.ConsolidatedSup.stop_pipeline(updated)
+      end
     end
 
     test "delete_backend/1 terminates read connection managers", %{
