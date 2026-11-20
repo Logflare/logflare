@@ -137,6 +137,29 @@ After saving, the backend's configuration lists the clusters under `read_only_ur
 
 The same options can be set through the backends API with the `read_only_urls`, `default_read_cluster`, and `labeled_read_pool_size` config keys.
 
+#### Override routing for endpoint queries
+
+A platform administrator can set ordered `read_cluster_overrides` through the internal backend configuration API. For example, this rule moves one project on one endpoint into the built-in quarantine class:
+
+```elixir
+admin = Logflare.Users.get(admin_id)
+backend = Logflare.Backends.get_backend(backend_id)
+
+Logflare.Backends.configure_read_cluster_overrides(admin, backend, [
+  %{
+    "match" => %{"endpoint_id" => 238, "label" => "api_paid", "project" => "example"},
+    "read_cluster" => "quarantine",
+    "note" => "Incident response: limit this workload during investigation"
+  }
+])
+```
+
+The first matching rule wins. `endpoint_id` (positive integer), `endpoint_name`, and `label` (the incoming routing header) are optional conditions. Other keys match exact string values from the endpoint's parsed, allowlisted labels. A rule must specify at least one condition, and every condition must match.
+
+The target must have its own read URL, a saved query-class policy, or be the built-in `quarantine` class. The target label selects the query-class policy even if the query runs on the default read cluster. Requests that match an override bypass the shared endpoint result cache. The rule's one-based position and requested and final labels appear in the `[:logflare, :clickhouse, :read_cluster_override]` event and debug logs; notes and match values are not emitted.
+
+Remove a rule, or save `[]` to remove all rules. Changes take effect as backend metadata updates propagate, without restarting the read pools. Deploy rule support to every Logflare instance before saving any overrides.
+
 Read clusters use the query credentials when **ClickHouse Query Username** and **ClickHouse Query Password** are set, otherwise falling back to the ingest credentials. That user needs `SELECT` on every read cluster. **Test connection** on the backend page checks the `SELECT` grant on each configured read cluster.
 
 ### Routing Endpoint Queries

@@ -111,7 +111,8 @@ defmodule Logflare.Backends.Backend do
     |> validate_required([:user_id, :type, :config, :name])
     |> validate_inclusion(:type, Map.keys(@adaptor_mapping))
     |> validate_config()
-    |> protect_query_class_settings(opts)
+    |> protect_admin_config(:query_class_settings, %{}, opts)
+    |> protect_admin_config(:read_cluster_overrides, [], opts)
     |> validate_default_ingest()
     |> unique_constraint(:default_ingest?,
       name: :idx_backends_default_ingest_per_user_type,
@@ -121,34 +122,35 @@ defmodule Logflare.Backends.Backend do
     |> do_config_change()
   end
 
-  @spec protect_query_class_settings(Changeset.t(), Keyword.t()) :: Changeset.t()
-  defp protect_query_class_settings(%Changeset{valid?: false} = changeset, _opts), do: changeset
+  @spec protect_admin_config(Changeset.t(), atom(), map() | list(), keyword()) :: Changeset.t()
+  defp protect_admin_config(%Changeset{valid?: false} = changeset, _key, _empty, _opts),
+    do: changeset
 
-  defp protect_query_class_settings(changeset, opts) do
-    current = query_class_policy(changeset.data.config_encrypted)
-
-    proposed =
-      query_class_policy(get_field(changeset, :config) || changeset.data.config_encrypted)
-
+  defp protect_admin_config(changeset, key, empty, opts) do
+    existing = changeset.data.config_encrypted
+    current = admin_config_value(existing, key, empty)
+    proposed = admin_config_value(get_field(changeset, :config) || existing, key, empty)
     changing_type? = get_field(changeset, :type) != changeset.data.type
-    changing_policy? = current != proposed or (current != %{} and changing_type?)
+    changing_config? = current != proposed or (current != empty and changing_type?)
 
-    if changing_policy? and not Keyword.get(opts, :allow_query_class_settings, false) do
-      add_error(
-        changeset,
-        :"config.query_class_settings",
-        "can only be configured by an administrator"
-      )
+    authorized? =
+      case key do
+        :query_class_settings -> Keyword.get(opts, :allow_query_class_settings, false)
+        :read_cluster_overrides -> Keyword.get(opts, :allow_read_cluster_overrides, false)
+      end
+
+    if changing_config? and not authorized? do
+      add_error(changeset, :"config.#{key}", "can only be configured by an administrator")
     else
       changeset
     end
   end
 
-  @spec query_class_policy(term()) :: term()
-  defp query_class_policy(config) when is_map(config),
-    do: Map.get(config, :query_class_settings) || Map.get(config, "query_class_settings") || %{}
+  @spec admin_config_value(map() | nil, atom(), map() | list()) :: term()
+  defp admin_config_value(config, key, empty) when is_map(config),
+    do: Map.get(config, key) || Map.get(config, Atom.to_string(key)) || empty
 
-  defp query_class_policy(_config), do: %{}
+  defp admin_config_value(_config, _key, empty), do: empty
 
   # temp function
   defp do_config_change(%Changeset{changes: %{config: config}} = changeset) do

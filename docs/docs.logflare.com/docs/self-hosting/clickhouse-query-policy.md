@@ -38,7 +38,7 @@ A nonempty configuration must include a `default` with a positive integer `prior
 
 The reserved `quarantine` class always applies priority 20 or lower urgency, at most 2 threads, a 10-second execution limit, and a 1 GiB read cap. These settings apply even without a saved class policy, and saved policy can tighten the limits. Without a dedicated `quarantine` cluster, queries use the backend's default read cluster.
 
-The class is selected from the original `LF-ENDPOINT-CLICKHOUSE-READ-CLUSTER-LABEL` request header, even when routing resolves to another cluster or retries on the default cluster. Known query-class labels do not generate unconfigured-routing warnings; unknown routing labels still do.
+The class is selected from the original `LF-ENDPOINT-CLICKHOUSE-READ-CLUSTER-LABEL` request header unless an administrator's routing rule selects another label. This class stays in effect even when routing resolves to another cluster or retries on the default cluster. Known query-class labels do not generate unconfigured-routing warnings; unknown routing labels still do.
 
 The header is a scheduling hint, not an authorization boundary. Selecting a label does not grant access to another tenant's data.
 
@@ -81,7 +81,7 @@ Ad hoc queries, including `/api/query` and `/api/query/parse`, do not support th
 
 The supported keys are `max_execution_time`, `max_memory_usage`, `max_rows_to_read`, `max_bytes_to_read`, `max_threads`, and `priority`. Requests must be positive numeric literals; only execution time accepts fractions. The execution time must be at least one microsecond and fit in ClickHouse's signed 64-bit microsecond range. Zero, negative values, strings, parameter placeholders, expressions, and case-insensitive duplicate request keys are rejected. Existing allowlisted optimizer settings can remain in the same clause.
 
-At execution time, Logflare first resolves the backend default, original requested class, and administrator-enforced endpoint policy. SQL requests are applied last:
+At execution time, Logflare first resolves the backend default, effective query class, and administrator-enforced endpoint policy. SQL requests are applied last:
 
 - Resource limits use `min(inherited, requested)`.
 - Priority uses `max(inherited, requested)`: a larger positive number means lower urgency. Requesting priority 1 cannot elevate inherited priority 10.

@@ -10,6 +10,7 @@ defmodule Logflare.Endpoints do
   alias Logflare.Alerting.AlertQuery
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.ReadClusterOverrides
   alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Backends.Backend
   alias Logflare.Backends.QueryError
@@ -897,7 +898,7 @@ defmodule Logflare.Endpoints do
   def run_cached_query(%EndpointQuery{} = query, params \\ %{}, opts \\ [])
       when is_map(params) and is_list(opts) do
     with :ok <- validate_query_override(query, params),
-         true <- query.cache_duration_seconds > 0 do
+         true <- query.cache_duration_seconds > 0 and not read_cluster_overridden?(query, opts) do
       query_results_cache(query, params, opts, 3, node())
     else
       false ->
@@ -907,6 +908,19 @@ defmodule Logflare.Endpoints do
         error
     end
   end
+
+  @spec read_cluster_overridden?(EndpointQuery.t(), keyword()) :: boolean()
+  defp read_cluster_overridden?(%EndpointQuery{language: :ch_sql} = query, opts) do
+    case get_backend_for_query(query) do
+      {:ok, %Backend{type: :clickhouse, config: config}} ->
+        ReadClusterOverrides.match(config, query, opts[:read_cluster]) != nil
+
+      _ ->
+        false
+    end
+  end
+
+  defp read_cluster_overridden?(_query, _opts), do: false
 
   @spec query_results_cache(EndpointQuery.t(), map(), keyword(), non_neg_integer(), node()) ::
           run_query_return()
@@ -1113,6 +1127,7 @@ defmodule Logflare.Endpoints do
          {:ok, settings} <- endpoint_clickhouse_settings(endpoint, params) do
       ClickHouseAdaptor.prepare_query(backend, query,
         query_type: :endpoint,
+        routing_endpoint: endpoint,
         allow_clickhouse_sql_settings: true,
         read_cluster: Keyword.get(opts, :read_cluster),
         filesystem_cache_settings: settings,
