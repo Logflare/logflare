@@ -18,7 +18,8 @@ defmodule Logflare.Telemetry do
   @caches [
             {Logflare.Logs.LogEvents.Cache, :log_events},
             {Logflare.Logs.RejectedLogEvents, :rejected_log_events},
-            {Logflare.PubSubRates.Cache, :pub_sub_rates}
+            {Logflare.PubSubRates.Cache, :pub_sub_rates},
+            {Logflare.RecordUsages.Cache, :record_usages}
           ] ++ context_caches_with_metrics
 
   @process_metrics %{

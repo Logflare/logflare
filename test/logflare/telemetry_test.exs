@@ -919,6 +919,7 @@ defmodule Logflare.TelemetryTest do
         :log_events,
         :rejected_log_events,
         :pub_sub_rates,
+        :record_usages,
         :team_users,
         :partners,
         :users,
