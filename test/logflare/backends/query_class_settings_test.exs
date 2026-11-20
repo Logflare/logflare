@@ -2,6 +2,7 @@ defmodule Logflare.Backends.QueryClassSettingsTest do
   use Logflare.DataCase
 
   alias Logflare.Backends
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryClassSettings
   alias Logflare.Backends.Backend
   alias Logflare.Cluster.Utils, as: ClusterUtils
   alias Logflare.ContextCache
@@ -27,6 +28,21 @@ defmodule Logflare.Backends.QueryClassSettingsTest do
       |> then(&Backends.get_backend(&1.id))
 
     %{owner: owner, admin: admin, backend: backend}
+  end
+
+  test "quarantine settings can tighten but cannot relax the built-in policy", context do
+    settings = Map.put(@policy, "quarantine", %{"priority" => 30, "max_threads" => 1})
+
+    assert {:ok, backend} =
+             Backends.configure_query_class_settings(context.admin, context.backend, settings)
+
+    assert {:ok, %{"priority" => 30, "max_threads" => 1, "max_execution_time" => 10.0}} =
+             QueryClassSettings.resolve(backend.config.query_class_settings, "quarantine", %{})
+
+    assert {:ok, %{"priority" => 20, "max_threads" => 2, "max_bytes_to_read" => 1_073_741_824}} =
+             QueryClassSettings.resolve(%{}, "quarantine", %{"priority" => 1, "max_threads" => 8})
+
+    assert {:ok, %{}} = QueryClassSettings.resolve(%{}, "api_paid", %{})
   end
 
   test "policy updates multicast fenced query-context evictions", context do
