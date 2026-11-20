@@ -5,18 +5,15 @@ defmodule Logflare.Sources.Source.Supervisor do
   use GenServer
 
   alias Logflare.Backends
+  alias Logflare.Backends.SystemBackend
   alias Logflare.ContextCache
   alias Logflare.Google.BigQuery
   alias Logflare.Repo
   alias Logflare.SourceSchemas
   alias Logflare.Sources
   alias Logflare.Sources.Counters
-  alias Logflare.Google.BigQuery
-  alias Logflare.ContextCache
-  alias Logflare.SourceSchemas
-  alias Logflare.Backends
-  alias Logflare.Utils.Tasks
   alias Logflare.Sources.Source
+
   require Logger
 
   # TODO: Move all manager fns into a manager server so errors in manager fns don't kill the whole supervision tree
@@ -90,7 +87,6 @@ defmodule Logflare.Sources.Source.Supervisor do
   ## Public Functions
 
   def start_source(source_token) when is_atom(source_token) do
-    # Calling this server doing boot times out due to dealing with bigquery in init_table()
     GenServer.abcast(__MODULE__, {:create, source_token})
 
     {:ok, source_token}
@@ -99,7 +95,7 @@ defmodule Logflare.Sources.Source.Supervisor do
   def delete_source(source_token) do
     GenServer.abcast(__MODULE__, {:stop, source_token})
     # TODO: move to adaptor callback
-    unless do_pg_ops?() do
+    if Backends.bigquery_default_backend?() do
       BigQuery.delete_table(source_token)
     end
 
@@ -112,7 +108,7 @@ defmodule Logflare.Sources.Source.Supervisor do
   end
 
   def reset_source(source_token) do
-    unless do_pg_ops?() do
+    if Backends.bigquery_default_backend?() do
       GenServer.abcast(__MODULE__, {:restart, source_token})
     end
 
@@ -129,11 +125,6 @@ defmodule Logflare.Sources.Source.Supervisor do
     # TODO: use context func
     Repo.all(Ecto.assoc(user, :sources))
     |> Enum.each(fn s -> reset_source(s.token) end)
-  end
-
-  defp do_pg_ops? do
-    !!Application.get_env(:logflare, :single_tenant) &&
-      !!Application.get_env(:logflare, :postgres_backend_adapter)
   end
 
   @spec start_created_source(Source.t() | nil | {:error, :database_unavailable}, atom()) ::
@@ -173,7 +164,7 @@ defmodule Logflare.Sources.Source.Supervisor do
 
   defp create_source(%Source{} = source) do
     with {:ok, _pid} = res <- do_start_source_sup(source),
-         :ok <- init_table(source) do
+         :ok <- SystemBackend.on_source_start(source) do
       res
     else
       {:error, :already_started} = err ->
@@ -183,7 +174,7 @@ defmodule Logflare.Sources.Source.Supervisor do
         {:error, reason}
 
       {:error, :start_timeout} = err ->
-        init_table(source)
+        SystemBackend.on_source_start(source)
         err
 
       {:error, _reason} = err ->
@@ -205,30 +196,6 @@ defmodule Logflare.Sources.Source.Supervisor do
       _ ->
         :noop
     end
-
-    :ok
-  end
-
-  @spec init_table(Source.t()) :: :ok
-  def init_table(%Source{token: source_token} = source) do
-    %{
-      user_id: user_id,
-      bigquery_table_ttl: bigquery_table_ttl,
-      bigquery_project_id: bigquery_project_id,
-      bigquery_dataset_location: bigquery_dataset_location,
-      bigquery_dataset_id: bigquery_dataset_id
-    } = BigQuery.GenUtils.get_bq_user_info(source)
-
-    Tasks.start_child(fn ->
-      BigQuery.init_table!(
-        user_id,
-        source_token,
-        bigquery_project_id,
-        bigquery_table_ttl,
-        bigquery_dataset_location,
-        bigquery_dataset_id
-      )
-    end)
 
     :ok
   end
