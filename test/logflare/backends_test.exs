@@ -2346,7 +2346,7 @@ defmodule Logflare.BackendsTest do
           raise "ingesting more than 1 event"
         end
 
-        {:ok, %Tesla.Env{}}
+        {:ok, %Tesla.Env{status: 200, body: ""}}
       end)
 
       source = insert(:source, user: user)
@@ -2565,6 +2565,7 @@ defmodule Logflare.BackendsTest do
       |> expect(:send, fn opts ->
         [event] = opts[:body]
         send(pid, {ref, event})
+        {:ok, %Tesla.Env{status: 200, body: ""}}
       end)
 
       event = build(:log_event, source: source, message: "some event")
