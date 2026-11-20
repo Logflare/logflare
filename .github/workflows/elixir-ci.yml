@@ -334,7 +334,7 @@ jobs:
           --shm-size="256m"
           --tmpfs /var/lib/clickhouse:rw,size=1G
       vm:
-        image: victoriametrics/victoria-metrics:v1.154.0
+        image: victoriametrics/victoria-metrics:v1.156.0
         ports:
           - 8428:8428
         options: >-

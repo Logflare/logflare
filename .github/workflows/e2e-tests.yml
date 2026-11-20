@@ -48,7 +48,7 @@ jobs:
 
   test:
     name: Tests with Playwright
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 25
     needs: versions
 
