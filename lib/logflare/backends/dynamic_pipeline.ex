@@ -500,7 +500,7 @@ defmodule Logflare.Backends.DynamicPipeline do
     @impl GenServer
     def init(%{} = args) do
       loop(args)
-      {:ok, args}
+      {:ok, %{args | replace_pending: true}}
     end
 
     @doc """
