@@ -102,9 +102,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   @spec default_async_insert_busy_timeout_max_ms() :: pos_integer()
   def default_async_insert_busy_timeout_max_ms, do: @default_async_insert_busy_timeout_max_ms
 
-  defdelegate connection_pool_via(arg), to: ConnectionManager
-  defdelegate connection_pool_via(arg, label), to: ConnectionManager
-
   @doc false
   def child_spec(arg) do
     %{
@@ -137,16 +134,22 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     name = Backends.via_backend(backend, Pipeline)
 
     case GenServer.whereis(name) do
-      nil -> :ok
-      _pid -> DynamicPipeline.replace_pipelines(name, fn -> latest_pipeline_args(backend_id) end)
+      pid when is_pid(pid) ->
+        DynamicPipeline.replace_pipelines(name, fn -> changed_pipeline_args(name, backend_id) end)
+
+      nil ->
+        :ok
     end
   end
 
-  @spec latest_pipeline_args(pos_integer()) :: keyword() | nil
-  defp latest_pipeline_args(backend_id) do
-    case Backends.get_backend(backend_id) do
-      nil -> nil
-      backend -> [backend: backend]
+  @spec changed_pipeline_args(GenServer.name(), pos_integer()) :: keyword() | nil
+  defp changed_pipeline_args(name, backend_id) do
+    with %Backend{} = backend <- Backends.get_backend(backend_id),
+         %{pipeline_args: running_args} <- DynamicPipeline.get_state(name),
+         false <- Pipeline.batch_opts(running_args[:backend]) == Pipeline.batch_opts(backend) do
+      [backend: backend]
+    else
+      _deleted_or_unchanged -> nil
     end
   end
 
@@ -939,15 +942,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
         ) ::
           {:ok, {[map()], non_neg_integer() | :not_supported}} | {:error, term()}
   defp do_ch_query_on_label(%Backend{} = backend, statement, params, label, headers) do
-    pool_via = connection_pool_via(backend, label)
-
     timeout = if Application.get_env(:logflare, :env) == :test, do: 1_000, else: 60_000
 
     backend_id = backend.id
     log_fun = fn entry -> handle_read_pool_log(entry, backend_id, label) end
 
     ch_opts = [decode: false, timeout: timeout, log: log_fun, headers: headers]
-    query = fn -> Ch.query(pool_via, statement, params, ch_opts) end
+    query = fn pool -> Ch.query(pool, statement, params, ch_opts) end
 
     case query_pool(backend, label, query) do
       {:ok, %Ch.Result{} = result} ->
@@ -966,12 +967,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   @spec query_pool(
           Backend.t(),
           String.t() | nil,
-          (-> {:ok, Ch.Result.t()} | {:error, Exception.t()}),
+          (pid() -> {:ok, Ch.Result.t()} | {:error, Exception.t()}),
           boolean()
         ) :: {:ok, Ch.Result.t()} | {:error, Exception.t()} | {:connection_error, term()}
   defp query_pool(%Backend{} = backend, label, query, retry? \\ true) do
     case ensure_query_connection_manager_started(backend, label) do
-      :ok -> query.()
+      {:ok, pool} -> query.(pool)
       {:error, reason} -> {:connection_error, reason}
     end
   catch
@@ -1801,7 +1802,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   end
 
   @spec ensure_query_connection_manager_started(Backend.t(), String.t() | nil) ::
-          :ok | {:error, term()}
+          {:ok, pid()} | {:error, term()}
   defp ensure_query_connection_manager_started(%Backend{id: backend_id} = backend, label) do
     via = Backends.via_backend(backend, ConnectionManager, label)
 
@@ -1847,10 +1848,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   defp maybe_start_query_connection_manager(_pid, _backend_id, _label), do: :ok
 
-  @spec ensure_pool_and_notify(Backend.t(), String.t() | nil) :: :ok | {:error, term()}
+  @spec ensure_pool_and_notify(Backend.t(), String.t() | nil) :: {:ok, pid()} | {:error, term()}
   defp ensure_pool_and_notify(%Backend{} = backend, label) do
-    with :ok <- ConnectionManager.ensure_pool_started(backend, label) do
+    with {:ok, pool} <- ConnectionManager.fetch_pool(backend, label) do
       ConnectionManager.notify_activity(backend, label)
+      {:ok, pool}
     end
   end
 end
