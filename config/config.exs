@@ -173,7 +173,8 @@ config :number,
 
 config :logflare, Logflare.ContextCache.CacheBuster,
   replication_slot: :temporary,
-  publications: ["logflare_pub"]
+  publications: ["logflare_pub"],
+  flush_confirmation_interval: :timer.minutes(1)
 
 config :logflare, Logflare.KeyValues.CacheWarmer, warm_limit: 500_000
 

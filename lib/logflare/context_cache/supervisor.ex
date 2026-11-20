@@ -11,6 +11,7 @@ defmodule Logflare.ContextCache.Supervisor do
   alias Logflare.ContextCache.CacheBuster
   alias Logflare.ContextCache.CacheBusterWorker
   alias Logflare.ContextCache.CatalogCache
+  alias Logflare.ContextCache.ReplicationAdapter
   alias Logflare.ContextCache.Tombstones
   alias Logflare.Endpoints
   alias Logflare.GenSingleton
@@ -126,10 +127,12 @@ defmodule Logflare.ContextCache.Supervisor do
          [
            [
              register: publisher_name(),
+             postgres_adapter: ReplicationAdapter,
              epgsql: epgsql,
              slot: slot,
              wal_position: {"0", "0"},
-             publications: publications
+             publications: publications,
+             flush_confirmation_interval: cache_buster_config[:flush_confirmation_interval]
            ]
          ]}
     }
