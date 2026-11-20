@@ -175,6 +175,14 @@ config :logflare, Logflare.ContextCache.CacheBuster,
   replication_slot: :temporary,
   publications: ["logflare_pub"]
 
+config :logflare, Logflare.ContextCache.PeerWarmer,
+  enabled: true,
+  max_peers: 3,
+  peer_wait: to_timeout(second: 5),
+  copy_timeout: to_timeout(second: 30),
+  key_values_max_age: to_timeout(minute: 70),
+  await_cache_buster: true
+
 config :logflare, Logflare.KeyValues.CacheWarmer, warm_limit: 500_000
 
 config :open_api_spex, :cache_adapter, OpenApiSpex.Plug.PersistentTermCache

@@ -6,6 +6,7 @@ defmodule Logflare.Sources.CacheWarmer do
   require Logger
 
   alias Logflare.Billing
+  alias Logflare.ContextCache.PeerWarmer
   alias Logflare.ContextCache.Warmer
   alias Logflare.Repo
   alias Logflare.Sources
@@ -13,7 +14,34 @@ defmodule Logflare.Sources.CacheWarmer do
   alias Logflare.Sources.Source
   alias Logflare.User
   @impl true
-  def execute(_state), do: Warmer.warm(Cache, &warm/0)
+  def execute(_state) do
+    case PeerWarmer.status(Cache) do
+      %{state: :ready} -> warm_from_db()
+      _not_warmed -> initial_warm()
+    end
+  end
+
+  defp initial_warm do
+    PeerWarmer.mark_warming(Cache)
+
+    case PeerWarmer.copy_from_peer(Cache) do
+      {:ok, %{warmed_at: peer_warmed_at}} ->
+        PeerWarmer.mark_ready(Cache, peer_warmed_at)
+        :ignore
+
+      :fallback ->
+        warm_from_db()
+    end
+  end
+
+  defp warm_from_db do
+    warmed_at = DateTime.utc_now()
+
+    with {:ok, _pairs} = result <- Warmer.warm(Cache, &warm/0) do
+      PeerWarmer.mark_ready(Cache, warmed_at)
+      result
+    end
+  end
 
   @spec warm() :: Warmer.pairs()
   defp warm do
