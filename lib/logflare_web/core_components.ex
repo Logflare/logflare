@@ -150,7 +150,18 @@ defmodule LogflareWeb.CoreComponents do
 
   @doc "button"
   attr :variant, :string,
-    values: ["primary", "secondary", "success", "danger", "warning", "info", "light", "dark"]
+    values: [
+      "primary",
+      "secondary",
+      "success",
+      "danger",
+      "warning",
+      "info",
+      "light",
+      "dark",
+      "outline-secondary",
+      "outline-danger"
+    ]
 
   attr :class, :string, default: ""
   attr :disabled, :boolean, default: false
@@ -174,14 +185,15 @@ defmodule LogflareWeb.CoreComponents do
     values: ["primary", "secondary"]
 
   attr :class, :string, default: ""
-  attr :label, :string, default: "Copy"
+  attr :label, :any, default: "Copy", doc: "Visible label, or nil for an icon-only button."
   attr :title, :string, default: "Copy to clipboard"
+  attr :placement, :string, default: "top"
   attr :rest, :global
 
   def clipboard_button(assigns) do
     ~H"""
-    <.button variant={@variant} class={@class} phx-click={JS.dispatch("logflare:copy-to-clipboard", detail: %{text: @text})} data-toggle="tooltip" data-placement="top" title={@title} {@rest}>
-      <i class="fa fa-clone" aria-hidden="true"></i> {@label}
+    <.button variant={@variant} class={@class} phx-click={JS.dispatch("logflare:copy-to-clipboard", detail: %{text: @text})} data-toggle="tooltip" data-placement={@placement} title={@title} {@rest}>
+      <i class="fa fa-clone" aria-hidden="true"></i> <span :if={@label}>{@label}</span>
     </.button>
     """
   end
