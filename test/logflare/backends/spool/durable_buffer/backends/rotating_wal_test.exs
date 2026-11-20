@@ -93,15 +93,19 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWalTest do
 
   test "handle_message/2 flush_tick rotates a pending tail once idle past max_rotation_interval_ms" do
     config =
-      config(max_batch_bytes: 1_000_000, max_rotation_interval_ms: @interval_ms, worker_count: 1)
+      config(max_batch_bytes: 1_000_000, max_rotation_interval_ms: 60_000, worker_count: 1)
 
     {:ok, state} = Backend.open(config, 0)
 
     {entry, size} = framed("idle tail")
     assert {:ok, state} = Backend.commit(state, entry, size, {0, 1})
-    refute_receive {:committed, _, _, _}, 10
+    assert state.pending_bytes == size
 
-    assert_receive {:backend, :flush_tick}, @interval_ms * 5
+    state = %{
+      state
+      | last_rotation_at: System.monotonic_time(:millisecond) - config.max_rotation_interval_ms
+    }
+
     assert {[], new_state} = Backend.handle_message(:flush_tick, state)
 
     assert new_state.pending_bytes == 0

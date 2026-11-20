@@ -4,13 +4,17 @@ defmodule Logflare.Sources.Source.SupervisorTest do
   import ExUnit.CaptureLog
 
   alias Logflare.Backends
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Backends.SourceSup
   alias Logflare.ContextCache
   alias Logflare.Google.BigQuery
+  alias Logflare.SingleTenant
   alias Logflare.Sources
+  alias Logflare.Sources.Cache
   alias Logflare.Sources.Counters
   alias Logflare.Sources.Source
   alias Logflare.Sources.Source.RateCounterServer
+  alias Logflare.Sources.Source.Supervisor
 
   setup do
     stub(BigQuery, :init_table!, fn _, _, _, _, _, _ -> :ok end)
@@ -161,5 +165,21 @@ defmodule Logflare.Sources.Source.SupervisorTest do
         assert :ok = DynamicSupervisor.terminate_child(partition, pid)
       end
     end)
+  end
+
+  test "runs the system backend source hook when source startup times out" do
+    source = build(:source)
+
+    stub(SingleTenant, :single_tenant?, fn -> false end)
+
+    expect(Cache, :get_by_token_or_primary, fn token ->
+      assert token == source.token
+      source
+    end)
+
+    expect(Backends, :start_source_sup, fn ^source -> {:error, :start_timeout} end)
+    expect(BigQueryAdaptor, :on_source_start, fn ^source -> :ok end)
+
+    assert {:noreply, nil} = Supervisor.handle_cast({:create, source.token}, nil)
   end
 end

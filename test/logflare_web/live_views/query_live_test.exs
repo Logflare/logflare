@@ -191,8 +191,6 @@ defmodule LogflareWeb.QueryLiveTest do
 
       {source, backend} = Logflare.DataCase.setup_clickhouse_test(user: user, source: source)
 
-      start_supervised!({ClickHouseAdaptor, backend})
-
       query = ~s(select non_existent from "#{source.name}")
 
       {:ok, view, _html} =
