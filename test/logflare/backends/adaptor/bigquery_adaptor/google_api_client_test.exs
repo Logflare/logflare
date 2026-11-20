@@ -4,9 +4,14 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClientTest do
   import ExUnit.CaptureLog
   import Mimic
 
+  alias Google.Cloud.Bigquery.Storage.V1.AppendRowsRequest
+  alias Google.Cloud.Bigquery.Storage.V1.AppendRowsRequest.ProtoData
   alias Google.Cloud.Bigquery.Storage.V1.AppendRowsResponse
   alias Google.Cloud.Bigquery.Storage.V1.BigQueryWrite
+  alias Google.Cloud.Bigquery.Storage.V1.ProtoRows
+  alias Google.Cloud.Bigquery.Storage.V1.ProtoSchema
   alias Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor.ProtoEncoder
   alias Logflare.Networking.GrpcPool
 
   defp call_append_rows do
@@ -60,6 +65,37 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClientTest do
       assert {:ok, log} = with_log(fn -> call_append_rows() end)
       assert log =~ "bad row"
       refute_received {:sleep, _}
+    end
+  end
+
+  describe "protobuf rows" do
+    test "are sent as proto_rows, one request per batch, with the writer schema" do
+      test_pid = self()
+      descriptor = ProtoEncoder.descriptor([{"id", :string, true}])
+
+      stub(GRPC.Stub, :send_request, fn stream, request ->
+        send(test_pid, {:request, request})
+        stream
+      end)
+
+      proto_data = GoogleApiClient.to_proto_data(descriptor, [["row-a", "row-b"], ["row-c"]])
+      context = [project_id: "my-project", dataset_id: "my-dataset"]
+
+      assert :ok = GoogleApiClient.append_rows({:proto, proto_data}, context, "my-table")
+
+      for rows <- [["row-a", "row-b"], ["row-c"]] do
+        assert_received {:request,
+                         %AppendRowsRequest{
+                           write_stream:
+                             "projects/my-project/datasets/my-dataset/tables/my-table/streams/_default",
+                           rows:
+                             {:proto_rows,
+                              %ProtoData{
+                                writer_schema: %ProtoSchema{proto_descriptor: ^descriptor},
+                                rows: %ProtoRows{serialized_rows: ^rows}
+                              }}
+                         }}
+      end
     end
   end
 
