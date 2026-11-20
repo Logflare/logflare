@@ -8,6 +8,7 @@ System Monitoring collects metrics and logs about your sources, backends, and en
 
 - **`system.metrics`** - OpenTelemetry metrics for ingestion, queries, and egress
 - **`system.logs`** - Application logs for your sources and backends
+- **`system.traces`** - Queries executed by Logflare on your behalf
 
 System sources behave like regular sources. Query, search, and monitor them with standard Logflare tools. They appear as favorites by default.
 
@@ -37,6 +38,23 @@ Metrics are collected every 60 seconds.
 ### system.logs
 
 Contains application logs related to your sources, backends, and endpoints.
+
+### system.traces
+
+Contains one event per query that Logflare executes on your behalf. Endpoint queries are traced, including background refreshes of cached results. Requests served from the results cache are not traced.
+
+Each event includes:
+
+- **`event_message`** - Query kind, such as `query.endpoint`
+- **`query`** - The SQL executed on the backend
+- **`query_language`** - Language of the endpoint query: `bq_sql`, `pg_sql`, or `ch_sql`
+- **`backend_type`** and **`backend_id`** - The backend that ran the query
+- **`total_bytes_processed`** - Bytes scanned, for backends that report it (BigQuery, ClickHouse)
+- **`duration_ms`** - Query execution time
+- **`status`** and **`error`** - `ok` or `error`, with the error message
+- **`params`** - Query parameters, as strings
+- **`labels`** - Endpoint labels
+- **`endpoint_id`** and **`endpoint_uuid`** - The endpoint that ran the query
 
 ## Metrics Collected
 
