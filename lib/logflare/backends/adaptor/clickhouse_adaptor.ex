@@ -28,6 +28,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   alias Ecto.Changeset
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.ReadClusterOverrides
   alias Logflare.Ecto.ClickHouse, as: EctoClickHouse
   alias Logflare.Backends.Backend
   alias Logflare.Backends.DynamicPipeline
@@ -37,6 +38,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   alias Logflare.Backends.QueryError
   alias Logflare.Endpoints.ClickHouseSettings
   alias Logflare.Endpoints.ClickHouseSqlSettings
+  alias Logflare.Endpoints.EndpointQuery
   alias Logflare.LogEvent
   alias Logflare.LogEvent.TypeDetection
   alias Logflare.Sources.Source
@@ -63,6 +65,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     :read_only_urls,
     :default_read_cluster,
     :query_class_settings,
+    :read_cluster_overrides,
     :query_user,
     :query_password,
     :replica_routing_param
@@ -173,7 +176,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   def redact_config(config) do
     config
     |> Map.put(:password, "REDACTED")
-    |> Map.delete(:query_class_settings)
+    |> Map.drop([:query_class_settings, :read_cluster_overrides])
     |> redact_query_password()
   end
 
@@ -231,6 +234,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       when is_non_empty_binary(query_string) and is_list(declared_params) and is_map(input_params) and
              is_list(opts) do
     with {:ok, {limited_query, max_rows}} <- limit_endpoint_query(query_string, endpoint_query) do
+      opts =
+        if is_struct(endpoint_query, EndpointQuery),
+          do: Keyword.put(opts, :routing_endpoint, endpoint_query),
+          else: opts
+
       execute_query_with_params(
         backend,
         limited_query,
@@ -351,6 +359,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
        read_only_urls: {:map, :string},
        default_read_cluster: :string,
        query_class_settings: :map,
+       read_cluster_overrides: {:array, :map},
        use_async_inserts_for_small_batches: :boolean,
        use_async_inserts_only: :boolean,
        async_insert_cluster_url: :string,
@@ -375,6 +384,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       :read_only_urls,
       :default_read_cluster,
       :query_class_settings,
+      :read_cluster_overrides,
       :use_async_inserts_for_small_batches,
       :use_async_inserts_only,
       :async_insert_cluster_url,
@@ -464,6 +474,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     |> validate_read_only_urls()
     |> validate_default_read_cluster()
     |> validate_query_class_settings()
+    |> validate_read_cluster_overrides()
     |> validate_user_pass()
     |> validate_query_user_pass()
     |> validate_number(:read_pool_size,
@@ -796,11 +807,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   def execute_ch_query(%Backend{} = backend, statement, params, opts)
       when is_list_or_map(params) and is_list(opts) do
-    with {:ok, statement} <- prepare_query_result(backend, statement, opts) do
-      requested = Keyword.get(opts, :read_cluster)
-      label = resolve_read_cluster_label(backend, requested)
+    requested = Keyword.get(opts, :read_cluster)
+    {opts, rule} = route_endpoint_read(backend, opts)
+    effective = Keyword.get(opts, :read_cluster)
+    label = resolve_read_cluster_label(backend, effective)
 
-      warn_on_unconfigured_read_cluster(backend, requested, label)
+    emit_read_cluster_override(backend, requested, effective, rule)
+
+    with {:ok, statement} <- prepare_query_result(backend, statement, opts) do
+      warn_on_unconfigured_read_cluster(backend, effective, label)
       headers = Keyword.get(opts, :headers, [])
 
       {result, queried_label} =
@@ -825,16 +840,36 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
           %{count: 1},
           %{
             backend_id: backend.id,
-            read_cluster:
-              read_cluster_tag(
-                resolve_read_cluster_label(backend, Keyword.get(opts, :read_cluster))
-              ),
+            read_cluster: read_cluster_tag(label),
             error_kind: :policy_rejection
           }
         )
 
-        {:error, query_policy_error(reason, Keyword.get(opts, :read_cluster))}
+        {:error, query_policy_error(reason, requested)}
     end
+  end
+
+  @spec route_endpoint_read(Backend.t(), keyword()) :: {keyword(), pos_integer() | nil}
+  defp route_endpoint_read(%Backend{config: config}, opts) do
+    case ReadClusterOverrides.match(config, opts[:routing_endpoint], opts[:read_cluster]) do
+      {target, rule} -> {Keyword.put(opts, :read_cluster, target), rule}
+      nil -> {opts, nil}
+    end
+  end
+
+  @spec emit_read_cluster_override(Backend.t(), term(), term(), pos_integer() | nil) :: :ok
+  defp emit_read_cluster_override(_backend, _requested, _effective, nil), do: :ok
+
+  defp emit_read_cluster_override(%Backend{id: id}, requested, effective, rule) do
+    metadata = %{
+      backend_id: id,
+      requested_label: requested,
+      final_label: effective,
+      rule_index: rule
+    }
+
+    Logger.debug("ClickHouse endpoint read cluster override applied", Map.to_list(metadata))
+    :telemetry.execute([:logflare, :clickhouse, :read_cluster_override], %{count: 1}, metadata)
   end
 
   @spec query_policy_error(String.t() | ClickHouseSqlSettings.missing_baseline_error(), term()) ::
@@ -856,6 +891,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   @spec prepare_query(Backend.t(), iodata(), Keyword.t()) ::
           {:ok, String.t()} | {:error, String.t()}
   def prepare_query(%Backend{} = backend, statement, opts \\ []) do
+    {opts, _rule} = route_endpoint_read(backend, opts)
+
     case prepare_query_result(backend, statement, opts) do
       {:error, {:missing_clickhouse_sql_baseline, message}} -> {:error, message}
       result -> result
@@ -927,6 +964,18 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
           {:ok, settings} -> Changeset.put_change(changeset, :query_class_settings, settings)
           {:error, reason} -> Changeset.add_error(changeset, :query_class_settings, reason)
         end
+    end
+  end
+
+  @spec validate_read_cluster_overrides(Changeset.t()) :: Changeset.t()
+  defp validate_read_cluster_overrides(changeset) do
+    rules = Changeset.get_field(changeset, :read_cluster_overrides) || []
+    urls = Changeset.get_field(changeset, :read_only_urls) || %{}
+    policies = Changeset.get_field(changeset, :query_class_settings) || %{}
+
+    case ReadClusterOverrides.validate(rules, urls, policies) do
+      :ok -> changeset
+      {:error, reason} -> Changeset.add_error(changeset, :read_cluster_overrides, reason)
     end
   end
 

@@ -388,11 +388,31 @@ defmodule Logflare.Backends do
   """
   @spec configure_query_class_settings(User.t(), Backend.t(), map()) ::
           {:ok, Backend.t()} | {:error, term()}
-  def configure_query_class_settings(%User{id: user_id}, %Backend{} = backend, settings) do
+  def configure_query_class_settings(%User{} = actor, %Backend{} = backend, settings) do
+    configure_read_policy(actor, backend, %{query_class_settings: settings},
+      allow_query_class_settings: true
+    )
+  end
+
+  @doc """
+  Saves the ordered read routing rules without restarting ingest or read pools.
+  """
+  @spec configure_read_cluster_overrides(User.t(), Backend.t(), [map()]) ::
+          {:ok, Backend.t()} | {:error, term()}
+  def configure_read_cluster_overrides(%User{} = actor, %Backend{} = backend, rules) do
+    configure_read_policy(actor, backend, %{read_cluster_overrides: rules},
+      allow_read_cluster_overrides: true
+    )
+  end
+
+  @spec configure_read_policy(User.t(), Backend.t(), map(), keyword()) ::
+          {:ok, Backend.t()} | {:error, term()}
+  defp configure_read_policy(%User{id: user_id}, backend, config, opts) do
     with %User{admin: true} <- Repo.get(User, user_id) do
-      update_backend_config(backend, %{config: %{query_class_settings: settings}},
-        allow_query_class_settings: true,
-        query_policy_only: true
+      update_backend_config(
+        backend,
+        %{config: config},
+        Keyword.put(opts, :query_policy_only, true)
       )
     else
       nil -> {:error, :not_found}
