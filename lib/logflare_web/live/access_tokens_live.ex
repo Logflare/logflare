@@ -5,6 +5,7 @@ defmodule LogflareWeb.AccessTokensLive do
   alias Logflare.Auth
   alias Logflare.Endpoints
   alias Logflare.Sources
+  alias Logflare.Teams.TeamContext
   alias LogflareWeb.AccessTokensLive.Form
   alias LogflareWeb.Utils
 
@@ -33,7 +34,7 @@ defmodule LogflareWeb.AccessTokensLive do
           The <code>X-API-KEY</code> header method expects the header format <code>X-API-KEY: your-access-token</code>.
           The <code>api_key</code> query parameter method expects the search format <code>?api_key=your-access-token</code>.</p>
 
-        <.create_token_form :if={@live_action == :new} form={@create_token_form} sources={@sources} endpoints={@endpoints} />
+        <.create_token_form :if={@live_action == :new} form={@create_token_form} sources={@sources} endpoints={@endpoints} team_context={@team_context} />
 
         <%= if @created_token do %>
           <.alert variant="success">
@@ -105,6 +106,7 @@ defmodule LogflareWeb.AccessTokensLive do
   attr :form, :any, required: true
   attr :sources, :list, required: true
   attr :endpoints, :list, required: true
+  attr :team_context, TeamContext, required: true
 
   defp create_token_form(assigns) do
     ~H"""
@@ -128,6 +130,12 @@ defmodule LogflareWeb.AccessTokensLive do
           <.input field={f[:private]} type="checkbox" />
           <label class="form-check-label tw-px-1" for={f[:private].id}>
             Private <small class="form-text text-muted">For account management, has all privileges</small>
+          </label>
+        </div>
+        <div :if={Auth.can_create_admin_token?(@team_context)} class="form-check tw-mr-2">
+          <.input field={f[:admin]} type="checkbox" />
+          <label class="form-check-label tw-px-1" for={f[:admin].id}>
+            Admin <small class="form-text text-muted">Create and modify account resources and team users.</small>
           </label>
         </div>
       </div>
@@ -219,7 +227,7 @@ defmodule LogflareWeb.AccessTokensLive do
   def handle_event(
         "create-token",
         payload,
-        %{assigns: %{user: user}} = socket
+        %{assigns: %{team_context: team_context, user: user}} = socket
       ) do
     params = form_params(payload)
 
@@ -235,7 +243,7 @@ defmodule LogflareWeb.AccessTokensLive do
       form = Ecto.Changeset.apply_changes(changeset)
       attrs = %{description: form.description, scopes: form |> Form.to_scopes() |> Enum.join(" ")}
 
-      case Auth.create_access_token(user, attrs) do
+      case Auth.create_access_token(team_context, user, attrs) do
         {:ok, token} ->
           socket =
             socket
@@ -245,6 +253,9 @@ defmodule LogflareWeb.AccessTokensLive do
             |> push_patch(to: ~p"/access-tokens")
 
           {:noreply, socket}
+
+        {:error, :unauthorized} ->
+          {:noreply, put_flash(socket, :error, "Could not create access token")}
 
         {:error, %Ecto.Changeset{} = changeset} ->
           message = changeset |> Utils.stringify_changeset_errors("Could not create access token")
@@ -293,6 +304,7 @@ defmodule LogflareWeb.AccessTokensLive do
            %{
              "description" => _description,
              "private" => _private,
+             "admin" => _admin,
              "ingest" => _ingest,
              "query" => _query
            } = params

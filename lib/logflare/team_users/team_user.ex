@@ -5,6 +5,7 @@ defmodule Logflare.TeamUsers.TeamUser do
   alias Logflare.Teams.Team
   use TypedEctoSchema
   @derive {Jason.Encoder, only: [:email, :name]}
+  @roles ~w(user admin)a
 
   typed_schema "team_users" do
     field :email, :string
@@ -15,6 +16,7 @@ defmodule Logflare.TeamUsers.TeamUser do
     field :phone, :string
     field :provider, :string
     field :provider_uid, :string
+    field :role, Ecto.Enum, values: @roles, default: :user
     field :token, :string, autogenerate: {Ecto.UUID, :generate, []}
 
     field :valid_google_account, :boolean
@@ -52,6 +54,13 @@ defmodule Logflare.TeamUsers.TeamUser do
     |> cast(attrs, [:name, :email_preferred, :image, :email_me_product, :phone])
     |> validate_required([:email, :provider, :provider_uid])
     |> downcase_emails()
+  end
+
+  @doc false
+  def role_changeset(team_user, attrs) do
+    team_user
+    |> cast(attrs, [:role])
+    |> validate_required([:role])
   end
 
   def downcase_emails(changeset) do
