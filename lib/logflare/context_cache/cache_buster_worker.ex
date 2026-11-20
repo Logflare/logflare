@@ -39,7 +39,7 @@ defmodule Logflare.ContextCache.CacheBusterWorker do
 
   @impl true
   def handle_cast({:to_bust, context_pkeys, backend_owner_ids}, state) do
-    ContextCache.Gossip.record_tombstones(context_pkeys)
+    ContextCache.Tombstones.record(context_pkeys)
 
     default_ingest_user_ids =
       context_pkeys
