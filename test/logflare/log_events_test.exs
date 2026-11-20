@@ -3,6 +3,9 @@ defmodule Logflare.LogEventsTest do
   use Logflare.DataCase
   use ExUnitProperties
 
+  alias Logflare.Backends
+  alias Logflare.Backends.Adaptor.PostgresAdaptor
+  alias Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo
   alias Logflare.Logs.LogEvents
 
   setup do
@@ -73,6 +76,90 @@ defmodule Logflare.LogEventsTest do
 
     assert_raise ArgumentError, "timestamp must be second precision", fn ->
       LogEvents.get_event_with_fallback(:source_token, "log_id", timestamp: timestamp)
+    end
+  end
+
+  describe "PostgreSQL event retrieval" do
+    TestUtils.setup_single_tenant(backend_type: :postgres)
+
+    setup %{user: user} do
+      source = insert(:source, user: user, bq_table_partition_type: :pseudo)
+      backend = Backends.get_default_backend(user)
+
+      event =
+        build(:log_event,
+          source: source,
+          message: "stored postgres event",
+          metadata: %{level: "info"}
+        )
+
+      schema = TestUtils.build_bq_schema(%{"metadata" => %{"level" => "info"}})
+      insert(:source_schema, source: source, bigquery_schema: schema)
+
+      assert :ok = PostgresAdaptor.create_events_table({source, backend})
+      assert {:ok, 1} = PgRepo.insert_log_events(source, backend, [event])
+      on_exit(fn -> PostgresAdaptor.destroy_instance({source, backend}) end)
+
+      [source: source, event: event]
+    end
+
+    test "cache misses load and cache the full event from PostgreSQL", %{
+      source: source,
+      user: user,
+      event: event
+    } do
+      assert {:ok, nil} = LogEvents.Cache.get(source.token, event.id)
+
+      assert {:ok, loaded} =
+               LogEvents.get_event_with_fallback(source.token, event.id,
+                 source: source,
+                 user: user
+               )
+
+      assert loaded.id == event.id
+      assert loaded.source_id == source.id
+      assert loaded.body["event_message"] == "stored postgres event"
+      assert loaded.body["timestamp"] == event.body["timestamp"]
+      assert loaded.body["metadata"] == [%{"level" => "info"}]
+      assert {:ok, ^loaded} = LogEvents.Cache.get(source.token, event.id)
+
+      assert {:ok, ^loaded} =
+               LogEvents.get_event_with_fallback(source.token, event.id, timestamp: nil)
+    end
+
+    test "ID, time range and LQL filters still constrain PostgreSQL retrieval", %{
+      source: source,
+      event: event
+    } do
+      timestamp = DateTime.from_unix!(event.body["timestamp"], :microsecond)
+      range = [Timex.shift(timestamp, hours: -1), Timex.shift(timestamp, hours: 1)]
+
+      assert %{"id" => id} =
+               LogEvents.fetch_event_by_id(source.token, event.id,
+                 partitions_range: range,
+                 lql: ~s(event_message:~"stored postgres")
+               )
+
+      assert id == event.id
+
+      assert {:error, :not_found} =
+               LogEvents.fetch_event_by_id(source.token, Ecto.UUID.generate(),
+                 partitions_range: range
+               )
+
+      assert {:error, :not_found} =
+               LogEvents.fetch_event_by_id(source.token, event.id,
+                 partitions_range: range,
+                 lql: ~s(event_message:~"different message")
+               )
+
+      assert {:error, :not_found} =
+               LogEvents.fetch_event_by_id(source.token, event.id,
+                 partitions_range: [
+                   Timex.shift(timestamp, days: -2),
+                   Timex.shift(timestamp, days: -1)
+                 ]
+               )
     end
   end
 

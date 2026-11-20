@@ -14,7 +14,7 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
   alias LogflareWeb.SharedView
 
   @impl true
-  def update(_assigns, %{assigns: %{error: {:error, :not_found}}} = socket) do
+  def update(_assigns, %{assigns: %{error: {:error, _reason}}} = socket) do
     {:ok, socket}
   end
 
@@ -64,7 +64,11 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
     Logger.error("Error loading log event: #{Logflare.Utils.stringify(raw_err)}")
     err = "Oops, something went wrong!"
     send(self(), {:put_flash, :error, err})
-    {:noreply, socket}
+    {:noreply, assign(socket, :error, {:error, raw_err})}
+  end
+
+  def handle_async(:load, {:exit, reason}, socket) do
+    handle_async(:load, {:ok, {:error, reason}}, socket)
   end
 
   def load_event(%{log_event_id: log_id, source: source} = params) do
@@ -88,6 +92,15 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
     <div class="">
       <h4>Log Event Not Found</h4>
       <p>The requested log event could not be found. It may have been deleted or the ID is incorrect.</p>
+    </div>
+    """
+  end
+
+  def render(%{error: {:error, _reason}} = assigns) do
+    ~H"""
+    <div role="alert">
+      <h4>Unable to Load Log Event</h4>
+      <p>Something went wrong while loading this log event. Please close this window and try again.</p>
     </div>
     """
   end
