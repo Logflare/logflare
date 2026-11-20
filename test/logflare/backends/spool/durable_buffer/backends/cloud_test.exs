@@ -7,6 +7,7 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.CloudTest do
   alias Logflare.Backends.Spool.Health
   alias Logflare.Backends.Spool.Queue.PubSub, as: QueueMod
   alias Logflare.Backends.Spool.Storage.GCS, as: StorageMod
+  alias Logflare.TestUtils
 
   setup :set_mimic_global
 
@@ -61,6 +62,7 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.CloudTest do
   describe "commit/4" do
     test "uploads the framed batch and publishes a queue notification" do
       test_pid = self()
+      TestUtils.attach_forwarder([:logflare, :backends, :pipeline, :handle_batch])
 
       stub(StorageMod, :put, fn "test-bucket", key, body, opts ->
         send(test_pid, {:put, key, body, opts})
@@ -76,6 +78,11 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.CloudTest do
       {:ok, state} = Backend.open(config, 0)
 
       assert {:ok, _new_state} = Backend.commit(state, batch(["one", "two"]), 0, {0, 2})
+
+      assert_receive {:telemetry_event, [:logflare, :backends, :pipeline, :handle_batch],
+                      %{batch_size: 2, batch_trigger: nil}, metadata}
+
+      assert metadata == %{pipeline: :spool_producer, batch_trigger: nil}
 
       assert_receive {:put, "0/" <> _ = key, body, [headers: %{"content-type" => ct}]}
       assert ct == "application/octet-stream"
