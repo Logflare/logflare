@@ -5,18 +5,82 @@ defmodule Logflare.Sources.CacheWarmerTest do
 
   alias Logflare.Billing
   alias Logflare.ContextCache.Gossip
+  alias Logflare.ContextCache.PeerWarmer
   alias Logflare.Sources
   alias Logflare.Sources.Cache
   alias Logflare.Sources.CacheWarmer
   alias Logflare.Sources.Source
+
+  @status_key {PeerWarmer, Cache}
 
   setup do
     plan = insert(:plan)
     user = insert(:user)
     source = insert(:source, user: user, log_events_updated_at: NaiveDateTime.utc_now())
     Cachex.clear!(Cache)
+    :persistent_term.erase(@status_key)
+    on_exit(fn -> :persistent_term.erase(@status_key) end)
 
     {:ok, expected_retention_days: Sources.source_ttl_to_days(source, plan), source: source}
+  end
+
+  describe "peer warming" do
+    test "skips the database and inherits the peer's warmed_at when copied from a peer" do
+      peer_warmed_at = DateTime.add(DateTime.utc_now(), -10, :minute)
+
+      stub(PeerWarmer, :copy_from_peer, fn Cache ->
+        {:ok, %{node: :peer@host, warmed_at: peer_warmed_at, count: 3}}
+      end)
+
+      Billing
+      |> reject(:get_plans_by_users, 1)
+
+      assert :ignore = CacheWarmer.execute(nil)
+      assert %{state: :ready, warmed_at: ^peer_warmed_at} = PeerWarmer.status(Cache)
+    end
+
+    test "warms from the database and marks the cache ready when no peer can be copied", %{
+      source: source
+    } do
+      stub(PeerWarmer, :copy_from_peer, fn Cache -> :fallback end)
+      started_at = DateTime.utc_now()
+
+      assert {:ok, pairs} = CacheWarmer.execute(nil)
+      assert Enum.any?(pairs, &match?({{:get_by, [[id: id]]}, _value} when id == source.id, &1))
+
+      assert %{state: :ready, warmed_at: warmed_at} = PeerWarmer.status(Cache)
+      assert DateTime.compare(warmed_at, started_at) != :lt
+    end
+
+    test "copies from a peer only on the first run, later runs refresh from the database", %{
+      source: source
+    } do
+      stub(PeerWarmer, :copy_from_peer, fn Cache ->
+        {:ok, %{node: :peer@host, warmed_at: DateTime.utc_now(), count: 3}}
+      end)
+
+      assert :ignore = CacheWarmer.execute(nil)
+
+      reject(PeerWarmer, :copy_from_peer, 1)
+
+      assert {:ok, pairs} = CacheWarmer.execute(nil)
+      assert Enum.any?(pairs, &match?({{:get_by, [[id: id]]}, _value} when id == source.id, &1))
+    end
+
+    test "tries a peer again when the first run could not warm the cache" do
+      stub(PeerWarmer, :copy_from_peer, fn Cache -> :fallback end)
+      stub(Billing, :get_plans_by_users, fn _users -> raise "boom" end)
+
+      capture_log(fn -> assert :ignore = CacheWarmer.execute(nil) end)
+      assert %{state: :warming} = PeerWarmer.status(Cache)
+
+      stub(PeerWarmer, :copy_from_peer, fn Cache ->
+        {:ok, %{node: :peer@host, warmed_at: DateTime.utc_now(), count: 3}}
+      end)
+
+      assert :ignore = CacheWarmer.execute(nil)
+      assert %{state: :ready} = PeerWarmer.status(Cache)
+    end
   end
 
   test "warms ID and internal and external token entries under the read-path keys", %{
