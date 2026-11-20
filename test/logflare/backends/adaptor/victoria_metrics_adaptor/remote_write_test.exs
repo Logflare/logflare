@@ -26,7 +26,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.RemoteWriteTest do
   defp series do
     gen all labels <- list_of(label(), max_length: 6),
             samples <- list_of(sample(), max_length: 4) do
-      {Enum.sort(labels), samples}
+      {labels, samples}
     end
   end
 
@@ -55,7 +55,11 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.RemoteWriteTest do
       timeseries:
         for {labels, samples} <- series do
           %Prometheus.TimeSeries{
-            labels: for({name, value} <- labels, do: %Prometheus.Label{name: name, value: value}),
+            labels:
+              for(
+                {name, value} <- Enum.sort(labels),
+                do: %Prometheus.Label{name: name, value: value}
+              ),
             samples:
               for(
                 {value, timestamp} <- samples,
