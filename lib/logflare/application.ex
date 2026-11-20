@@ -11,6 +11,7 @@ defmodule Logflare.Application do
   alias Logflare.Backends.Spool.ObjectDeleter
   alias Logflare.Backends.Spool.SpoolAck
   alias Logflare.Backends.UserMonitoring
+  alias Logflare.BanditLoggerMetadata
   alias Logflare.ContextCache
   alias Logflare.IngressGate
   alias Logflare.IngressGate.Sweeper
@@ -35,6 +36,7 @@ defmodule Logflare.Application do
     Inspect.Opts.default_inspect_fun(&Utils.inspect_fun(prev, &1, &2))
 
     set_global_logger_metadata()
+    BanditLoggerMetadata.attach()
     start_user_log_interceptor()
     add_logger_backends()
     warn_if_stripe_webhook_secret_unset()
