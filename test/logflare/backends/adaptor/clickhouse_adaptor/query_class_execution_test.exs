@@ -148,6 +148,20 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryClassExecutionTest do
              )
   end
 
+  test "quarantine uses its built-in limits on the default cluster without a named pool",
+       %{original: backend} do
+    sql = """
+    SELECT toUInt64(getSetting('priority')) AS priority,
+           toUInt64(getSetting('max_threads')) AS threads,
+           toUInt64(getSetting('max_execution_time')) AS seconds,
+           toUInt64(getSetting('max_bytes_to_read')) AS bytes
+    """
+
+    assert {:ok,
+            {[%{"priority" => 20, "threads" => 2, "seconds" => 10, "bytes" => 1_073_741_824}], _}} =
+             ClickHouseAdaptor.execute_ch_query(backend, sql, [], read_cluster: "quarantine")
+  end
+
   test "effective priorities use requested classes despite routing fallback", %{backend: backend} do
     for {label, priority} <-
           Enum.map(@policy, fn {label, settings} -> {label, settings["priority"]} end) ++

@@ -34,7 +34,9 @@ settings = %{
 
 These values are an example, not production configuration. Choose them after checking the deployed query-user profile and load-testing in staging.
 
-A nonempty configuration must include a `default` with a positive integer `priority`. A class can inherit its priority from this default. Missing, unknown, or unconfigured labels receive the default policy. Only the classes listed above are accepted at save time.
+A nonempty configuration must include a `default` with a positive integer `priority`. A class can inherit its priority from this default. Missing, unknown, or unconfigured labels receive the default policy. Only the classes listed above and `quarantine` are accepted at save time.
+
+The reserved `quarantine` class always applies priority 20 or lower urgency, at most 2 threads, a 10-second execution limit, and a 1 GiB read cap. These settings apply even without a saved class policy, and saved policy can tighten the limits. Without a dedicated `quarantine` cluster, queries use the backend's default read cluster.
 
 The class is selected from the original `LF-ENDPOINT-CLICKHOUSE-READ-CLUSTER-LABEL` request header, even when routing resolves to another cluster or retries on the default cluster. Known query-class labels do not generate unconfigured-routing warnings; unknown routing labels still do.
 
