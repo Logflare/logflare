@@ -55,6 +55,7 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWal do
 
   @default_max_batch_bytes 32 * 1024 * 1024
   @default_max_rotation_interval_ms 1_000
+  @file_modes [:append, :raw, :binary]
 
   @impl true
   def init_config(opts) do
@@ -74,7 +75,7 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWal do
     File.mkdir_p!(config.wal_dir)
     path = WalPaths.active(config.wal_dir, partition_index)
     {offset, _entry_count} = WAL.recover!(path)
-    {:ok, fd} = :file.open(path, [:append, :raw, :binary])
+    {:ok, fd} = :file.open(path, @file_modes)
     last_rotation_at = System.monotonic_time(:millisecond)
 
     {:ok, flush_timer} =
@@ -100,8 +101,10 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWal do
   @impl true
   def commit(state, batch, byte_size, _span) do
     state = replace_dead_workers(state)
+    {open_result, state} = ensure_open(state)
 
-    with :ok <- :file.write(state.fd, batch),
+    with :ok <- open_result,
+         :ok <- :file.write(state.fd, batch),
          :ok <- sync(state) do
       state = %{
         state
@@ -109,13 +112,12 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWal do
           pending_bytes: state.pending_bytes + byte_size
       }
 
-      state = if should_rotate?(state), do: rotate(state), else: state
-
-      Health.report_recovery!(:disk)
+      {rotate_result, state} = if should_rotate?(state), do: rotate(state), else: {:ok, state}
+      report_disk(rotate_result, "rotate")
       {:ok, state}
     else
-      {:error, reason} ->
-        Health.report_failure!(:disk)
+      {:error, reason} = error ->
+        report_disk(error, "write")
         {:error, reason, state}
     end
   end
@@ -123,8 +125,14 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWal do
   @impl true
   def handle_message(:flush_tick, state) do
     state = replace_dead_workers(state)
-    state = if state.pending_bytes > 0 and should_rotate?(state), do: rotate(state), else: state
-    {[], state}
+
+    if state.pending_bytes > 0 and should_rotate?(state) do
+      {result, state} = rotate(state)
+      report_disk(result, "rotate")
+      {[], state}
+    else
+      {[], state}
+    end
   end
 
   @impl true
@@ -135,10 +143,11 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWal do
 
   @impl true
   def truncate(state, _next_offset) do
-    :ok = :file.close(state.fd)
-    :ok = File.rm(state.path)
-    {:ok, fd} = :file.open(state.path, [:append, :raw, :binary])
-    {:ok, %{state | fd: fd, offset: 0, pending_bytes: 0}}
+    close_result = close_fd(state.fd)
+    rm_result = rm_active(state.path)
+    {open_result, state} = reopen(%{state | offset: 0, pending_bytes: 0})
+    report_disk(first_error([close_result, rm_result, open_result]), "truncate")
+    {:ok, state}
   end
 
   @impl true
@@ -149,8 +158,8 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWal do
     # yet, so a clean shutdown doesn't leave a tail waiting on traffic that
     # may not resume for a while (an unclean kill is still an accepted gap —
     # nothing runs on the way down from that).
-    state = if state.pending_bytes > 0, do: rotate(state), else: state
-    :ok = :file.close(state.fd)
+    {rotate_result, state} = if state.pending_bytes > 0, do: rotate(state), else: {:ok, state}
+    report_disk(first_error([rotate_result, close_fd(state.fd)]), "close")
     Enum.each(state.workers, &Worker.stop(&1.pid))
     :ok
   end
@@ -166,30 +175,49 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWal do
 
   # Always reopens the active file afterward, regardless of whether the
   # rename succeeded, so a failed rotation never leaves a stale, closed fd.
+  # If the reopen itself fails, fd is left nil and the next commit retries it.
   defp rotate(state) do
-    :file.datasync(state.fd)
-    :ok = :file.close(state.fd)
-
+    _ = :file.datasync(state.fd)
+    close_result = :file.close(state.fd)
     sealed_path = WalPaths.sealed(state.config.wal_dir, state.partition_index)
 
-    case File.rename(state.path, sealed_path) do
-      :ok ->
+    rename_result =
+      with :ok <- File.rename(state.path, sealed_path) do
         dispatch_to_worker(state, sealed_path)
+      end
 
-      {:error, reason} ->
-        Logger.error(
-          "durable_buffer_rotating_wal: failed to rotate WAL segment: #{inspect(reason)}"
-        )
+    {open_result, state} = reopen(state)
+    state = %{state | pending_bytes: 0, last_rotation_at: System.monotonic_time(:millisecond)}
+    {first_error([close_result, rename_result, open_result]), state}
+  end
+
+  defp ensure_open(%{fd: nil} = state), do: reopen(state)
+  defp ensure_open(state), do: {:ok, state}
+
+  defp reopen(state) do
+    case :file.open(state.path, @file_modes) do
+      {:ok, fd} -> {:ok, %{state | fd: fd}}
+      {:error, _reason} = error -> {error, %{state | fd: nil}}
     end
+  end
 
-    {:ok, fd} = :file.open(state.path, [:append, :raw, :binary])
+  defp close_fd(nil), do: :ok
+  defp close_fd(fd), do: :file.close(fd)
 
-    %{
-      state
-      | fd: fd,
-        pending_bytes: 0,
-        last_rotation_at: System.monotonic_time(:millisecond)
-    }
+  defp rm_active(path) do
+    case File.rm(path) do
+      {:error, :enoent} -> :ok
+      result -> result
+    end
+  end
+
+  defp first_error(results), do: Enum.find(results, :ok, &(&1 != :ok))
+
+  defp report_disk(:ok, _action), do: Health.report_recovery!(:disk)
+
+  defp report_disk({:error, reason}, action) do
+    Logger.error("durable_buffer_rotating_wal: failed to #{action} WAL: #{inspect(reason)}")
+    Health.report_failure!(:disk)
   end
 
   defp dispatch_to_worker(state, sealed_path) do
