@@ -86,6 +86,12 @@ defmodule Logflare.UsersTest do
     source = insert(:source, user: user)
     endpoint = insert(:endpoint, user: user)
 
+    stub(
+      GoogleApi.CloudResourceManager.V1.Api.Projects,
+      :cloudresourcemanager_projects_get_iam_policy,
+      fn _, _, _ -> {:ok, %GoogleApi.CloudResourceManager.V1.Model.Policy{bindings: []}} end
+    )
+
     expect(
       GoogleApi.CloudResourceManager.V1.Api.Projects,
       :cloudresourcemanager_projects_set_iam_policy,
