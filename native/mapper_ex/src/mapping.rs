@@ -215,7 +215,11 @@ fn decode_output<'a>(
         "ndjson" => {
             let row_type = get_string_key(env, output, "row_type")?
                 .ok_or_else(|| "NDJSON output row_type is required".to_string())?;
-            let layout = crate::ndjson::compile_layout(&row_type, fields)?;
+            let options = crate::ndjson::NdjsonOptions::decode(
+                get_string_key(env, output, "column_names")?.as_deref(),
+                get_string_key(env, output, "nested_arrays")?.as_deref(),
+            )?;
+            let layout = crate::ndjson::compile_layout(&row_type, fields, options)?;
             Ok(CompiledOutput::Ndjson(layout))
         }
         _ => Err(format!("unsupported mapping output format '{format}'")),

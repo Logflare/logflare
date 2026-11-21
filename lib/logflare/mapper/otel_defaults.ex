@@ -55,7 +55,8 @@ defmodule Logflare.Mapper.OtelDefaults do
   alias Logflare.Mapper.MappingConfig.InferRule
   alias Logflare.Mapper.MappingConfig.OutputFormat
 
-  @type output_format() :: :ch_row_binary | :ndjson | :map
+  @type output_format() ::
+          :ch_row_binary | :ndjson | {:ndjson, OutputFormat.ndjson_opts()} | :map
 
   @log_config_id "00000000-0000-0000-0001-000000000005"
   @metric_config_id "00000000-0000-0000-0002-000000000005"
@@ -79,17 +80,17 @@ defmodule Logflare.Mapper.OtelDefaults do
   `:ndjson` narrows the timestamp fields to microseconds (the unit its
   consumers store, e.g. Iceberg `timestamptz`), so every emitted timestamp
   integer, including derived spans such as trace `duration`, is in that
-  unit. `:map` drops the output so the compiled mapping returns a plain map.
+  unit. `{:ndjson, opts}` is the same with `OutputFormat.ndjson/2` options, e.g.
+  `column_names: :underscore` for consumers whose column names cannot contain
+  `.`. `:map` drops the output so the compiled mapping returns a plain map.
   """
   @spec for_type(TypeDetection.event_type(), output_format()) :: MappingConfig.t()
   def for_type(event_type, :ch_row_binary), do: for_type(event_type)
 
-  def for_type(event_type, :ndjson) do
-    event_type
-    |> for_type()
-    |> MappingConfig.with_timestamp_precision(6)
-    |> Map.put(:output, OutputFormat.ndjson(event_type))
-  end
+  def for_type(event_type, :ndjson), do: microsecond_ndjson(event_type, [])
+
+  def for_type(event_type, {:ndjson, opts}) when is_list(opts),
+    do: microsecond_ndjson(event_type, opts)
 
   def for_type(event_type, :map), do: %{for_type(event_type) | output: nil}
 
@@ -647,4 +648,13 @@ defmodule Logflare.Mapper.OtelDefaults do
   @spec application_key(TypeDetection.event_type()) :: String.t()
   defp application_key(:log), do: "application_name"
   defp application_key(_event_type), do: "application"
+
+  @spec microsecond_ndjson(TypeDetection.event_type(), OutputFormat.ndjson_opts()) ::
+          MappingConfig.t()
+  defp microsecond_ndjson(event_type, opts) do
+    event_type
+    |> for_type()
+    |> MappingConfig.with_timestamp_precision(6)
+    |> Map.put(:output, OutputFormat.ndjson(event_type, opts))
+  end
 end
