@@ -6,6 +6,7 @@ defmodule Logflare.KeyValues do
   alias Logflare.KeyValues.KeyValue
   alias Logflare.KeyValues.KeyValueUsage
   alias Logflare.Repo
+  alias Logflare.Telemetry
 
   @list_limit 500
   @usage_retention_days 30
@@ -76,6 +77,8 @@ defmodule Logflare.KeyValues do
 
   @spec lookup(integer(), String.t()) :: map() | nil
   def lookup(user_id, key) do
+    Telemetry.key_values_count(:database_fetch)
+
     KeyValue
     |> where(user_id: ^user_id, key: ^key)
     |> select([kv], kv.value)
