@@ -783,6 +783,43 @@ defmodule Logflare.TelemetryTest do
     end
   end
 
+  describe "key_values_cache_metrics/0" do
+    test "reports bytes and entries every 30 seconds without Cachex statistics" do
+      original = Application.fetch_env!(:logflare, :cache_stats)
+      Application.put_env(:logflare, :cache_stats, false)
+      on_exit(fn -> Application.put_env(:logflare, :cache_stats, original) end)
+      event = [:logflare, :key_values, :cache]
+      TestUtils.attach_forwarder(event)
+
+      stub(Logflare.Utils, :ets_info, fn
+        Logflare.KeyValues.Cache -> [memory: 417, size: 0]
+        table -> Mimic.call_original(Logflare.Utils, :ets_info, [table])
+      end)
+
+      assert :ok = Telemetry.key_values_cache_metrics()
+      bytes = 417 * :erlang.system_info(:wordsize)
+      assert_receive {:telemetry_event, ^event, %{bytes: ^bytes, entries: 0}, %{}}
+
+      metric =
+        Enum.find(Telemetry.metrics(), &(&1.name == [:logflare, :key_values, :cache, :bytes]))
+
+      assert metric.unit == :byte
+      {:ok, {_flags, children}} = Telemetry.init([])
+      poller = Enum.find(children, &(&1.id == :telemetry_poller))
+      {:telemetry_poller, :start_link, [opts]} = poller.start
+      assert opts[:period] == 30_000
+      assert {Telemetry, :key_values_cache_metrics, []} in opts[:measurements]
+    end
+
+    test "skips a missing cache table" do
+      event = [:logflare, :key_values, :cache]
+      TestUtils.attach_forwarder(event)
+      stub(Logflare.Utils, :ets_info, fn _table -> :undefined end)
+      assert :ok = Telemetry.key_values_cache_metrics()
+      refute_received {:telemetry_event, ^event, _, _}
+    end
+  end
+
   describe "ets_table_metrics/1" do
     test "retrieves and emits top 10 by memory usage" do
       event = [:logflare, :system, :top_ets_tables, :individual]
