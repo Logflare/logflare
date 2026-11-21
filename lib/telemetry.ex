@@ -36,6 +36,7 @@ defmodule Logflare.Telemetry do
   @ch_read_pool_poll_timeout :timer.seconds(5)
   @ch_read_pool_status_event [:logflare, :clickhouse, :read_pool, :pool_status]
   @ch_read_pool_poll_failure_event [:logflare, :clickhouse, :read_pool, :poll_failure]
+  @repo_pool_status_event [:logflare, :repo, :pool, :pool_status]
   @max_phash2_range 4_294_967_296
 
   @ch_read_pool_time_buckets_ms [
@@ -226,6 +227,39 @@ defmodule Logflare.Telemetry do
         unit: {:native, :millisecond},
         tags: [:role],
         tag_values: &repo_query_tags/1
+      ),
+      counter("logflare.repo.query.count",
+        event_name: [:logflare, :repo, :query],
+        tags: [:role, :result],
+        tag_values: &repo_query_count_tags/1,
+        description: "Ecto queries per role and result (`ok`/`error`)"
+      ),
+      sum("logflare.repo.checkout_error",
+        event_name: [:db_connection, :connection_error],
+        measurement: :count,
+        tags: [:reason],
+        tag_values: &repo_checkout_error_tags/1,
+        keep: &repo_checkout_error?/1,
+        description:
+          "`Logflare.Repo` checkouts that failed before a connection was obtained, tagged with `DBConnection.ConnectionError.reason`. `queue_timeout` means the request was dropped from a saturated pool's queue"
+      ),
+      last_value("logflare.repo.pool.ready_conn_count",
+        event_name: @repo_pool_status_event,
+        measurement: :ready_conn_count,
+        description:
+          "Idle, checked-in connections in the primary `Logflare.Repo` pool on this node, sampled from `DBConnection.get_connection_metrics/1` every #{div(@metrics_interval, 1000)}s. Pools are per node; view per instance"
+      ),
+      last_value("logflare.repo.pool.checkout_queue_length",
+        event_name: @repo_pool_status_event,
+        measurement: :checkout_queue_length,
+        description:
+          "Callers waiting to check out a primary `Logflare.Repo` connection on this node, sampled alongside `ready_conn_count`. A sustained depth means the pool is exhausted"
+      ),
+      last_value("logflare.repo.pool.pool_size",
+        event_name: @repo_pool_status_event,
+        measurement: :pool_size,
+        description:
+          "Configured size of the primary `Logflare.Repo` pool on this node, emitted alongside `ready_conn_count`. `(pool_size - ready_conn_count) / pool_size` is the share of connections not immediately available"
       )
     ]
 
@@ -845,6 +879,21 @@ defmodule Logflare.Telemetry do
     %{role: Keyword.get(Map.get(metadata, :options, []), :role, fallback_role)}
   end
 
+  @spec repo_query_count_tags(map()) :: %{role: :primary | :replica, result: :ok | :error}
+  defp repo_query_count_tags(%{result: {:ok, _}} = metadata),
+    do: Map.put(repo_query_tags(metadata), :result, :ok)
+
+  defp repo_query_count_tags(metadata),
+    do: Map.put(repo_query_tags(metadata), :result, :error)
+
+  @spec repo_checkout_error?(map()) :: boolean()
+  defp repo_checkout_error?(%{opts: opts}), do: Keyword.get(opts, :repo) == Logflare.Repo
+  defp repo_checkout_error?(_metadata), do: false
+
+  @spec repo_checkout_error_tags(map()) :: %{reason: atom()}
+  defp repo_checkout_error_tags(%{error: %DBConnection.ConnectionError{reason: reason}}),
+    do: %{reason: reason}
+
   defp periodic_measurements do
     cache_stats? = CachexOps.stats_enabled?()
 
@@ -861,6 +910,7 @@ defmodule Logflare.Telemetry do
         {__MODULE__, :process_memory_metrics, []},
         {__MODULE__, :ets_table_metrics, []},
         {__MODULE__, :clickhouse_read_pool_metrics, []},
+        {__MODULE__, :repo_pool_metrics, []},
         {Logflare.Sources.Source.BigQuery.SchemaMetrics, :report, []}
       ]
 
@@ -898,6 +948,38 @@ defmodule Logflare.Telemetry do
     )
     |> Enum.each(&emit_read_pool_status/1)
   end
+
+  @doc """
+  Polls the `repo` connection pool on this node for `DBConnection` pool metrics and emits
+  them as a `#{inspect(@repo_pool_status_event)}` event. Emits nothing when the repo is
+  not running or its pool exits mid-poll.
+  """
+  @spec repo_pool_metrics(module()) :: :ok
+  def repo_pool_metrics(repo \\ Logflare.Repo) do
+    with pid when is_pid(pid) <- GenServer.whereis(repo),
+         %{pid: pool, opts: opts} <- Ecto.Adapter.lookup_meta(repo),
+         [_ | _] = metrics <- DBConnection.get_connection_metrics(pool, opts) do
+      Enum.each(metrics, &emit_repo_pool_status(&1, opts[:pool_size]))
+    else
+      _ -> :ok
+    end
+  catch
+    :exit, _reason -> :ok
+  end
+
+  @spec emit_repo_pool_status(DBConnection.Pool.connection_metrics(), pos_integer()) :: :ok
+  defp emit_repo_pool_status(
+         %{source: {:pool, _pid}, ready_conn_count: ready, checkout_queue_length: queued},
+         pool_size
+       ) do
+    :telemetry.execute(
+      @repo_pool_status_event,
+      %{ready_conn_count: ready, checkout_queue_length: queued, pool_size: pool_size},
+      %{}
+    )
+  end
+
+  defp emit_repo_pool_status(_proxy_metrics, _pool_size), do: :ok
 
   @spec poll_read_pool({pos_integer(), String.t() | nil, pid(), pos_integer()}) ::
           {tuple(), [DBConnection.Pool.connection_metrics()] | :gone}
