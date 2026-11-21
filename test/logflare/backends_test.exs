@@ -148,6 +148,35 @@ defmodule Logflare.BackendsTest do
       refute Backends.ConsolidatedSup.pipeline_running?(backend.id)
     end
 
+    test "delete_user_backends/1 deletes the user's backends and stops their pipelines", %{
+      user: user
+    } do
+      attrs = %{
+        type: :clickhouse,
+        name: "Test ClickHouse",
+        config: %{
+          url: "http://localhost",
+          port: 8123,
+          database: "test_db",
+          username: "user",
+          password: "pass"
+        }
+      }
+
+      assert {:ok, backend} = Backends.create_backend(user, attrs)
+      source = insert(:source, user: user)
+      linked = insert(:backend, user: user, sources: [source])
+      other = insert(:backend, user: insert(:user))
+
+      assert {2, _deleted} = Backends.delete_user_backends(user)
+
+      refute Repo.reload(backend)
+      refute Repo.reload(linked)
+      assert Repo.reload(source)
+      assert Repo.reload(other)
+      refute Backends.ConsolidatedSup.pipeline_running?(backend.id)
+    end
+
     test "update_backend/2 keeps consolidated pipeline running", %{user: user} do
       attrs = %{
         type: :clickhouse,

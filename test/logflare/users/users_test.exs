@@ -5,6 +5,7 @@ defmodule Logflare.UsersTest do
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Mailer
   alias Logflare.Sources
+  alias Logflare.Sources.Source
   alias Logflare.User
   alias Logflare.Users
 
@@ -104,6 +105,79 @@ defmodule Logflare.UsersTest do
     refute Repo.reload(source)
     refute Repo.reload(endpoint)
     refute Repo.reload(user)
+  end
+
+  test "delete_user/1 deletes backends attached to sources" do
+    user = insert(:user)
+    source = insert(:source, user: user)
+    backend = insert(:backend, user: user, sources: [source])
+
+    stub(
+      GoogleApi.CloudResourceManager.V1.Api.Projects,
+      :cloudresourcemanager_projects_set_iam_policy,
+      fn _, _project_number, [body: _body] -> {:ok, %Tesla.Env{status: 200, body: ""}} end
+    )
+
+    assert {:ok, _} = Users.delete_user(user)
+
+    refute Repo.reload(backend)
+    refute Repo.reload(source)
+    refute Repo.reload(user)
+  end
+
+  test "delete_user/1 keeps backends when the user cannot be deleted" do
+    user = insert(:user)
+    source = insert(:source, user: user)
+    backend = insert(:backend, user: user, sources: [source])
+    changeset = Ecto.Changeset.change(user)
+
+    stub(Logflare.Repo, :delete, fn %User{} -> {:error, changeset} end)
+    reject(&BigQueryAdaptor.update_iam_policy/0)
+
+    assert {:error, ^changeset} = Users.delete_user(user)
+
+    assert Repo.reload(backend)
+    assert Repo.reload(user)
+
+    assert %Source{backends: [%{id: backend_id}]} =
+             source |> Repo.reload() |> Repo.preload(:backends)
+
+    assert backend_id == backend.id
+  end
+
+  test "delete_user/1 deletes an account with every kind of resource" do
+    user = insert(:user)
+    team = insert(:team, user: user)
+    team_user = insert(:team_user, team: team)
+    [source, sink] = insert_pair(:source, user: user)
+    backend = insert(:backend, user: user, sources: [source])
+    endpoint = insert(:endpoint, user: user, backend: backend)
+
+    resources = [
+      team,
+      team_user,
+      source,
+      sink,
+      backend,
+      endpoint,
+      insert(:rule, source: source, sink: sink.token),
+      insert(:rule, source: source, backend: backend),
+      insert(:alert, user: user, backends: [backend]),
+      insert(:key_value_usage, key_value: build(:key_value, user: user)),
+      insert(:saved_search, source: source),
+      insert(:billing_account, user: user)
+    ]
+
+    stub(
+      GoogleApi.CloudResourceManager.V1.Api.Projects,
+      :cloudresourcemanager_projects_set_iam_policy,
+      fn _, _project_number, [body: _body] -> {:ok, %Tesla.Env{status: 200, body: ""}} end
+    )
+
+    assert {:ok, _} = Users.delete_user(user)
+
+    refute Repo.reload(user)
+    for resource <- resources, do: refute(Repo.reload(resource), inspect(resource.__struct__))
   end
 
   test "users_count/0 returns user count" do
