@@ -3,19 +3,16 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
 
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor
-  alias Logflare.Backends.Adaptor.HttpBased
   alias Logflare.Backends.AdaptorSupervisor
   alias Logflare.LogEvent
   alias Logflare.Backends.SourceSup
   alias Logflare.SystemMetrics.AllLogsLogged
-  alias Logflare.Tesla.MockAdapter
   alias Opentelemetry.Proto.Collector.Logs.V1.ExportLogsPartialSuccess
   alias Opentelemetry.Proto.Collector.Logs.V1.ExportLogsServiceRequest
   alias Opentelemetry.Proto.Collector.Logs.V1.ExportLogsServiceResponse
   alias Logflare.Backends.Backend
 
   @subject Adaptor.OtlpAdaptor
-  @tesla_adapter Tesla.Adapter.Finch
 
   @valid_config %{
     endpoint: "http://localhost:4318/v1/logs",
@@ -115,7 +112,7 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
         |> Enum.map(&Protobuf.encode/1)
 
       for response_body <- response_bodies do
-        mock_adapter(fn env ->
+        TestUtils.mock_http_based_client(fn env ->
           assert env.method == :post
           assert env.url == "http://localhost:4318/v1/logs"
 
@@ -138,7 +135,7 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
       ]
 
       for response <- error_responses do
-        mock_adapter(fn _env -> response end)
+        TestUtils.mock_http_based_client(fn _env -> response end)
         assert {:error, reason} = @subject.test_connection(ctx.backend)
         assert reason != nil
       end
@@ -149,7 +146,7 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
       this = self()
       ref = make_ref()
 
-      mock_adapter(fn env ->
+      TestUtils.mock_http_based_client(fn env ->
         send(this, {ref, IO.iodata_to_binary(env.body)})
 
         {:ok,
@@ -183,7 +180,7 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
       this = self()
       ref = make_ref()
 
-      mock_adapter(fn env ->
+      TestUtils.mock_http_based_client(fn env ->
         assert Tesla.build_url(env) == "http://localhost:4318/v1/logs"
 
         assert env.method == :post
@@ -220,7 +217,7 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
       this = self()
       ref = make_ref()
 
-      mock_adapter(fn env ->
+      TestUtils.mock_http_based_client(fn env ->
         send(this, {ref, IO.iodata_to_binary(env.body)})
         {:ok, %Tesla.Env{status: 200, body: ""}}
       end)
@@ -241,7 +238,7 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
       this = self()
       ref = make_ref()
 
-      mock_adapter(fn env ->
+      TestUtils.mock_http_based_client(fn env ->
         send(this, {ref, IO.iodata_to_binary(env.body)})
         {:ok, %Tesla.Env{status: 200, body: ""}}
       end)
@@ -273,7 +270,7 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
       this = self()
       ref = make_ref()
 
-      mock_adapter(fn env ->
+      TestUtils.mock_http_based_client(fn env ->
         send(this, {ref, IO.iodata_to_binary(env.body)})
         {:ok, %Tesla.Env{status: 200, body: ""}}
       end)
@@ -319,7 +316,7 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
       this = self()
       ref = make_ref()
 
-      mock_adapter(fn env ->
+      TestUtils.mock_http_based_client(fn env ->
         send(this, {ref, env.headers})
         {:ok, %Tesla.Env{status: 200, body: ""}}
       end)
@@ -359,7 +356,7 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
       this = self()
       ref = make_ref()
 
-      mock_adapter(fn env ->
+      TestUtils.mock_http_based_client(fn env ->
         send(this, {ref, env.headers})
         {:ok, %Tesla.Env{status: 200, body: ""}}
       end)
@@ -763,7 +760,7 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
     this = self()
     ref = make_ref()
 
-    mock_adapter(fn env ->
+    TestUtils.mock_http_based_client(fn env ->
       send(this, {ref, IO.iodata_to_binary(env.body)})
       {:ok, %Tesla.Env{status: 200, body: ""}}
     end)
@@ -791,16 +788,5 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
       assert changeset.valid?, inspect(changeset)
       assert Ecto.Changeset.get_field(changeset, :type) == :otlp
     end
-  end
-
-  defp mock_adapter(calls_num \\ 1, function) do
-    stub(@tesla_adapter)
-
-    HttpBased.Client
-    |> expect(:new, calls_num, fn opts ->
-      HttpBased.Client
-      |> Mimic.call_original(:new, [opts])
-      |> MockAdapter.replace(function)
-    end)
   end
 end

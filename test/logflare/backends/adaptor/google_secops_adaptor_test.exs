@@ -3,13 +3,10 @@ defmodule Logflare.Backends.Adaptor.GoogleSecOpsAdaptorTest do
 
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor
-  alias Logflare.Backends.Adaptor.HttpBased
   alias Logflare.Backends.SourceSup
   alias Logflare.SystemMetrics.AllLogsLogged
-  alias Logflare.Tesla.MockAdapter
 
   @subject Adaptor.GoogleSecOpsAdaptor
-  @tesla_adapter Tesla.Adapter.Finch
 
   @valid_config %{
     region: "europe-west3",
@@ -86,7 +83,7 @@ defmodule Logflare.Backends.Adaptor.GoogleSecOpsAdaptorTest do
     setup :backend_data
 
     test "succeeds on 200 response", ctx do
-      mock_adapter(fn env ->
+      TestUtils.mock_http_based_client(fn env ->
         assert env.method == :post
         assert env.url == @expected_url
         assert Tesla.get_header(env, "x-goog-api-key") == @valid_config.api_key
@@ -106,7 +103,7 @@ defmodule Logflare.Backends.Adaptor.GoogleSecOpsAdaptorTest do
       ]
 
       for response <- error_responses do
-        mock_adapter(fn _env -> response end)
+        TestUtils.mock_http_based_client(fn _env -> response end)
 
         assert {:error, reason} = @subject.test_connection(ctx.backend)
         assert is_binary(reason)
@@ -126,7 +123,7 @@ defmodule Logflare.Backends.Adaptor.GoogleSecOpsAdaptorTest do
       this = self()
       ref = make_ref()
 
-      mock_adapter(fn env ->
+      TestUtils.mock_http_based_client(fn env ->
         assert env.method == :post
         assert Tesla.build_url(env) == @expected_url
         assert Tesla.get_header(env, "content-type") == "application/json"
@@ -169,16 +166,5 @@ defmodule Logflare.Backends.Adaptor.GoogleSecOpsAdaptorTest do
       assert redacted.secret == "REDACTED"
       assert redacted.region == @valid_config.region
     end
-  end
-
-  defp mock_adapter(calls_num \\ 1, function) do
-    stub(@tesla_adapter)
-
-    HttpBased.Client
-    |> expect(:new, calls_num, fn opts ->
-      HttpBased.Client
-      |> Mimic.call_original(:new, [opts])
-      |> MockAdapter.replace(function)
-    end)
   end
 end

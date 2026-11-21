@@ -3,15 +3,12 @@ defmodule Logflare.Backends.Adaptor.Last9AdaptorTest do
 
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor
-  alias Logflare.Backends.Adaptor.HttpBased
   alias Logflare.Backends.SourceSup
   alias Logflare.SystemMetrics.AllLogsLogged
-  alias Logflare.Tesla.MockAdapter
   alias Opentelemetry.Proto.Collector.Logs.V1.ExportLogsServiceRequest
   alias Opentelemetry.Proto.Collector.Logs.V1.ExportLogsServiceResponse
 
   @subject Adaptor.Last9Adaptor
-  @tesla_adapter Tesla.Adapter.Finch
 
   @valid_config %{
     region: "US-WEST-1",
@@ -78,7 +75,7 @@ defmodule Logflare.Backends.Adaptor.Last9AdaptorTest do
         %ExportLogsServiceResponse{partial_success: nil}
         |> Protobuf.encode()
 
-      mock_adapter(fn env ->
+      TestUtils.mock_http_based_client(fn env ->
         assert env.method == :post
         assert env.url == "https://otlp.last9.io/v1/logs"
         assert Tesla.get_header(env, "authorization") == "Basic dGVzdHVzZXI6dGVzdHBhc3N3b3Jk"
@@ -101,7 +98,7 @@ defmodule Logflare.Backends.Adaptor.Last9AdaptorTest do
       ]
 
       for response <- error_responses do
-        mock_adapter(fn _env -> response end)
+        TestUtils.mock_http_based_client(fn _env -> response end)
         assert {:error, _reason} = @subject.test_connection(ctx.backend)
       end
     end
@@ -119,7 +116,7 @@ defmodule Logflare.Backends.Adaptor.Last9AdaptorTest do
       this = self()
       ref = make_ref()
 
-      mock_adapter(fn env ->
+      TestUtils.mock_http_based_client(fn env ->
         assert Tesla.build_url(env) == "https://otlp.last9.io/v1/logs"
         assert env.method == :post
         assert Tesla.get_header(env, "content-type") == "application/x-protobuf"
@@ -150,16 +147,5 @@ defmodule Logflare.Backends.Adaptor.Last9AdaptorTest do
       redacted_config = @subject.redact_config(@valid_config)
       assert redacted_config.password == "REDACTED"
     end
-  end
-
-  defp mock_adapter(calls_num \\ 1, function) do
-    stub(@tesla_adapter)
-
-    HttpBased.Client
-    |> expect(:new, calls_num, fn opts ->
-      HttpBased.Client
-      |> Mimic.call_original(:new, [opts])
-      |> MockAdapter.replace(function)
-    end)
   end
 end

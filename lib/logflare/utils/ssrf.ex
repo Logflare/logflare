@@ -5,6 +5,8 @@ defmodule Logflare.Utils.SSRF do
 
   import Logflare.Utils.Guards, only: [is_non_empty_binary: 1]
 
+  alias Ecto.Changeset
+
   @private_ranges Enum.map(
                     [
                       # IPv4
@@ -51,6 +53,8 @@ defmodule Logflare.Utils.SSRF do
   Resolves `host` and returns the first safe IP address, or an error if the
   host resolves to any private/reserved address or cannot be resolved at all.
 
+  Both IPv4 and IPv6 records are checked, and IPv4 addresses are returned first.
+
   Used to obtain an IP to connect to directly, eliminating DNS re-resolution.
   """
   @spec safe_resolve(String.t() | nil) :: {:ok, :inet.ip_address()} | {:error, String.t()}
@@ -68,6 +72,26 @@ defmodule Logflare.Utils.SSRF do
 
   def safe_resolve(_), do: {:error, "invalid host"}
 
+  @doc """
+  Adds an error to the `field` of `changeset` when its URL host is unsafe, as
+  decided by `safe_resolve/1`.
+
+  A missing or already invalid URL is left to the other validations.
+  """
+  @spec validate_url_host(Changeset.t(), atom()) :: Changeset.t()
+  def validate_url_host(changeset, field) do
+    url = Changeset.get_field(changeset, field)
+
+    if is_nil(url) or Keyword.has_key?(changeset.errors, field) do
+      changeset
+    else
+      case safe_resolve(URI.parse(url).host) do
+        {:ok, _addr} -> changeset
+        {:error, reason} -> Changeset.add_error(changeset, field, reason, validation: :ssrf)
+      end
+    end
+  end
+
   @doc "Formats an IP address tuple as a URL host component (IPv6 wrapped in brackets)."
   @spec url_host(:inet.ip_address()) :: String.t()
   def url_host(addr) when tuple_size(addr) == 8,
@@ -75,23 +99,24 @@ defmodule Logflare.Utils.SSRF do
 
   def url_host(addr), do: addr |> :inet.ntoa() |> List.to_string()
 
+  @doc false
+  @spec getaddrs(charlist(), :inet | :inet6) :: {:ok, [:inet.ip_address()]} | {:error, term()}
+  def getaddrs(charlist, family), do: :inet.getaddrs(charlist, family)
+
   defp resolve_hostname(charlist) do
-    with :unresolved <- resolve_hostname(charlist, :inet),
-         :unresolved <- resolve_hostname(charlist, :inet6) do
-      {:error, "could not resolve webhook destination host"}
-    else
-      other -> other
+    case resolved_addrs(charlist, :inet) ++ resolved_addrs(charlist, :inet6) do
+      [] ->
+        {:error, "could not resolve webhook destination host"}
+
+      [addr | _] = addrs ->
+        if Enum.any?(addrs, &private_ip?/1), do: {:error, @private_ip_error}, else: {:ok, addr}
     end
   end
 
-  defp resolve_hostname(charlist, family) do
-    with {:ok, [addr | _] = addrs} <- :inet.getaddrs(charlist, family),
-         {:private, false} <- {:private, Enum.any?(addrs, &private_ip?/1)} do
-      {:ok, addr}
-    else
-      {:private, true} -> {:error, @private_ip_error}
-      {:ok, []} -> :unresolved
-      {:error, _} -> :unresolved
+  defp resolved_addrs(charlist, family) do
+    case __MODULE__.getaddrs(charlist, family) do
+      {:ok, addrs} -> addrs
+      {:error, _} -> []
     end
   end
 end

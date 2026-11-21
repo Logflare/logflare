@@ -3,15 +3,12 @@ defmodule Logflare.Backends.Adaptor.SigNozAdaptorTest do
 
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor
-  alias Logflare.Backends.Adaptor.HttpBased
   alias Logflare.Backends.SourceSup
   alias Logflare.SystemMetrics.AllLogsLogged
-  alias Logflare.Tesla.MockAdapter
   alias Opentelemetry.Proto.Collector.Logs.V1.ExportLogsServiceRequest
   alias Opentelemetry.Proto.Collector.Logs.V1.ExportLogsServiceResponse
 
   @subject Adaptor.SigNozAdaptor
-  @tesla_adapter Tesla.Adapter.Finch
 
   @valid_config %{
     endpoint: "https://ingest.us.signoz.cloud:443",
@@ -108,7 +105,7 @@ defmodule Logflare.Backends.Adaptor.SigNozAdaptorTest do
         %ExportLogsServiceResponse{partial_success: nil}
         |> Protobuf.encode()
 
-      mock_adapter(fn env ->
+      TestUtils.mock_http_based_client(fn env ->
         assert env.method == :post
         assert env.url == "https://ingest.us.signoz.cloud:443/v1/logs"
         assert Tesla.get_header(env, "signoz-ingestion-key") == "test-ingestion-key"
@@ -131,7 +128,7 @@ defmodule Logflare.Backends.Adaptor.SigNozAdaptorTest do
       ]
 
       for response <- error_responses do
-        mock_adapter(fn _env -> response end)
+        TestUtils.mock_http_based_client(fn _env -> response end)
         assert {:error, _reason} = @subject.test_connection(ctx.backend)
       end
     end
@@ -149,7 +146,7 @@ defmodule Logflare.Backends.Adaptor.SigNozAdaptorTest do
       this = self()
       ref = make_ref()
 
-      mock_adapter(fn env ->
+      TestUtils.mock_http_based_client(fn env ->
         assert Tesla.build_url(env) == "https://ingest.us.signoz.cloud:443/v1/logs"
         assert env.method == :post
         assert Tesla.get_header(env, "content-type") == "application/x-protobuf"
@@ -182,7 +179,7 @@ defmodule Logflare.Backends.Adaptor.SigNozAdaptorTest do
       this = self()
       ref = make_ref()
 
-      mock_adapter(fn env ->
+      TestUtils.mock_http_based_client(fn env ->
         send(this, {ref, IO.iodata_to_binary(env.body)})
         {:ok, %Tesla.Env{status: 200, body: ""}}
       end)
@@ -224,7 +221,7 @@ defmodule Logflare.Backends.Adaptor.SigNozAdaptorTest do
       this = self()
       ref = make_ref()
 
-      mock_adapter(fn env ->
+      TestUtils.mock_http_based_client(fn env ->
         assert Tesla.build_url(env) == "http://otel.example.com:4318/v1/logs"
         assert Tesla.get_header(env, "signoz-ingestion-key") == nil
 
@@ -247,16 +244,5 @@ defmodule Logflare.Backends.Adaptor.SigNozAdaptorTest do
     test "leaves a config without an ingestion key untouched" do
       assert @subject.redact_config(@keyless_config) == @keyless_config
     end
-  end
-
-  defp mock_adapter(calls_num \\ 1, function) do
-    stub(@tesla_adapter)
-
-    HttpBased.Client
-    |> expect(:new, calls_num, fn opts ->
-      HttpBased.Client
-      |> Mimic.call_original(:new, [opts])
-      |> MockAdapter.replace(function)
-    end)
   end
 end

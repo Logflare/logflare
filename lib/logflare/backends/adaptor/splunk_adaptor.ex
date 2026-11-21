@@ -62,7 +62,7 @@ defmodule Logflare.Backends.Adaptor.SplunkAdaptor do
     changeset
     |> Changeset.validate_required([:url, :token])
     |> Changeset.validate_format(:url, ~r/https?\:\/\/.+/)
-    |> validate_no_ssrf()
+    |> SSRF.validate_url_host(:url)
   end
 
   @impl Adaptor
@@ -108,21 +108,6 @@ defmodule Logflare.Backends.Adaptor.SplunkAdaptor do
       gzip: true,
       ssrf: true
     ]
-  end
-
-  @spec validate_no_ssrf(Changeset.t()) :: Changeset.t()
-  defp validate_no_ssrf(changeset) do
-    url = Changeset.get_field(changeset, :url)
-
-    # a missing or malformed url is already reported by the preceding validations
-    if is_nil(url) or Keyword.has_key?(changeset.errors, :url) do
-      changeset
-    else
-      case SSRF.safe_resolve(URI.parse(url).host) do
-        {:ok, _addr} -> changeset
-        {:error, reason} -> Changeset.add_error(changeset, :url, reason, validation: :ssrf)
-      end
-    end
   end
 
   @spec log_failure(Tesla.Env.result(), Backend.t()) :: :ok
