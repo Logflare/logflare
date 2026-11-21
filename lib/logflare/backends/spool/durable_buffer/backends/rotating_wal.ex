@@ -18,7 +18,8 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWal do
   recovered on `open/2` — `DurableBuffer.WAL.recover!/1` truncates a torn
   tail in place and returns where appending should resume, and
   `recover_sealed_segments/1` re-dispatches leftover `.sealed` files to
-  workers.
+  workers. The recovered tail counts as pending, so the next flush tick
+  or `close/1` ships it even if no new traffic reaches the partition.
 
   A `Worker` is started unlinked (see its own moduledoc) and only
   monitored, so a crash there can't take down the local WAL commit path
@@ -40,8 +41,8 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWal do
   `handle_message/2` — so a pending tail still gets rotated and shipped once
   `max_rotation_interval_ms` elapses even after traffic stops entirely (e.g.
   draining), instead of waiting on a commit that may never come. A pending
-  tail is also rotated on `close/1` (a clean shutdown), leaving only an
-  unclean kill as an accepted gap.
+  tail is also rotated on `close/1` (a clean shutdown); after an unclean
+  kill it is recovered as pending on the next `open/2` and shipped then.
   """
 
   @behaviour DurableBuffer.Backend
@@ -86,7 +87,7 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWal do
       fd: fd,
       path: path,
       offset: offset,
-      pending_bytes: 0,
+      pending_bytes: offset,
       last_rotation_at: last_rotation_at,
       flush_timer: flush_timer,
       workers: start_workers(config, partition_index)
@@ -147,8 +148,8 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWal do
 
     # Ships whatever hasn't crossed max_batch_bytes/max_rotation_interval_ms
     # yet, so a clean shutdown doesn't leave a tail waiting on traffic that
-    # may not resume for a while (an unclean kill is still an accepted gap —
-    # nothing runs on the way down from that).
+    # may not resume for a while (after an unclean kill, open/2 recovers the
+    # tail as pending instead).
     state = if state.pending_bytes > 0, do: rotate(state), else: state
     :ok = :file.close(state.fd)
     Enum.each(state.workers, &Worker.stop(&1.pid))
