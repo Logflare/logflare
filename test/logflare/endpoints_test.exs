@@ -1379,6 +1379,37 @@ defmodule Logflare.EndpointsTest do
       end
     end
 
+    test "update_query/4 invalidates the cache when a stale endpoint disables refresh" do
+      user = insert(:user)
+
+      stale_endpoint =
+        insert(:endpoint, user: user)
+        |> change(proactive_requerying_seconds: nil)
+        |> Repo.update!()
+
+      assert {:ok, enabled} =
+               Endpoints.update_query(
+                 user,
+                 stale_endpoint,
+                 %{proactive_requerying_seconds: 60},
+                 user
+               )
+
+      cache = start_supervised!({ResultsCache, {enabled, %{}, []}})
+      monitor = Process.monitor(cache)
+      assert is_reference(:sys.get_state(cache).refresh_timer)
+
+      assert {:ok, %{proactive_requerying_seconds: nil}} =
+               Endpoints.update_query(
+                 user,
+                 stale_endpoint,
+                 %{proactive_requerying_seconds: nil},
+                 user
+               )
+
+      assert_receive {:DOWN, ^monitor, :process, ^cache, :normal}, 1_000
+    end
+
     for field_changed <- [
           :query,
           :sandboxable,
