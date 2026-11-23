@@ -154,6 +154,7 @@ defmodule LogflareWeb.EndpointsLive do
       ) do
     Logger.debug("Saving endpoint", params: params)
     origin = socket.assigns.team_user || user
+    params = preserve_unset_cache_settings(params, show_endpoint)
 
     with :ok <- authorize_backend_id(origin, params),
          {:ok, endpoint} <- upsert_query(show_endpoint, user, origin, params) do
@@ -299,7 +300,11 @@ defmodule LogflareWeb.EndpointsLive do
   end
 
   def handle_event("validate", %{"endpoint" => endpoint_params}, socket) do
-    endpoint_params = drop_unused_policy_inputs(endpoint_params)
+    endpoint_params =
+      endpoint_params
+      |> drop_unused_policy_inputs()
+      |> preserve_unset_cache_settings(socket.assigns.show_endpoint)
+
     origin = socket.assigns[:team_user] || socket.assigns.user
 
     with :ok <- authorize_backend_id(origin, endpoint_params) do
@@ -671,6 +676,22 @@ defmodule LogflareWeb.EndpointsLive do
   end
 
   defp drop_unused_policy_inputs(params), do: params
+
+  @spec preserve_unset_cache_settings(map(), EndpointQuery.t() | nil) :: map()
+  defp preserve_unset_cache_settings(params, nil), do: params
+
+  defp preserve_unset_cache_settings(params, %EndpointQuery{} = endpoint) do
+    Enum.reduce([:cache_duration_seconds, :proactive_requerying_seconds], params, fn field, acc ->
+      key = Atom.to_string(field)
+      value = Map.get(acc, key)
+
+      if is_nil(Map.fetch!(endpoint, field)) and is_binary(value) and String.trim(value) == "" do
+        Map.delete(acc, key)
+      else
+        acc
+      end
+    end)
+  end
 
   defp upsert_query(show_endpoint, user, origin, params) do
     case show_endpoint do

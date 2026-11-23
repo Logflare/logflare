@@ -7,6 +7,8 @@ defmodule LogflareWeb.EndpointsLiveTest do
   import Logflare.DataCase, only: [setup_clickhouse_test: 1]
 
   alias Logflare.Backends.Adaptor.QueryResult
+  alias Logflare.Endpoints
+  alias Logflare.Repo
 
   setup %{conn: conn} do
     insert(:plan)
@@ -447,6 +449,39 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
       # show the endpoint
       assert_query_displayed(view, new_query)
+    end
+
+    test "editing an endpoint preserves unset cache settings unless values are entered", %{
+      conn: conn,
+      endpoint: endpoint
+    } do
+      endpoint
+      |> Ecto.Changeset.change(cache_duration_seconds: nil, proactive_requerying_seconds: nil)
+      |> Repo.update!()
+
+      edit_path = "/endpoints/#{endpoint.id}/edit"
+      {:ok, view, _html} = live_with_redirect(conn, edit_path)
+
+      view
+      |> form("#endpoint", endpoint: %{name: "Renamed endpoint"})
+      |> render_submit()
+
+      updated = Endpoints.get_endpoint_query(endpoint.id)
+      assert updated.name == "Renamed endpoint"
+      assert is_nil(updated.cache_duration_seconds)
+      assert is_nil(updated.proactive_requerying_seconds)
+
+      {:ok, view, _html} = live_with_redirect(conn, edit_path)
+
+      view
+      |> form("#endpoint",
+        endpoint: %{cache_duration_seconds: "60", proactive_requerying_seconds: "0"}
+      )
+      |> render_submit()
+
+      updated = Endpoints.get_endpoint_query(endpoint.id)
+      assert updated.cache_duration_seconds == 60
+      assert updated.proactive_requerying_seconds == 0
     end
 
     test "edit endpoint with redact_pii checkbox", %{conn: conn, endpoint: endpoint} do

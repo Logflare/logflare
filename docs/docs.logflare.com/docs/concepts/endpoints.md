@@ -183,6 +183,8 @@ All endpoint queries by default are set to cache results for 3,600 seconds. The 
 
 To disable the cache, set the cache duration to `0`. The management API also accepts an explicit `null` for `cache_duration_seconds` to disable caching. To prevent stale data while keeping the cache warm, use proactive requerying.
 
+If an existing endpoint has a `null` cache duration or refresh interval, leaving that field blank in the dashboard preserves the setting. Blank fields on a new endpoint still use the defaults.
+
 Caching is performed on a query parameter basis. As such, if there are three API requests sent to an endpoint, `?path=123`, `?path=223`, and `?other=value`, this will result in 3 different caches being created.
 
 When querying a specific endpoint version with `LF-ENDPOINT-VERSION`, the version number also partitions the cache. A request for the current endpoint and a request for version `1` use separate caches even when the query parameters match.
