@@ -5,9 +5,12 @@ defmodule Logflare.RecordUsages do
   Usage is buffered locally. Each node's `Logflare.RecordUsages.SyncWorker`
   periodically flushes its usage to the database on a jittered timer.
   `Logflare.RecordUsages.ShutdownWorker` handles best-effort final flush during
-  graceful shutdown. Recording is asynchronous and best effort. Unflushed usage
-  may still be lost on node or cache failure, failed background writes, or if the
-  shutdown drain and flush fail or time out. Missing usage means unknown, not never used.
+  graceful shutdown.
+
+  Recording is asynchronous and best effort, so it never blocks authentication.
+  Usage updates can be dropped if the writer falls behind, or lost before they are
+  saved if the node, cache, or shutdown flush fails or times out. A missing
+  timestamp means usage is unknown rather than the resource has never been used.
 
   Legacy API key usage is tracked by user, across key rotations and restorations.
   Partner access tokens are not tracked.

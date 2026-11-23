@@ -1,6 +1,8 @@
 defmodule Logflare.RecordUsages.Writer do
   @moduledoc """
   Coalesces usage timestamps while one linked batch task writes to Cachex.
+  Drops samples when the mailbox reaches 1,000 messages. Concurrent callers can
+  overshoot this threshold before their casts arrive.
   Pending timestamps and mailbox messages are best effort and are lost on restart.
   """
 
@@ -9,6 +11,7 @@ defmodule Logflare.RecordUsages.Writer do
   alias Logflare.RecordUsages.Cache
 
   @write_interval 100
+  @max_mailbox_len 1_000
 
   @type timestamps :: %{Cache.key() => integer()}
   @type state :: %{
@@ -26,7 +29,13 @@ defmodule Logflare.RecordUsages.Writer do
 
   @spec record(Cache.key(), integer()) :: :ok
   def record(key, timestamp) do
-    GenServer.cast(__MODULE__, {:record, key, timestamp})
+    with writer when is_pid(writer) <- Process.whereis(__MODULE__),
+         {:message_queue_len, length} when length < @max_mailbox_len <-
+           Process.info(writer, :message_queue_len) do
+      GenServer.cast(writer, {:record, key, timestamp})
+    end
+
+    :ok
   end
 
   @spec drain() :: :ok

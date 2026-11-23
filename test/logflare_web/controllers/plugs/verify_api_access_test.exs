@@ -54,7 +54,7 @@ defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
       end
     end
 
-    test "a suspended usage writer does not delay authentication", %{
+    test "a suspended usage writer bounds its backlog without delaying authentication", %{
       access_token: token,
       user: user
     } do
@@ -64,6 +64,7 @@ defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
 
       on_exit(fn ->
         if Process.alive?(writer), do: :sys.resume(writer)
+        RecordUsages.Cache.reset()
       end)
 
       :sys.suspend(writer)
@@ -80,10 +81,38 @@ defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
         request |> Task.await(1_000) |> assert_authorized(user)
       end
 
+      concurrency = 32
+
+      1..concurrency
+      |> Task.async_stream(
+        fn _ ->
+          for _ <- 1..100 do
+            build_conn(:post, "/logs")
+            |> put_req_header("x-api-key", token.token)
+            |> VerifyApiAccess.call(%{})
+            |> assert_authorized(user)
+          end
+
+          :ok
+        end,
+        max_concurrency: concurrency,
+        timeout: 5_000
+      )
+      |> Enum.each(fn result -> assert result == {:ok, :ok} end)
+
+      {:message_queue_len, backlog} = Process.info(writer, :message_queue_len)
+      assert backlog in 1_000..(1_000 + concurrency + 1)
+
       :sys.resume(writer)
       snapshot = Map.new(RecordUsages.Cache.snapshot())
       assert Map.fetch!(snapshot, {OauthAccessToken, token.id}) >= before_request
       assert Map.fetch!(snapshot, {User, user.id}) >= before_request
+
+      next_timestamp = System.system_time(:second) + 1
+      RecordUsages.Cache.record({OauthAccessToken, token.id}, next_timestamp)
+
+      assert Map.fetch!(Map.new(RecordUsages.Cache.snapshot()), {OauthAccessToken, token.id}) ==
+               next_timestamp
     end
 
     test "records requests on both cache misses and hits", %{access_token: token, user: user} do
