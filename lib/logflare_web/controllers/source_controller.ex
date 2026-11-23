@@ -30,10 +30,7 @@ defmodule LogflareWeb.SourceController do
   end
 
   def create(%{assigns: %{user: user}} = conn, %{"source" => source_params}) do
-    source_params
-    |> Map.put("token", Ecto.UUID.generate())
-    |> Sources.create_source(user)
-    |> case do
+    case Sources.create_source(source_params, user) do
       {:ok, source} ->
         oauth_params = get_session(conn, :oauth_params)
         vercel_setup_params = get_session(conn, :vercel_setup)
