@@ -681,15 +681,18 @@ defmodule LogflareWeb.EndpointsLive do
   defp preserve_unset_cache_settings(params, nil), do: params
 
   defp preserve_unset_cache_settings(params, %EndpointQuery{} = endpoint) do
-    Enum.reduce([:cache_duration_seconds, :proactive_requerying_seconds], params, fn field, acc ->
-      key = Atom.to_string(field)
-      value = Map.get(acc, key)
+    settings = [
+      {"cache_duration_seconds", endpoint.cache_duration_seconds},
+      {"proactive_requerying_seconds", endpoint.proactive_requerying_seconds}
+    ]
 
-      if is_nil(Map.fetch!(endpoint, field)) and is_binary(value) and String.trim(value) == "" do
-        Map.delete(acc, key)
-      else
+    Enum.reduce(settings, params, fn
+      {key, nil}, acc ->
+        value = Map.get(acc, key)
+        if is_binary(value) and String.trim(value) == "", do: Map.delete(acc, key), else: acc
+
+      {_key, _value}, acc ->
         acc
-      end
     end)
   end
 
