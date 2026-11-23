@@ -158,12 +158,12 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptorTest do
       assert_receive ^ref, 2000
 
       assert_receive {:telemetry_event, [:logflare, :backends, :pipeline, :handle_batch],
-                      %{batch_size: 1}, metadata}
+                      %{batch_size: 1}, %{backend_type: :datadog} = metadata}
 
       assert metadata == %{backend_type: :datadog}
 
       assert_receive {:telemetry_event, ^duration_event, %{duration: duration},
-                      %{context: %{telemetry_tags: tags}}},
+                      %{context: %{telemetry_tags: %{backend_type: :datadog} = tags}}},
                      1_000
 
       assert tags == %{backend_type: :datadog}

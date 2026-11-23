@@ -103,7 +103,7 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
       assert_receive ^ref, 2000
 
       assert_receive {:telemetry_event, [:logflare, :backends, :pipeline, :handle_batch],
-                      %{batch_size: 1}, metadata}
+                      %{batch_size: 1}, %{backend_type: :webhook} = metadata}
 
       assert metadata == %{backend_type: :webhook}
     end
