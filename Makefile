@@ -202,7 +202,7 @@ stripe:
 #     make decrypt.dev # Decrypt local dev secrets
 #     make encrypt.dev # Encrypt local dev secrets
 
-%: cloudbuild/%.enc
+.dev.env: cloudbuild/.dev.env.enc
 	@gcloud kms decrypt --ciphertext-file=$< --plaintext-file=$@ \
 		--location=${GCLOUD_LOCATION} \
 		--keyring=${GCLOUD_KEYRING} \
@@ -210,18 +210,15 @@ stripe:
 		--project=${GCLOUD_PROJECT}
 	@echo "$@ has been decrypted"
 
-%.enc:
-	@gcloud kms encrypt --ciphertext-file=cloudbuild/$@ --plaintext-file=$(@:.enc=) \
+decrypt.dev: .dev.env
+
+encrypt.dev:
+	@gcloud kms encrypt --ciphertext-file=cloudbuild/.dev.env.enc --plaintext-file=.dev.env \
 		--location=${GCLOUD_LOCATION} \
 		--keyring=${GCLOUD_KEYRING} \
 		--key=${GCLOUD_KEY} \
 		--project=${GCLOUD_PROJECT}
-	@echo "$@ has been encrypted"
-
-.PRECIOUS: %.enc
-
-decrypt.dev: .dev.env
-encrypt.dev: .dev.env.enc
+	@echo "cloudbuild/.dev.env.enc has been encrypted"
 
 .PHONY: decrypt.dev encrypt.dev
 
