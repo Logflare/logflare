@@ -13,14 +13,16 @@ defmodule Logflare.Endpoints.ResultsCacheRefreshTest do
 
   for interval <- [0, -1] do
     @tag interval: interval
-    test "interval #{interval} executes once per TTL without background refresh", context do
+    @tag real_expiry?: interval == 0
+    test "interval #{interval} executes once per cache lifetime without background refresh",
+         context do
       endpoint =
         insert(:endpoint,
           user: context.user,
           backend: context.backend,
           language: :ch_sql,
           query: "SELECT 1 AS n",
-          cache_duration_seconds: 1,
+          cache_duration_seconds: if(context.real_expiry?, do: 1, else: 60),
           proactive_requerying_seconds: context.interval
         )
 
@@ -37,6 +39,8 @@ defmodule Logflare.Endpoints.ResultsCacheRefreshTest do
       end
 
       assert :sys.get_state(cache).refresh_timer == nil
+
+      unless context.real_expiry?, do: send(cache, :shutdown)
       assert_receive {:DOWN, ^monitor, :process, ^cache, :normal}, 2_000
 
       replacement = start_supervised!({ResultsCache, {endpoint, %{}, []}})
