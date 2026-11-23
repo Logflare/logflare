@@ -176,6 +176,7 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.CloudTest do
     end
 
     test "async?/1 reports Cloud as an async backend" do
+      Code.ensure_loaded!(Backend)
       assert DurableBuffer.Backend.async?(Backend)
     end
 
