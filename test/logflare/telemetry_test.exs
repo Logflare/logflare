@@ -181,8 +181,16 @@ defmodule Logflare.TelemetryTest do
     test "tags Broadway duration metrics by explicit backend or pipeline metadata" do
       metrics = broadway_duration_metrics()
 
-      assert Enum.map(metrics, & &1.name) |> Enum.sort() ==
-               Enum.sort(@broadway_duration_metric_names)
+      expected_names =
+        case Application.fetch_env!(:logflare, :broadway_message_sample_denominator) do
+          :disabled ->
+            List.delete(@broadway_duration_metric_names, @broadway_processor_message_metric_name)
+
+          _denominator ->
+            @broadway_duration_metric_names
+        end
+
+      assert Enum.sort(Enum.map(metrics, & &1.name)) == Enum.sort(expected_names)
 
       for metric <- metrics do
         assert metric.tags == [:backend_type, :pipeline]
