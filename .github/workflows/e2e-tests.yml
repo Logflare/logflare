@@ -116,7 +116,6 @@ jobs:
           cache-dependency-path: assets/package-lock.json
 
       - run: npm ci --prefix assets
-      - run: npx --prefix assets playwright install --with-deps
 
       - name: Restore Cargo cache
         uses: actions/cache@v5
@@ -148,6 +147,8 @@ jobs:
 
       - name: Install dependencies
         run: mix do deps.get + deps.compile
+
+      - run: mix playwright.install chromium --with-deps
 
       - name: Build assets
         run: npm run deploy --prefix assets

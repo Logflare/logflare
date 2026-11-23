@@ -84,6 +84,9 @@ config :logflare, Oban, testing: :manual
 
 config :phoenix_test, otp_app: :logflare, endpoint: LogflareWeb.Endpoint
 
+config :fluffy, endpoint: LogflareWeb.Endpoint, ecto_repos: [Logflare.Repo]
+config :fluffy, Fluffy.Sandbox, header: "user-agent"
+
 config :opentelemetry,
   sdk_disabled: false,
   span_processor: :simple,

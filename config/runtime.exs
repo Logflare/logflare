@@ -84,16 +84,13 @@ if config_env() == :test and Env.get_boolean("E2E") do
   # at runtime.
   config :logflare, LogflareWeb.Endpoint, server: true
 
-  config :phoenix_test,
-    playwright: [
-      browser: :chromium,
-      executable_path: System.get_env("PLAYWRIGHT_CHROMIUM_PATH", ""),
-      trace: Env.get_boolean("PW_TRACE"),
-      screenshot: Env.get_boolean("PW_SCREENSHOT"),
-      js_logger: if(Env.get_boolean("PW_JS_LOGGER"), do: :default, else: false),
-      timeout: :timer.seconds(40),
-      browser_launch_timeout: 10_000
-    ]
+  config :playwright, :test,
+    launch_options: [executable_path: System.get_env("PLAYWRIGHT_CHROMIUM_PATH"), timeout: 10_000],
+    trace: if(Env.get_boolean("PW_TRACE"), do: :on, else: :off),
+    screenshot: if(Env.get_boolean("PW_SCREENSHOT"), do: :on, else: :off),
+    action_timeout: :timer.seconds(40),
+    navigation_timeout: :timer.seconds(40),
+    expect: [timeout: :timer.seconds(40)]
 end
 
 filter_nil_kv_pairs = fn pairs when is_list(pairs) ->

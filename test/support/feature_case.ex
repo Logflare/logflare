@@ -3,11 +3,14 @@ defmodule Logflare.FeatureCase do
 
   using opts do
     quote do
-      use PhoenixTest.Playwright.Case, unquote(opts)
+      use Playwright.Test, unquote(opts)
+      use Fluffy.Assert
       use Mimic
 
       use LogflareWeb, :routes
 
+      import Fluffy
+      import Fluffy.Locator
       import Logflare.Factory
       import unquote(__MODULE__)
 
@@ -30,9 +33,16 @@ defmodule Logflare.FeatureCase do
           PubSubRates.Cache.clear()
         end)
 
-        :ok
+        %{session: start_session(:playwright)}
       end
     end
+  end
+
+  @doc "Logs in as the single-tenant default user, as `/auth/login/single_tenant` does."
+  @spec log_in(Fluffy.Session.t()) :: Fluffy.Session.t()
+  def log_in(session) do
+    user = Logflare.SingleTenant.get_default_user()
+    Fluffy.add_session_cookie(session, %{current_email: user.email})
   end
 
   setup tags do

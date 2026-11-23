@@ -3,6 +3,8 @@ defmodule LogflareWeb.Endpoint do
 
   @session_options [store: :cookie, key: "_logflare_key", signing_salt: "INPMyhPE"]
 
+  def session_options, do: @session_options
+
   socket("/socket", LogflareWeb.UserSocket, websocket: [compress: true])
 
   socket("/logs", LogflareWeb.LogSocket, websocket: [compress: true])
