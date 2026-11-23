@@ -36,6 +36,7 @@ defmodule Logflare.Backends do
   alias Logflare.Sources.SourceRouter
   alias Logflare.SystemMetrics
   alias Logflare.Teams
+  alias Logflare.TeamUsers
   alias Logflare.TeamUsers.TeamUser
   alias Logflare.User
 
@@ -383,25 +384,59 @@ defmodule Logflare.Backends do
   end
 
   @doc """
-  Persists backend query-class policy. Successful saves do not guarantee
-  immediate cluster-wide application; metadata cache propagation is eventual.
+  Persists backend query-class policy for backend owners, team members, or platform admins.
+  Authorization is rechecked against the locked backend using the persisted actor.
+  Pass `:expected_policy` to reject writes if the policy has changed since it was loaded.
+  Successful saves do not guarantee immediate cluster-wide application;
+  metadata cache propagation is eventual.
   """
-  @spec configure_query_class_settings(User.t(), Backend.t(), map()) ::
+  @spec configure_query_class_settings(User.t() | TeamUser.t(), Backend.t(), map()) ::
           {:ok, Backend.t()} | {:error, term()}
-  def configure_query_class_settings(%User{id: user_id}, %Backend{} = backend, settings) do
-    with %User{admin: true} <- Repo.get(User, user_id) do
-      update_backend_config(backend, %{config: %{query_class_settings: settings}},
-        allow_query_class_settings: true,
-        query_policy_only: true
-      )
-    else
-      nil -> {:error, :not_found}
-      %User{} -> {:error, :forbidden}
+  @spec configure_query_class_settings(User.t() | TeamUser.t(), Backend.t(), map(), keyword()) ::
+          {:ok, Backend.t()} | {:error, term()}
+  def configure_query_class_settings(actor, %Backend{} = backend, settings, opts \\ []) do
+    opts =
+      Keyword.take(opts, [:expected_policy]) ++
+        [
+          allow_query_class_settings: true,
+          query_policy_only: true,
+          query_policy_actor: actor
+        ]
+
+    Repo.with_primary(fn ->
+      update_backend_config(backend, %{config: %{query_class_settings: settings}}, opts)
+    end)
+  end
+
+  @spec authorize_query_policy(Backend.t(), keyword()) :: :ok | {:error, :forbidden}
+  defp authorize_query_policy(backend, opts) do
+    case Keyword.fetch(opts, :query_policy_actor) do
+      {:ok, actor} -> authorize_query_policy_actor(persisted_policy_actor(actor), backend)
+      :error -> :ok
+    end
+  end
+
+  @spec persisted_policy_actor(User.t() | TeamUser.t()) :: User.t() | TeamUser.t() | nil
+  defp persisted_policy_actor(%User{id: id}), do: Repo.get(User, id)
+  defp persisted_policy_actor(%TeamUser{id: id}), do: TeamUsers.get_team_user_by(id: id)
+  defp persisted_policy_actor(_actor), do: nil
+
+  @spec authorize_query_policy_actor(User.t() | TeamUser.t() | nil, Backend.t()) ::
+          :ok | {:error, :forbidden}
+  defp authorize_query_policy_actor(%User{admin: true}, _backend), do: :ok
+  defp authorize_query_policy_actor(nil, _backend), do: {:error, :forbidden}
+
+  defp authorize_query_policy_actor(actor, backend) do
+    case get_backend_by_user_access(actor, backend.id) do
+      %Backend{} -> :ok
+      nil -> {:error, :forbidden}
     end
   end
 
   @spec update_backend_config(Backend.t(), map(), keyword()) ::
-          {:ok, Backend.t()} | {:error, Changeset.t() | :not_found | :not_clickhouse_backend}
+          {:ok, Backend.t()}
+          | {:error,
+             Changeset.t() | :not_found | :not_clickhouse_backend | :forbidden | :stale_policy}
   defp update_backend_config(%Backend{} = backend, attrs, opts) do
     default_ingest_modified? =
       Map.has_key?(attrs, "default_ingest?") or Map.has_key?(attrs, :default_ingest?)
@@ -411,7 +446,9 @@ defmodule Logflare.Backends do
     result =
       Repo.transact(fn ->
         with {:ok, current} <- lock_backend(backend.id),
-             :ok <- validate_query_policy_backend(current, opts) do
+             :ok <- authorize_query_policy(current, opts),
+             :ok <- validate_query_policy_backend(current, opts),
+             :ok <- check_expected_query_policy(current, opts) do
           persist_backend_config(current, attrs, opts)
         end
       end)
@@ -448,6 +485,16 @@ defmodule Logflare.Backends do
       Logflare.ContextCache.bust_keys(keys)
       Cluster.Utils.rpc_multicast(Logflare.ContextCache, :bust_keys, [keys])
     end)
+  end
+
+  @spec check_expected_query_policy(Backend.t(), keyword()) :: :ok | {:error, :stale_policy}
+  defp check_expected_query_policy(backend, opts) do
+    current = backend.config[:query_class_settings] || %{}
+
+    case Keyword.fetch(opts, :expected_policy) do
+      {:ok, expected} when expected != current -> {:error, :stale_policy}
+      _ -> :ok
+    end
   end
 
   @spec lock_backend(integer()) :: {:ok, Backend.t()} | {:error, :not_found}

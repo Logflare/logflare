@@ -917,7 +917,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   end
 
   @spec validate_query_class_settings(Changeset.t()) :: Changeset.t()
-  defp validate_query_class_settings(changeset) do
+  defp validate_query_class_settings(
+         %Changeset{params: %{"query_class_settings" => _}} = changeset
+       ) do
     case Changeset.get_field(changeset, :query_class_settings) do
       nil ->
         changeset
@@ -929,6 +931,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
         end
     end
   end
+
+  defp validate_query_class_settings(changeset), do: changeset
 
   @spec do_ch_query_on_label(
           Backend.t(),
