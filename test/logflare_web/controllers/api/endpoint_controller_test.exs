@@ -31,53 +31,47 @@ defmodule LogflareWeb.Api.EndpointControllerTest do
   end
 
   describe "team access" do
-    test "team member can manage team-owned endpoints and attach a team-owned backend", %{
-      conn: conn
-    } do
+    test "a key does not reach the endpoints or backends of a team its account is a member of",
+         %{conn: conn} do
       member = insert(:user, endpoints_beta: true)
       team_user = insert(:team_user, email: member.email)
       owner = team_user.team.user
-      managed_endpoint = insert(:endpoint, user: owner, name: "initial")
-      deleted_endpoint = insert(:endpoint, user: owner)
-      unrelated_endpoint = insert(:endpoint)
-      backend = insert(:backend, user: owner)
+      own_endpoint = insert(:endpoint, user: member, name: "own")
+      team_endpoint = insert(:endpoint, user: owner, name: "initial")
+      team_backend = insert(:backend, user: owner)
       conn = add_access_token(conn, member, "private")
 
-      response =
-        conn
-        |> get(~p"/api/endpoints")
-        |> json_response(200)
-
-      assert MapSet.new(Enum.map(response, & &1["token"])) ==
-               MapSet.new([managed_endpoint.token, deleted_endpoint.token])
-
-      assert %{"token" => managed_token} =
+      assert [%{"token" => own_token}] =
                conn
-               |> get(~p"/api/endpoints/#{managed_endpoint.token}")
+               |> get(~p"/api/endpoints")
                |> json_response(200)
 
-      assert managed_token == managed_endpoint.token
+      assert own_token == own_endpoint.token
 
       assert conn
-             |> get(~p"/api/endpoints/#{unrelated_endpoint.token}")
+             |> get(~p"/api/endpoints/#{team_endpoint.token}")
              |> response(404)
 
       assert conn
-             |> patch(~p"/api/endpoints/#{managed_endpoint.token}", %{name: "updated"})
-             |> text_response(204) == ""
+             |> patch(~p"/api/endpoints/#{team_endpoint.token}", %{name: "updated"})
+             |> response(404)
 
       assert conn
-             |> patch(~p"/api/endpoints/#{managed_endpoint.token}", %{backend_id: backend.id})
-             |> text_response(204) == ""
-
-      assert %{backend_id: backend_id, name: "updated"} =
-               Endpoints.get_endpoint_query(managed_endpoint.id)
-
-      assert backend_id == backend.id
+             |> patch(~p"/api/endpoints/#{own_endpoint.token}", %{backend_id: team_backend.id})
+             |> response(404)
 
       assert conn
-             |> delete(~p"/api/endpoints/#{deleted_endpoint.token}")
+             |> delete(~p"/api/endpoints/#{team_endpoint.token}")
+             |> response(404)
+
+      assert %{name: "initial"} = Endpoints.get_endpoint_query(team_endpoint.id)
+      assert %{backend_id: nil, name: "own"} = Endpoints.get_endpoint_query(own_endpoint.id)
+
+      assert conn
+             |> patch(~p"/api/endpoints/#{own_endpoint.token}", %{name: "own updated"})
              |> text_response(204) == ""
+
+      assert %{name: "own updated"} = Endpoints.get_endpoint_query(own_endpoint.id)
     end
   end
 

@@ -26,7 +26,7 @@ defmodule LogflareWeb.Api.AlertController do
   def index(%{assigns: %{user: user}} = conn, _params) do
     alerts =
       user
-      |> Alerting.list_alert_queries_user_access()
+      |> Alerting.list_alert_queries()
       |> Enum.map(&Alerting.preload_alert_query/1)
 
     json(conn, alerts)
@@ -42,7 +42,7 @@ defmodule LogflareWeb.Api.AlertController do
   )
 
   def show(%{assigns: %{user: user}} = conn, %{"token" => token}) do
-    with {:ok, alert} <- Alerting.fetch_alert_query_by_user_access(user, token: token) do
+    with {:ok, alert} <- fetch_alert(user, token) do
       json(conn, Alerting.preload_alert_query(alert))
     end
   end
@@ -81,7 +81,7 @@ defmodule LogflareWeb.Api.AlertController do
   )
 
   def update(%{assigns: %{user: user}} = conn, %{"token" => token} = params) do
-    with {:ok, alert} <- Alerting.fetch_alert_query_by_user_access(user, token: token),
+    with {:ok, alert} <- fetch_alert(user, token),
          {:ok, attrs} <- verify_backends_owner(params, user),
          {:ok, updated} <- Alerting.update_alert_query(alert, attrs) do
       conn
@@ -131,9 +131,15 @@ defmodule LogflareWeb.Api.AlertController do
   defp fetch_backends([], _user, acc), do: {:ok, Enum.reverse(acc)}
 
   defp fetch_backends([id | ids], user, acc) do
-    case Backends.get_backend_by_user_access(user, id) do
+    with {:ok, backend} <- Backends.fetch_backend_by(id: id, user_id: user.id) do
+      fetch_backends(ids, user, [backend | acc])
+    end
+  end
+
+  defp fetch_alert(user, token) do
+    case Alerting.get_alert_query_by(token: token, user_id: user.id) do
       nil -> {:error, :not_found}
-      backend -> fetch_backends(ids, user, [backend | acc])
+      alert -> {:ok, alert}
     end
   end
 
@@ -147,7 +153,7 @@ defmodule LogflareWeb.Api.AlertController do
   )
 
   def delete(%{assigns: %{user: user}} = conn, %{"token" => token}) do
-    with {:ok, alert} <- Alerting.fetch_alert_query_by_user_access(user, token: token),
+    with {:ok, alert} <- fetch_alert(user, token),
          {:ok, _} <- Alerting.delete_alert_query(alert) do
       conn
       |> put_status(204)
