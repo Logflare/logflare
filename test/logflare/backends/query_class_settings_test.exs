@@ -2,6 +2,7 @@ defmodule Logflare.Backends.QueryClassSettingsTest do
   use Logflare.DataCase
 
   alias Logflare.Backends
+  alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Backend
   alias Logflare.Cluster.Utils, as: ClusterUtils
   alias Logflare.ContextCache
@@ -53,6 +54,16 @@ defmodule Logflare.Backends.QueryClassSettingsTest do
     assert QueryContext.get_backend(backend.id).config.query_class_settings == @policy
     assert [cached] = QueryContext.list_backends(owner.id)
     assert cached.config.query_class_settings == @policy
+  end
+
+  test "policy saves skip source preloads and adaptor config notifications", context do
+    reject(&Adaptor.on_backend_config_changed/1)
+
+    assert {:ok, updated} =
+             Backends.configure_query_class_settings(context.owner, context.backend, @policy)
+
+    assert updated.config.query_class_settings == @policy
+    refute Ecto.assoc_loaded?(updated.sources)
   end
 
   test "rolled-back policy updates do not multicast uncommitted evictions", context do
