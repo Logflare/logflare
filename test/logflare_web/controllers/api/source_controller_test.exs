@@ -76,15 +76,18 @@ defmodule LogflareWeb.Api.SourceControllerTest do
     test "creates a new source for an authenticated user", %{conn: conn, user: user} do
       name = TestUtils.random_string()
       description = "My new source"
+      requested_token = Ecto.UUID.generate()
 
       response =
         conn
         |> add_access_token(user, "private")
-        |> post("/api/sources", %{name: name, description: description})
+        |> post("/api/sources", %{name: name, description: description, token: requested_token})
         |> json_response(201)
 
       assert response["name"] == name
       assert response["description"] == description
+      assert {:ok, _} = Ecto.UUID.cast(response["token"])
+      refute response["token"] == requested_token
     end
 
     test "returns 422 on missing arguments", %{conn: conn, user: user} do
