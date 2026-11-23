@@ -329,23 +329,19 @@ defmodule Logflare.Endpoints do
   def update_query(user_or_team_user, %EndpointQuery{} = query, params, origin)
       when is_map(params) do
     Repo.transact(fn ->
-      with {:ok, query} <- authorize_update(user_or_team_user, query, params) do
-        query = lock_endpoint_query(query)
-        version_number = next_endpoint_version_number(query.id)
-        changeset = EndpointQuery.update_by_user_changeset(query, params)
-        opts = paper_trail_opts(changeset, origin, version_number)
-
-        PaperTrail.update(changeset, opts)
+      with {:ok, query} <- authorize_update(user_or_team_user, query, params),
+           query = lock_endpoint_query(query),
+           changeset = EndpointQuery.update_by_user_changeset(query, params),
+           opts = paper_trail_opts(changeset, origin, next_endpoint_version_number(query.id)),
+           {:ok, %{model: updated_query}} <- PaperTrail.update(changeset, opts) do
+        {:ok, {updated_query, changeset.changes}}
       end
     end)
     |> case do
-      {:ok, %{model: updated_query}} ->
-        changeset =
-          query |> Repo.preload(:user) |> EndpointQuery.update_by_user_changeset(params)
-
+      {:ok, {updated_query, changes}} ->
         ContextCache.bust_keys([{__MODULE__, updated_query.id}])
 
-        case maybe_kill_endpoint_caches(updated_query, changeset.changes) do
+        case maybe_kill_endpoint_caches(updated_query, changes) do
           :ok -> {:ok, updated_query}
           {:error, reason} -> {:error, {:saved, updated_query, reason}}
         end
@@ -897,7 +893,7 @@ defmodule Logflare.Endpoints do
   def run_cached_query(%EndpointQuery{} = query, params \\ %{}, opts \\ [])
       when is_map(params) and is_list(opts) do
     with :ok <- validate_query_override(query, params),
-         true <- query.cache_duration_seconds > 0 do
+         true <- is_pos_integer(query.cache_duration_seconds) do
       query_results_cache(query, params, opts, 3, node())
     else
       false ->
