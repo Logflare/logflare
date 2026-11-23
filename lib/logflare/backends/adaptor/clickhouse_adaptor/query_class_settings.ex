@@ -4,16 +4,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryClassSettings do
   An empty map disables class policy. Configured policy requires a default priority.
   """
 
+  import Logflare.Endpoints.ClickHouseSettings, only: [is_valid_timeout: 1]
+
   alias Logflare.Endpoints.ClickHouseSettings
 
   @classes ~w(dashboard_logs_free dashboard_logs_paid dashboard_reports_free dashboard_reports_paid dashboard_observability mcp api_free api_paid)
-  @microseconds_per_second 1_000_000.0
-  @min_timeout_seconds 1.0 / @microseconds_per_second
-  @exclusive_timeout_microseconds 9_223_372_036_854_775_808
-
-  defguardp is_valid_timeout(seconds)
-            when is_number(seconds) and seconds >= @min_timeout_seconds and
-                   seconds * @microseconds_per_second < @exclusive_timeout_microseconds
 
   @spec classes() :: [String.t()]
   def classes, do: @classes

@@ -90,6 +90,59 @@ defmodule LogflareWeb.Backends.QueryClassSettingsLiveTest do
            }
   end
 
+  test "malformed numeric fields are rejected on save and reset without losing the draft",
+       context do
+    {:ok, view, _html} =
+      live_with_redirect(context.conn, ~p"/backends/#{context.backend.id}/edit")
+
+    editor = with_target(view, "#backend-query-class-settings-#{context.backend.id}")
+
+    invalid_number = %{"query_class_settings" => %{"default" => %{"priority" => "4.5"}}}
+    assert render_submit(editor, "save", invalid_number) =~ "Invalid enforced ClickHouse setting"
+
+    malformed = %{
+      "query_class_settings" => %{"default" => %{"priority" => %{"nested" => "5"}}}
+    }
+
+    assert render_submit(editor, "save", malformed) =~ "named classes and numeric fields"
+
+    assert render_submit(editor, "save", Map.put(malformed, "reset_class", "api_paid")) =~
+             "named classes and numeric fields"
+
+    assert has_element?(view, "#{policy_input("default", "priority")}[value='4.5']")
+    assert Backends.get_backend(context.backend.id).config[:query_class_settings] in [nil, %{}]
+
+    valid = %{"query_class_settings" => %{"default" => %{"priority" => "5"}}}
+    assert render_submit(editor, "save", valid) =~ "Query-class settings saved"
+  end
+
+  test "whole-number inputs are parsed exactly, including decimal and exponent notation",
+       context do
+    {:ok, view, _html} =
+      live_with_redirect(context.conn, ~p"/backends/#{context.backend.id}/edit")
+
+    view
+    |> form("#query-class-settings-form",
+      query_class_settings: %{
+        "default" => %{
+          "priority" => "4.0",
+          "max_threads" => "1e2",
+          "max_bytes_to_read" => "9.223372036854775807e18"
+        }
+      }
+    )
+    |> render_submit()
+
+    assert has_element?(view, "[role=status]", "Query-class settings saved")
+
+    assert Backends.get_backend(context.backend.id).config.query_class_settings["default"] == %{
+             "priority" => 4,
+             "max_threads" => 100,
+             "max_bytes_to_read" => 9_223_372_036_854_775_807,
+             "read_overflow_mode" => "throw"
+           }
+  end
+
   test "sub-microsecond timeouts cannot be saved through the editor", context do
     {:ok, view, _html} =
       live_with_redirect(context.conn, ~p"/backends/#{context.backend.id}/edit")
@@ -228,8 +281,12 @@ defmodule LogflareWeb.Backends.QueryClassSettingsLiveTest do
     assert has_element?(view, "#{policy_input("default", "priority")}[value='6']")
     assert Backends.get_backend(context.backend.id).config.query_class_settings == saved
 
+    selector = policy_input("api_paid", "max_threads")
+    [id] = view |> render() |> Floki.parse_fragment!() |> Floki.attribute(selector, "id")
+
     view |> form("#query-class-settings-form") |> render_submit()
 
+    assert has_element?(view, "#{selector}[id='#{id}']")
     updated = Backends.get_backend(context.backend.id)
     assert updated.description == "Connection edit"
 

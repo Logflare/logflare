@@ -40,11 +40,11 @@ defmodule E2e.Features.QueryClassSettingsTest do
       |> visit(~p"/backends/#{backend.id}/edit")
       |> assert_has(".phx-connected #query-class-settings-form")
       |> click("#query-class-api_paid-toggle")
-      |> fill_in(policy_input("api_paid", "max_threads"), "Max threads", with: "4")
+      |> fill_in(policy_input("api_paid", "max_threads"), "Max threads", with: "4.0")
       |> click_button("Save query-class settings")
       |> assert_has("#query-class-settings-error", text: "require a default")
       |> assert_has("#query-class-api_paid-toggle[aria-expanded='true']")
-      |> assert_has("#{policy_input("api_paid", "max_threads")}[value='4']")
+      |> assert_has("#{policy_input("api_paid", "max_threads")}[value='4.0']")
 
     assert Backends.get_backend(backend.id).config[:query_class_settings] in [nil, %{}]
 
@@ -93,13 +93,13 @@ defmodule E2e.Features.QueryClassSettingsTest do
       |> click("#query-class-api_paid-toggle")
       |> assert_has("#{policy_input("api_paid", "max_threads")}[value='4']")
       |> assert_has("#query-class-api_paid-cache-override")
-      |> fill_in(policy_input("default", "priority"), "Priority", with: "6")
+      |> fill_in(policy_input("default", "priority"), "Priority", with: "0")
       |> fill_in(policy_input("api_paid", "max_threads"), "Max threads", with: "")
       |> Playwright.press(policy_input("api_paid", "max_threads"), "-")
       |> assert_has("#{policy_input("api_paid", "max_threads")}:invalid")
       |> click_button("#query-class-api_paid button[name=reset_class]", "Reset class to defaults")
       |> assert_has("[role=status]", text: "Class reset in this draft")
-      |> assert_has("#{policy_input("default", "priority")}[value='6']")
+      |> assert_has("#{policy_input("default", "priority")}[value='0']:invalid")
       |> assert_has("#{policy_input("api_paid", "max_threads")}:valid")
       |> refute_has("#query-class-api_paid-cache-override")
 
@@ -108,6 +108,7 @@ defmodule E2e.Features.QueryClassSettingsTest do
 
     session =
       session
+      |> fill_in(policy_input("default", "priority"), "Priority", with: "6")
       |> click_button("Save query-class settings")
       |> assert_has("[role=status]", text: "Query-class settings saved")
 

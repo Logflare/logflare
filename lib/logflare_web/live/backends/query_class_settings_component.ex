@@ -14,6 +14,8 @@ defmodule LogflareWeb.Backends.QueryClassSettingsComponent do
   ]
   @numeric_keys Enum.map(@fields, &elem(&1, 0))
   @override_classes QueryClassSettings.classes()
+  @classes ["default" | @override_classes]
+  @invalid_form "Query-class settings must contain named classes and numeric fields."
   @cache_key "read_from_filesystem_cache_if_exists_otherwise_bypass_cache"
   @hidden_keys [@cache_key, "read_overflow_mode", "timeout_overflow_mode"]
 
@@ -25,50 +27,57 @@ defmodule LogflareWeb.Backends.QueryClassSettingsComponent do
      |> assign_new(:original_policy, fn ->
        assigns.backend.config[:query_class_settings] || %{}
      end)
-     |> assign_new(:params, fn -> assigns.backend.config[:query_class_settings] || %{} end)
+     |> assign_new(:params, fn %{original_policy: policy} -> policy end)
+     |> assign_new(:hidden_overrides, fn %{original_policy: policy} ->
+       hidden_overrides(policy)
+     end)
      |> assign_new(:error, fn -> nil end)
      |> assign_new(:message, fn -> nil end)
-     |> assign_new(:input_revision, &Ecto.UUID.generate/0)
-     |> assign_new(:class_resets, fn -> %{} end)
-     |> assign(:classes, ["default" | @override_classes])
+     |> assign_new(:input_revisions, &fresh_input_revisions/0)
+     |> assign(:classes, @classes)
      |> assign(:fields, @fields)}
   end
 
   @impl true
-  def handle_event("save", %{"reset_class" => class, "query_class_settings" => params}, socket)
-      when class in @override_classes and is_map(params) do
-    case parse_settings(params) do
-      {:ok, _settings} ->
-        {:noreply,
-         assign(socket,
-           params: Map.delete(params, class),
-           class_resets: Map.put(socket.assigns.class_resets, class, Ecto.UUID.generate()),
-           error: nil,
-           message: "Class reset in this draft. Save query-class settings to apply it."
-         )}
-
-      {:error, reason} ->
-        {:noreply, assign(socket, :error, reason)}
-    end
-  end
-
   def handle_event("save", %{"query_class_settings" => params} = payload, socket)
-      when is_map(params) and not is_map_key(payload, "reset_class") do
-    case parse_settings(params) do
-      {:ok, settings} ->
-        settings = restore_hidden_overrides(settings, socket.assigns)
-        save_settings(settings, assign(socket, :params, params))
-
-      {:error, reason} ->
-        {:noreply, assign(socket, :error, reason)}
+      when is_map(params) do
+    case form_params(params) do
+      {:ok, params} -> submit(Map.fetch(payload, "reset_class"), params, socket)
+      :error -> invalid_form(socket)
     end
   end
 
+  def handle_event("save", _params, socket), do: invalid_form(socket)
   def handle_event("clear", _params, socket), do: save_settings(%{}, socket)
 
-  def handle_event("save", _params, socket) do
-    {:noreply, assign(socket, :error, "Invalid query-class form. Reload and try again.")}
+  @spec submit(:error | {:ok, term()}, map(), Phoenix.LiveView.Socket.t()) ::
+          {:noreply, Phoenix.LiveView.Socket.t()}
+  defp submit(:error, params, socket) do
+    settings =
+      Map.merge(socket.assigns.hidden_overrides, parse_settings(params), fn _class,
+                                                                            hidden,
+                                                                            limits ->
+        Map.merge(hidden, limits)
+      end)
+
+    save_settings(settings, assign(socket, :params, params))
   end
+
+  defp submit({:ok, class}, params, socket) when class in @override_classes do
+    {:noreply,
+     assign(socket,
+       params: Map.delete(params, class),
+       hidden_overrides: Map.delete(socket.assigns.hidden_overrides, class),
+       input_revisions: Map.put(socket.assigns.input_revisions, class, Ecto.UUID.generate()),
+       error: nil,
+       message: "Class reset in this draft. Save query-class settings to apply it."
+     )}
+  end
+
+  defp submit({:ok, _class}, _params, socket), do: invalid_form(socket)
+
+  @spec invalid_form(Phoenix.LiveView.Socket.t()) :: {:noreply, Phoenix.LiveView.Socket.t()}
+  defp invalid_form(socket), do: {:noreply, assign(socket, error: @invalid_form, message: nil)}
 
   @spec save_settings(map(), Phoenix.LiveView.Socket.t()) ::
           {:noreply, Phoenix.LiveView.Socket.t()}
@@ -84,18 +93,20 @@ defmodule LogflareWeb.Backends.QueryClassSettingsComponent do
       {:ok, backend} ->
         policy = backend.config.query_class_settings
 
-        message =
-          if settings == %{},
-            do: "Query-class policy disabled",
-            else: "Query-class settings saved"
+        {message, input_revisions} =
+          if policy == %{} do
+            {"Query-class policy disabled", fresh_input_revisions()}
+          else
+            {"Query-class settings saved", socket.assigns.input_revisions}
+          end
 
         {:noreply,
          assign(socket,
            backend: backend,
            original_policy: policy,
            params: policy,
-           input_revision: input_revision_after_save(policy, socket.assigns.input_revision),
-           class_resets: %{},
+           hidden_overrides: hidden_overrides(policy),
+           input_revisions: input_revisions,
            error: nil,
            message: message
          )}
@@ -121,47 +132,64 @@ defmodule LogflareWeb.Backends.QueryClassSettingsComponent do
     end
   end
 
-  @spec input_revision_after_save(map(), String.t()) :: String.t()
-  defp input_revision_after_save(policy, _revision) when policy == %{}, do: Ecto.UUID.generate()
-  defp input_revision_after_save(_policy, revision), do: revision
+  @spec fresh_input_revisions() :: map()
+  defp fresh_input_revisions do
+    revision = Ecto.UUID.generate()
+    Map.new(@classes, &{&1, revision})
+  end
 
-  @spec parse_settings(map()) :: {:ok, map()} | {:error, String.t()}
-  defp parse_settings(params) do
+  @spec form_params(map()) :: {:ok, map()} | :error
+  defp form_params(params) do
     Enum.reduce_while(params, {:ok, %{}}, fn
-      {class, values}, {:ok, settings} when is_map(values) ->
-        policy =
-          values
-          |> Map.take(@numeric_keys)
-          |> Enum.reject(fn {_key, value} -> value in ["", nil] end)
-          |> Map.new(fn {key, value} -> {key, parse_value(key, value)} end)
+      {class, values}, {:ok, form} when class in @classes and is_map(values) ->
+        fields = Map.take(values, @numeric_keys)
 
-        settings = if policy == %{}, do: settings, else: Map.put(settings, class, policy)
-        {:cont, {:ok, settings}}
+        if Enum.all?(Map.values(fields), &is_binary/1),
+          do: {:cont, {:ok, Map.put(form, class, fields)}},
+          else: {:halt, :error}
 
       _entry, _acc ->
-        {:halt, {:error, "Query-class settings must contain named classes and numeric fields."}}
+        {:halt, :error}
     end)
   end
 
-  @spec parse_value(String.t(), term()) :: term()
-  defp parse_value("max_execution_time", "." <> value),
-    do: parse_value("max_execution_time", "0." <> value)
+  @spec parse_settings(map()) :: map()
+  defp parse_settings(params) do
+    for {class, fields} <- params,
+        limits = parse_fields(fields),
+        limits != %{},
+        into: %{},
+        do: {class, limits}
+  end
 
-  defp parse_value("max_execution_time", value) when is_binary(value) do
-    case Float.parse(value) do
+  @spec parse_fields(map()) :: map()
+  defp parse_fields(fields) do
+    for {key, value} <- fields, value != "", into: %{}, do: {key, parse_value(key, value)}
+  end
+
+  @spec parse_value(String.t(), String.t()) :: number() | String.t()
+  defp parse_value("max_execution_time", value) do
+    parsed =
+      value
+      |> String.replace_prefix(".", "0.")
+      |> String.replace(~r/\.(?=[eE]|$)/, ".0")
+      |> Float.parse()
+
+    case parsed do
       {number, ""} -> number
       _other -> value
     end
   end
 
-  defp parse_value(key, value) when key in @numeric_keys and is_binary(value) do
-    case Integer.parse(value) do
-      {number, ""} -> number
-      _other -> value
+  defp parse_value(_key, value) do
+    case Decimal.parse(value, max_digits: 64, max_exponent: 64) do
+      {number, ""} ->
+        if Decimal.integer?(number), do: Decimal.to_integer(number), else: value
+
+      _other ->
+        value
     end
   end
-
-  defp parse_value(_key, value), do: value
 
   @spec class_form(map(), String.t(), String.t()) :: Phoenix.HTML.Form.t()
   defp class_form(params, class, revision) do
@@ -171,21 +199,15 @@ defmodule LogflareWeb.Backends.QueryClassSettingsComponent do
     )
   end
 
-  @spec restore_hidden_overrides(map(), map()) :: map()
-  defp restore_hidden_overrides(settings, %{
-         original_policy: original,
-         class_resets: class_resets
-       }) do
-    Enum.reduce(Map.drop(original, Map.keys(class_resets)), settings, fn {class, policy}, acc ->
-      case Map.take(policy, @hidden_keys) do
-        overrides when overrides == %{} -> acc
-        overrides -> Map.update(acc, class, overrides, &Map.merge(&1, overrides))
-      end
-    end)
+  @spec hidden_overrides(map()) :: map()
+  defp hidden_overrides(policy) do
+    for {class, limits} <- policy,
+        overrides = Map.take(limits, @hidden_keys),
+        overrides != %{},
+        into: %{},
+        do: {class, overrides}
   end
 
-  @spec cache_override(map(), map(), String.t()) :: 0 | 1 | nil
-  defp cache_override(original, class_resets, class) do
-    unless Map.has_key?(class_resets, class), do: get_in(original, [class, @cache_key])
-  end
+  @spec cache_override?(map(), String.t()) :: boolean()
+  defp cache_override?(overrides, class), do: not is_nil(get_in(overrides, [class, @cache_key]))
 end
