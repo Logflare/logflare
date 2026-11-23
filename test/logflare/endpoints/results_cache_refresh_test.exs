@@ -17,7 +17,7 @@ defmodule Logflare.Endpoints.ResultsCacheRefreshTest do
     test "interval #{inspect(interval)} executes once per cache lifetime without background refresh",
          context do
       endpoint =
-        insert(:endpoint,
+        build(:endpoint,
           user: context.user,
           backend: context.backend,
           language: :ch_sql,
@@ -25,7 +25,7 @@ defmodule Logflare.Endpoints.ResultsCacheRefreshTest do
           cache_duration_seconds: if(context.real_expiry?, do: 1, else: 60)
         )
         |> change(proactive_requerying_seconds: context.interval)
-        |> Repo.update!()
+        |> Repo.insert!()
 
       expect(ClickHouseAdaptor, :execute_query, 2, fn _, _, _ ->
         {:ok, QueryResult.new([%{"n" => 1}], %{total_bytes_processed: 0})}

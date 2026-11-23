@@ -1367,12 +1367,12 @@ defmodule Logflare.EndpointsTest do
         end)
 
         endpoint =
-          insert(:endpoint,
+          build(:endpoint,
             user: insert(:user),
             query: "select current_datetime() as testing"
           )
           |> change(cache_duration_seconds: context.cache_duration_seconds)
-          |> Repo.update!()
+          |> Repo.insert!()
 
         assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_cached_query(endpoint)
         assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_cached_query(endpoint)
@@ -1383,9 +1383,9 @@ defmodule Logflare.EndpointsTest do
       user = insert(:user)
 
       stale_endpoint =
-        insert(:endpoint, user: user)
+        build(:endpoint, user: user)
         |> change(proactive_requerying_seconds: nil)
-        |> Repo.update!()
+        |> Repo.insert!()
 
       assert {:ok, enabled} =
                Endpoints.update_query(
