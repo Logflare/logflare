@@ -11,6 +11,7 @@ defmodule Logflare.Endpoints.EndpointQuery do
   alias Logflare.Backends
   alias Logflare.Backends.Backend
   alias Logflare.Endpoints
+  alias Logflare.Endpoints.ClickHouseSqlSettings
   alias Logflare.Endpoints.FilesystemCachePolicy
   alias Logflare.SingleTenant
   alias Logflare.Sql
@@ -169,6 +170,7 @@ defmodule Logflare.Endpoints.EndpointQuery do
     ])
     |> infer_language_from_backend()
     |> validate_query(:query)
+    |> validate_sandboxable_clickhouse_query()
     |> FilesystemCachePolicy.validate()
     |> default_validations()
     |> update_source_mapping()
@@ -203,7 +205,8 @@ defmodule Logflare.Endpoints.EndpointQuery do
 
     validate_change(changeset, field, fn field, value ->
       with {:ok, expanded_query} <- Sql.expand_subqueries(language, value, queries),
-           {:ok, _} <- Sql.transform(language, expanded_query, user) do
+           {:ok, _} <-
+             Sql.transform(language, expanded_query, user, allow_clickhouse_sql_settings: true) do
         []
       else
         {:error, :database_unavailable} -> [{field, "source catalog is temporarily unavailable"}]
@@ -212,10 +215,30 @@ defmodule Logflare.Endpoints.EndpointQuery do
     end)
   end
 
+  @spec validate_sandboxable_clickhouse_query(Changeset.t()) :: Changeset.t()
+  defp validate_sandboxable_clickhouse_query(
+         %Changeset{valid?: true, changes: changes} = changeset
+       )
+       when is_map_key(changes, :query) or is_map_key(changes, :sandboxable) or
+              is_map_key(changes, :language) do
+    with :ch_sql <- get_field(changeset, :language),
+         true <- get_field(changeset, :sandboxable),
+         query when is_non_empty_binary(query) <- get_field(changeset, :query),
+         {:error, message} <- ClickHouseSqlSettings.validate_sandboxed_base(query) do
+      add_error(changeset, :query, message)
+    else
+      _ -> changeset
+    end
+  end
+
+  defp validate_sandboxable_clickhouse_query(changeset), do: changeset
+
   # Only update source mapping if there are no errors
   def update_source_mapping(%Changeset{errors: [], changes: %{query: query}} = changeset)
       when is_non_empty_binary(query) do
-    case Sql.sources(query, get_field(changeset, :user)) do
+    dialect = changeset |> get_field(:language) |> Sql.to_dialect()
+
+    case Sql.sources(query, get_field(changeset, :user), dialect: dialect) do
       {:ok, source_mapping} ->
         put_change(changeset, :source_mapping, source_mapping)
 

@@ -759,7 +759,7 @@ defmodule Logflare.Endpoints do
   end
 
   @doc """
-  Runs a an endpoint query
+  Runs an endpoint query.
   """
   @spec run_query(EndpointQuery.t(), params :: map(), opts :: Keyword.t()) :: run_query_return()
   def run_query(
@@ -769,6 +769,7 @@ defmodule Logflare.Endpoints do
       )
       when is_map(params) and is_list(opts) do
     endpoint_query = put_endpoint_version_label(endpoint_query)
+    opts = Keyword.put_new(opts, :allow_clickhouse_sql_settings, true)
 
     %EndpointQuery{query: query_string, user_id: user_id, sandboxable: sandboxable} =
       endpoint_query
@@ -795,7 +796,10 @@ defmodule Logflare.Endpoints do
              else: expanded_query
            ),
          {:ok, transformed_query} <-
-           Sql.transform(query_language, transform_input, user_id, consistency: :cached) do
+           Sql.transform(query_language, transform_input, user_id,
+             consistency: :cached,
+             allow_clickhouse_sql_settings: Keyword.fetch!(opts, :allow_clickhouse_sql_settings)
+           ) do
       :telemetry.span(
         [:logflare, :endpoints, :run_query, :exec_query_on_backend],
         %{endpoint_id: endpoint_query.id, language: query_language},
@@ -858,7 +862,7 @@ defmodule Logflare.Endpoints do
   end
 
   @doc """
-  Runs a query string
+  Runs an ad hoc query string. The endpoint editor can opt into endpoint-only SQL settings.
 
   ### Example
     iex> run_query_string(%User{...}, {:bq_sql, "select current_time() where @value > 4"}, params: %{"value" => "123"})
@@ -883,7 +887,7 @@ defmodule Logflare.Endpoints do
       backend_id: Keyword.get(opts, :backend_id)
     }
 
-    run_query(query, params, opts)
+    run_query(query, params, Keyword.put_new(opts, :allow_clickhouse_sql_settings, false))
   end
 
   @doc """
@@ -929,8 +933,19 @@ defmodule Logflare.Endpoints do
         query_results_cache(query, params, opts, 0, resolver_node)
 
       pid when is_pid(pid) ->
+        requested_class = Keyword.get(opts, :read_cluster)
+
         case ResultsCache.query(pid) do
           {:error, :stale_cache} ->
+            query_results_cache(query, params, opts, attempts - 1, node(pid))
+
+          {:error,
+           %QueryError{
+             kind: :invalid_query,
+             backend: ClickHouseAdaptor,
+             raw_error: {:missing_clickhouse_sql_baseline, executed_class}
+           }}
+          when requested_class != executed_class and attempts > 1 ->
             query_results_cache(query, params, opts, attempts - 1, node(pid))
 
           response ->
@@ -1008,7 +1023,10 @@ defmodule Logflare.Endpoints do
              do: {expanded_query, consumer_query},
              else: expanded_query
            ),
-         {:ok, transformed_query} <- Sql.transform(query_language, transform_input, user_id),
+         {:ok, transformed_query} <-
+           Sql.transform(query_language, transform_input, user_id,
+             allow_clickhouse_sql_settings: true
+           ),
          {:ok, transformed_query} <-
            preview_query_policy(endpoint_query, transformed_query, params, opts) do
       {:ok, transformed_query}
@@ -1095,6 +1113,7 @@ defmodule Logflare.Endpoints do
          {:ok, settings} <- endpoint_clickhouse_settings(endpoint, params) do
       ClickHouseAdaptor.prepare_query(backend, query,
         query_type: :endpoint,
+        allow_clickhouse_sql_settings: true,
         read_cluster: Keyword.get(opts, :read_cluster),
         filesystem_cache_settings: settings,
         enforced_clickhouse_settings: endpoint.enforced_clickhouse_settings

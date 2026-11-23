@@ -122,6 +122,8 @@ defmodule LogflareWeb.EndpointsLiveTest do
                      settings
                    )
 
+          request_timeout? = not sandbox? and settings != %{}
+
           expect(ClickHouseAdaptor, :execute_query, fn backend, {sql, _, _, query}, opts ->
             assert query.enforced_clickhouse_settings == current.enforced_clickhouse_settings
             assert {:ok, sql} = ClickHouseAdaptor.prepare_query(backend, sql, opts)
@@ -129,7 +131,8 @@ defmodule LogflareWeb.EndpointsLiveTest do
             if settings == %{} do
               refute sql =~ "max_execution_time"
             else
-              assert sql =~ "max_execution_time = #{settings["max_execution_time"]}"
+              timeout = if request_timeout?, do: 2, else: settings["max_execution_time"]
+              assert sql =~ "max_execution_time = #{timeout}"
             end
 
             assert sql =~ if(sandbox?, do: "SELECT n FROM data", else: "SELECT 2 AS n")
@@ -138,9 +141,16 @@ defmodule LogflareWeb.EndpointsLiveTest do
           end)
 
           payload =
-            if sandbox?,
-              do: %{params: %{}, sandbox_query: "SELECT n FROM data", query_mode: "sql"},
-              else: %{params: %{}, query: "SELECT 2 AS n"}
+            cond do
+              sandbox? ->
+                %{params: %{}, sandbox_query: "SELECT n FROM data", query_mode: "sql"}
+
+              request_timeout? ->
+                %{params: %{}, query: "SELECT 2 AS n SETTINGS max_execution_time = 2"}
+
+              true ->
+                %{params: %{}, query: "SELECT 2 AS n"}
+            end
 
           view |> element("#endpoint-test-form") |> render_submit(%{run: payload})
 

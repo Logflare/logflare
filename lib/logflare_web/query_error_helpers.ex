@@ -91,6 +91,20 @@ defmodule LogflareWeb.QueryErrorHelpers do
     rest |> String.trim_trailing(")") |> unknown_table_message()
   end
 
+  defp classified_sandbox_error_message("ClickHouse setting " <> rest = message) do
+    cond do
+      String.ends_with?(rest, " is not supported in sandboxed SQL") ->
+        String.replace_invalid(message)
+
+      String.ends_with?(rest, " is only allowed in the outer SETTINGS clause") ->
+        "Lower-only ClickHouse settings are only supported in the outer SETTINGS clause. " <>
+          "Remove them from any referenced endpoint or subquery."
+
+      true ->
+        nil
+    end
+  end
+
   defp classified_sandbox_error_message(message) do
     if String.starts_with?(message, @user_facing_sandbox_error_prefixes),
       do: String.replace_invalid(message)
