@@ -95,6 +95,7 @@ defmodule Logflare.Sources.CleanupWorker do
       {:error, %Tesla.Env{status: 404}} -> :ok
       {:error, %Tesla.Env{status: status}} -> {:error, {:bigquery_delete_failed, status}}
       {:error, reason} when is_atom(reason) -> {:error, {:bigquery_delete_failed, reason}}
+      {:error, _reason} -> {:error, {:bigquery_delete_failed, :transport_error}}
     end
   end
 end

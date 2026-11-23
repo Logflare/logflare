@@ -58,6 +58,12 @@ By default, Logflare automatically detects and adds new fields from incoming eve
 
 All source settings can be accessed by clicking the **Edit** or **Settings** button on your source page.
 
+## Deleting a Source
+
+A successful dashboard or API deletion means the source metadata was deleted and a background cleanup job was queued. It does not mean the legacy per-source BigQuery table has already been deleted. Cleanup does not remove shared backend tables.
+
+If BigQuery provisioning was already in progress, the cleanup job can find the table missing before provisioning finishes. Verify the table separately if you need confirmation that its data is gone.
+
 ## API Endpoints
 
 There are two ways in which you can ingest data into Logflare, via specifying the source UUID, or via the source's name.

@@ -50,6 +50,35 @@ defmodule Logflare.Sources.CleanupWorkerTest do
     assert :ok = perform_job(CleanupWorker, job.args)
   end
 
+  test "replayed cleanup cannot delete a replacement source's table", %{
+    user: user,
+    source: source,
+    job: job
+  } do
+    insert(:plan, name: "Free")
+    old_token = Atom.to_string(source.token)
+    old_table = GenUtils.format_table_name(source.token)
+
+    assert {:ok, replacement} =
+             Sources.create_source(%{name: "replacement", token: old_token}, user)
+
+    refute GenUtils.format_table_name(replacement.token) == old_table
+
+    assert {:ok, updated} =
+             Sources.update_source_by_user(replacement, %{name: "renamed", token: old_token})
+
+    assert updated.token == replacement.token
+    assert updated.name == "renamed"
+
+    expect(Tables, :bigquery_tables_delete, 2, fn
+      _conn, "cleanup-project", "cleanup-dataset", ^old_table ->
+        {:ok, %{}}
+    end)
+
+    assert :ok = perform_job(CleanupWorker, job.args)
+    assert :ok = perform_job(CleanupWorker, job.args)
+  end
+
   test "Oban retries failed BigQuery deletion and eventually completes", %{job: job} do
     expect(Tables, :bigquery_tables_delete, fn _, _, _, _ -> {:error, %Tesla.Env{status: 503}} end)
 
@@ -73,6 +102,17 @@ defmodule Logflare.Sources.CleanupWorkerTest do
   test "transport failures are retryable", %{job: job} do
     expect(Tables, :bigquery_tables_delete, fn _, _, _, _ -> {:error, :timeout} end)
     assert {:error, {:bigquery_delete_failed, :timeout}} = perform_job(CleanupWorker, job.args)
+  end
+
+  test "structured transport failures are recorded without raw response details", %{job: job} do
+    expect(Tables, :bigquery_tables_delete, fn _, _, _, _ ->
+      {:error, %Mint.HTTPError{reason: {:unexpected_response, "private response details"}}}
+    end)
+
+    assert %{failure: 1} = Oban.drain_queue(queue: :default)
+    assert %{state: "retryable", errors: [%{"error" => error}]} = Repo.get!(Oban.Job, job.id)
+    assert error =~ "{:bigquery_delete_failed, :transport_error}"
+    refute error =~ "private response details"
   end
 
   test "incomplete cluster teardown retries before touching BigQuery", %{job: job} do
