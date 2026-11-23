@@ -36,6 +36,7 @@ defmodule Logflare.Backends do
   alias Logflare.Sources.SourceRouter
   alias Logflare.SystemMetrics
   alias Logflare.Teams
+  alias Logflare.TeamUsers
   alias Logflare.TeamUsers.TeamUser
   alias Logflare.User
 
@@ -368,7 +369,7 @@ defmodule Logflare.Backends do
   """
   @spec update_backend(Backend.t(), map()) :: {:ok, Backend.t()} | {:error, Changeset.t()}
   def update_backend(%Backend{} = backend, attrs) do
-    case update_backend_config(backend, attrs, []) do
+    case update_backend_config(backend, attrs) do
       {:error, :not_found} ->
         changeset =
           backend
@@ -383,26 +384,64 @@ defmodule Logflare.Backends do
   end
 
   @doc """
-  Persists backend query-class policy. Successful saves do not guarantee
-  immediate cluster-wide application; metadata cache propagation is eventual.
+  Persists backend query-class policy for backend owners, team members, or platform admins.
+  Authorization is rechecked against the locked backend using the persisted actor.
+  Pass `:expected_policy` to reject writes if the policy has changed since it was loaded.
+  Successful saves do not guarantee immediate cluster-wide application;
+  metadata cache propagation is eventual.
   """
-  @spec configure_query_class_settings(User.t(), Backend.t(), map()) ::
+  @spec configure_query_class_settings(User.t() | TeamUser.t(), Backend.t(), map()) ::
           {:ok, Backend.t()} | {:error, term()}
-  def configure_query_class_settings(%User{id: user_id}, %Backend{} = backend, settings) do
-    with %User{admin: true} <- Repo.get(User, user_id) do
-      update_backend_config(backend, %{config: %{query_class_settings: settings}},
-        allow_query_class_settings: true,
-        query_policy_only: true
+  @spec configure_query_class_settings(User.t() | TeamUser.t(), Backend.t(), map(), keyword()) ::
+          {:ok, Backend.t()} | {:error, term()}
+  def configure_query_class_settings(actor, %Backend{} = backend, settings, opts \\ []) do
+    Repo.with_primary(fn ->
+      result =
+        Repo.transact(fn -> persist_query_class_settings(actor, backend.id, settings, opts) end)
+
+      with {:ok, updated} <- result do
+        QueryContext.invalidate_backend(updated)
+        invalidate_query_policy(updated)
+        {:ok, typecast_config_string_map_to_atom_map(updated)}
+      end
+    end)
+  end
+
+  @spec persist_query_class_settings(User.t() | TeamUser.t(), integer(), map(), keyword()) ::
+          {:ok, Backend.t()}
+          | {:error,
+             Changeset.t() | :not_found | :not_clickhouse_backend | :forbidden | :stale_policy}
+  defp persist_query_class_settings(actor, backend_id, settings, opts) do
+    with {:ok, current} <- lock_backend(backend_id),
+         :ok <- authorize_query_policy_actor(persisted_policy_actor(actor), current),
+         :ok <- validate_query_policy_backend(current),
+         :ok <- check_expected_query_policy(current, opts) do
+      persist_backend_config(current, %{config: %{query_class_settings: settings}},
+        allow_query_class_settings: true
       )
-    else
-      nil -> {:error, :not_found}
-      %User{} -> {:error, :forbidden}
     end
   end
 
-  @spec update_backend_config(Backend.t(), map(), keyword()) ::
-          {:ok, Backend.t()} | {:error, Changeset.t() | :not_found | :not_clickhouse_backend}
-  defp update_backend_config(%Backend{} = backend, attrs, opts) do
+  @spec persisted_policy_actor(User.t() | TeamUser.t()) :: User.t() | TeamUser.t() | nil
+  defp persisted_policy_actor(%User{id: id}), do: Repo.get(User, id)
+  defp persisted_policy_actor(%TeamUser{id: id}), do: TeamUsers.get_team_user_by(id: id)
+  defp persisted_policy_actor(_actor), do: nil
+
+  @spec authorize_query_policy_actor(User.t() | TeamUser.t() | nil, Backend.t()) ::
+          :ok | {:error, :forbidden}
+  defp authorize_query_policy_actor(%User{admin: true}, _backend), do: :ok
+  defp authorize_query_policy_actor(nil, _backend), do: {:error, :forbidden}
+
+  defp authorize_query_policy_actor(actor, backend) do
+    case get_backend_by_user_access(actor, backend.id) do
+      %Backend{} -> :ok
+      nil -> {:error, :forbidden}
+    end
+  end
+
+  @spec update_backend_config(Backend.t(), map()) ::
+          {:ok, Backend.t()} | {:error, Changeset.t() | :not_found}
+  defp update_backend_config(%Backend{} = backend, attrs) do
     default_ingest_modified? =
       Map.has_key?(attrs, "default_ingest?") or Map.has_key?(attrs, :default_ingest?)
 
@@ -411,8 +450,8 @@ defmodule Logflare.Backends do
     result =
       Repo.transact(fn ->
         with {:ok, current} <- lock_backend(backend.id),
-             :ok <- validate_query_policy_backend(current, opts) do
-          persist_backend_config(current, attrs, opts)
+             {:ok, updated} <- persist_backend_config(current, attrs, []) do
+          {:ok, {current, updated}}
         end
       end)
 
@@ -425,13 +464,9 @@ defmodule Logflare.Backends do
           default_ingest_flag_changed(updated)
         end
 
-        if Keyword.get(opts, :query_policy_only, false) do
-          invalidate_query_policy(updated)
-        else
-          Enum.each(updated.sources, &restart_source_sup(&1))
-          apply_consolidated_pipeline_change(backend, updated, default_ingest_modified?)
-          notify_backend_config_change(updated, config_modified?)
-        end
+        Enum.each(updated.sources, &restart_source_sup(&1))
+        apply_consolidated_pipeline_change(backend, updated, default_ingest_modified?)
+        notify_backend_config_change(updated, config_modified?)
 
         {:ok, typecast_config_string_map_to_atom_map(updated)}
 
@@ -450,6 +485,16 @@ defmodule Logflare.Backends do
     end)
   end
 
+  @spec check_expected_query_policy(Backend.t(), keyword()) :: :ok | {:error, :stale_policy}
+  defp check_expected_query_policy(backend, opts) do
+    current = backend.config[:query_class_settings] || %{}
+
+    case Keyword.fetch(opts, :expected_policy) do
+      {:ok, expected} when expected != current -> {:error, :stale_policy}
+      _ -> :ok
+    end
+  end
+
   @spec lock_backend(integer()) :: {:ok, Backend.t()} | {:error, :not_found}
   defp lock_backend(id) do
     case Repo.one(from(b in Backend, where: b.id == ^id, lock: "FOR UPDATE")) do
@@ -459,17 +504,15 @@ defmodule Logflare.Backends do
   end
 
   @spec persist_backend_config(Backend.t(), map(), keyword()) ::
-          {:ok, {Backend.t(), Backend.t()}} | {:error, Changeset.t()}
+          {:ok, Backend.t()} | {:error, Changeset.t()}
   defp persist_backend_config(current, attrs, opts) do
     alerts_modified? = Map.has_key?(attrs, :alert_queries)
     current = if alerts_modified?, do: Repo.preload(current, :alert_queries), else: current
 
-    changeset =
-      current
-      |> Backend.changeset(attrs, opts)
-      |> maybe_put_backend_alerts(attrs, alerts_modified?)
-
-    with {:ok, updated} <- Repo.update(changeset), do: {:ok, {current, updated}}
+    current
+    |> Backend.changeset(attrs, opts)
+    |> maybe_put_backend_alerts(attrs, alerts_modified?)
+    |> Repo.update()
   end
 
   @spec maybe_put_backend_alerts(Changeset.t(), map(), boolean()) :: Changeset.t()
@@ -484,15 +527,9 @@ defmodule Logflare.Backends do
   defp notify_backend_config_change(backend, true),
     do: Adaptor.on_backend_config_changed(backend)
 
-  @spec validate_query_policy_backend(Backend.t(), Keyword.t()) ::
-          :ok | {:error, :not_clickhouse_backend}
-  defp validate_query_policy_backend(%Backend{type: :clickhouse}, _opts), do: :ok
-
-  defp validate_query_policy_backend(_backend, opts) do
-    if Keyword.get(opts, :query_policy_only, false),
-      do: {:error, :not_clickhouse_backend},
-      else: :ok
-  end
+  @spec validate_query_policy_backend(Backend.t()) :: :ok | {:error, :not_clickhouse_backend}
+  defp validate_query_policy_backend(%Backend{type: :clickhouse}), do: :ok
+  defp validate_query_policy_backend(_backend), do: {:error, :not_clickhouse_backend}
 
   @spec default_ingest_flag_changed(Backend.t()) :: :ok
   defp default_ingest_flag_changed(%Backend{user_id: user_id}) do

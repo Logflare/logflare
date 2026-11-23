@@ -26,10 +26,17 @@ defmodule Logflare.Endpoints.ClickHouseSettings do
     "timeout_overflow_mode" => {:enum, ["throw"]}
   }
   @max_limit 9_223_372_036_854_775_807
+  @microseconds_per_second 1_000_000.0
+  @min_timeout_seconds 1.0 / @microseconds_per_second
+  @exclusive_timeout_microseconds @max_limit + 1
   @empty_span %{
     "start" => %{"line" => 0, "column" => 0},
     "end" => %{"line" => 0, "column" => 0}
   }
+
+  defguard is_valid_timeout(seconds)
+           when is_number(seconds) and seconds >= @min_timeout_seconds and seconds <= @max_limit and
+                  seconds * @microseconds_per_second < @exclusive_timeout_microseconds
 
   @spec normalize(map()) :: {:ok, map()} | {:error, String.t()}
   def normalize(settings) when is_map(settings) do

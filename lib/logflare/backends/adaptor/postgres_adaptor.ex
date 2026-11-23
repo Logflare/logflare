@@ -47,6 +47,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
     field(:backend_token, String.t())
     field(:source_token, atom())
     field(:pipeline_name, tuple())
+    field(:telemetry_tags, %{backend_type: atom()})
   end
 
   @impl Logflare.Backends.Adaptor

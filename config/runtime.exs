@@ -810,8 +810,7 @@ spool_max_batch_bytes_override =
 # when SPOOL_BUFFER is :wal. Falls back to a tmp dir so a plain
 # `mix phx.server` still boots with spool mode on, but that fallback is
 # not durable across a real restart — set this explicitly wherever the
-# WAL is meant to survive one (see cloudbuild/gce-startup.sh's
-# prepare_wal_dir for how the dev/staging producer instances provide it).
+# WAL is meant to survive one.
 spool_overrides =
   spool_mode_override ++
     spool_provider_override ++
