@@ -118,6 +118,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   @impl Logflare.Backends.Adaptor
   def on_backend_config_changed(%Backend{id: backend_id}) do
+    Provisioner.config_changed(backend_id)
     QueryConnectionSup.refresh_backend(backend_id)
   end
 
