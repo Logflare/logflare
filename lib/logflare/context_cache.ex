@@ -21,9 +21,9 @@ defmodule Logflare.ContextCache do
 
   With `refresh_ahead: true`, `c:fetch/2` also hands the key to `Logflare.ContextCache.RefreshAhead`,
   which reloads entries close to expiry in the background, so reads don't block on the getter
-  when a hot entry expires. It relies on `c:expiry/1`, `c:entry/1`, `c:put_entries/1`,
-  `c:delete_keys/1` and `c:stale_entry?/2` only. `bust_keys/1` marks busted keys for it before
-  deleting them, so a refresh running during a bust never writes the busted value back.
+  when a hot entry expires. It relies on `c:expiry/1`, `c:entry/1`, `c:put_entries/1` and
+  `c:delete_keys/1` only. `bust_keys/1` marks busted keys for it before deleting them, so a
+  refresh running during a bust never keeps the busted value.
 
   ## Busting
 

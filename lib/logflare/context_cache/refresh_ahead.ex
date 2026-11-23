@@ -9,17 +9,16 @@ defmodule Logflare.ContextCache.RefreshAhead do
   window expire as before.
 
   A single worker drains the queue at a constant rate, `:batch_size` keys every `:interval` ms,
-  so refreshes don't burst into the database. For each batch it first asks up to `:max_peers`
-  cluster peers for their entries in one call per peer. An entry is copied with the peer's
-  remaining TTL when it is still outside the refresh window and not stale per
-  `c:Logflare.ContextCache.stale_entry?/2`, so a cluster loads each hot key from the database
-  about once per TTL rather than once per node. Keeping the peer's remaining TTL means a value is
-  never cached for longer than one TTL after it was loaded from the database. The remaining keys
-  are reloaded with their getters and written with their total TTL.
+  so refreshes don't burst into the database. A queued key is skipped when its entry has left the
+  refresh window in the meantime, for example because a read-through miss or a warmer replaced it.
+  Otherwise the getter that produced the entry is re-run and its result is written with the
+  cache's default TTL. A getter returning `{:error, :database_unavailable}` leaves the cached value
+  in place, as on a read-through miss.
 
-  A refreshed value is only written if the entry still holds the value it had when the refresh
-  started, and is evicted again when `Logflare.ContextCache.bust_keys/1` busted the key in the
-  meantime, so a WAL bust during a refresh is never undone.
+  `Logflare.ContextCache.bust_keys/1` bumps the generation of queued keys before deleting them.
+  A refresh is skipped when its key was busted after it was queued, and a refreshed value is only
+  written if the entry still holds the value it had when the refresh started. A bust landing
+  between that check and the write evicts the written value again.
 
   Only `Logflare.ContextCache` callbacks are used, so it works with any
   `Logflare.ContextCache.Ops` implementation.
@@ -29,13 +28,10 @@ defmodule Logflare.ContextCache.RefreshAhead do
 
   require Logger
 
-  alias Logflare.Cluster.Utils, as: ClusterUtils
-  alias Logflare.ContextCache
-
   @table __MODULE__
   @event [:logflare, :context_cache, :refresh_ahead]
 
-  @type result :: :refreshed | :copied | :skipped | :failed
+  @type result :: :refreshed | :skipped | :failed
 
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(_opts), do: GenServer.start_link(__MODULE__, [], name: __MODULE__)
@@ -45,32 +41,19 @@ defmodule Logflare.ContextCache.RefreshAhead do
     config = config()
 
     with true <- Keyword.get(config, :enabled, false),
-         {remaining, total} <- cache.expiry(key),
-         true <- remaining < total * config[:threshold] do
-      enqueue(cache, key, getter, total, config[:max_queue])
+         true <- in_refresh_window?(cache, key, config[:threshold]) do
+      enqueue(cache, key, getter, config[:max_queue])
     end
 
     :ok
   end
 
   @doc """
-  Marks queued and in-flight refreshes of `keys` as busted, so their results are discarded.
+  Bumps the generation of queued refreshes of `keys`, so their results are discarded.
   Must be called before the keys are deleted.
   """
   @spec mark_busted(module(), Enumerable.t()) :: :ok
-  def mark_busted(cache, keys) do
-    Enum.each(keys, &:ets.update_element(@table, {cache, &1}, {4, true}))
-  rescue
-    ArgumentError -> :ok
-  end
-
-  @doc """
-  Entries cached on this node under `keys`. Called by peers over RPC.
-  """
-  @spec peer_entries(module(), [term()]) :: [ContextCache.entry()]
-  def peer_entries(cache, keys) do
-    Enum.flat_map(keys, fn key -> List.wrap(cache.entry(key)) end)
-  end
+  def mark_busted(cache, keys), do: Enum.each(keys, &bump_generation({cache, &1}))
 
   @impl GenServer
   def init(_opts) do
@@ -98,91 +81,54 @@ defmodule Logflare.ContextCache.RefreshAhead do
 
   defp schedule_tick(config), do: Process.send_after(self(), :tick, config[:interval])
 
-  defp enqueue(cache, key, getter, total, max_queue) do
+  defp in_refresh_window?(cache, key, threshold) do
+    case cache.expiry(key) do
+      {remaining, total} -> remaining < total * threshold
+      nil -> false
+    end
+  end
+
+  defp enqueue(cache, key, getter, max_queue) do
     :ets.info(@table, :size) < max_queue and
-      :ets.insert_new(@table, {{cache, key}, getter, total, false})
+      :ets.insert_new(@table, {{cache, key}, getter, 0})
   rescue
     ArgumentError -> false
   end
 
+  defp bump_generation(id) do
+    if :ets.member(@table, id), do: :ets.update_counter(@table, id, {3, 1})
+  rescue
+    ArgumentError -> nil
+  end
+
+  defp busted?(cache, key), do: :ets.lookup_element(@table, {cache, key}, 3, 0) > 0
+
   defp refresh_batch(config) do
     case :ets.match_object(@table, :_, config[:batch_size]) do
-      {queued, _continuation} ->
-        queued
-        |> Enum.group_by(fn {{cache, _key}, _getter, _total, _busted?} -> cache end)
-        |> Enum.each(fn {cache, queued} -> refresh_cache(cache, queued, config) end)
-
-      :"$end_of_table" ->
-        :ok
+      {queued, _continuation} -> Enum.each(queued, &refresh_queued(&1, config[:threshold]))
+      :"$end_of_table" -> :ok
     end
   end
 
-  defp refresh_cache(cache, queued, config) do
-    Enum.each(queued, fn {id, _getter, _total, _busted?} ->
-      :ets.update_element(@table, id, {4, false})
-    end)
+  defp refresh_queued({{cache, key} = id, getter, _generation}, threshold) do
+    started_at = System.monotonic_time()
+    result = refresh(cache, key, getter, threshold)
+    :ets.delete(@table, id)
 
-    keys = Enum.map(queued, fn {{_cache, key}, _getter, _total, _busted?} -> key end)
-    peer_entries = fetch_peer_entries(cache, keys, config)
-
-    for {{_cache, key} = id, getter, total, _busted?} <- queued do
-      started_at = System.monotonic_time()
-      result = refresh(cache, key, getter, total, Map.get(peer_entries, key), config[:threshold])
-      :ets.delete(@table, id)
-
-      :telemetry.execute(@event, %{duration: System.monotonic_time() - started_at}, %{
-        cache: cache,
-        result: result
-      })
-    end
+    :telemetry.execute(@event, %{duration: System.monotonic_time() - started_at}, %{
+      cache: cache,
+      result: result
+    })
   end
 
-  defp fetch_peer_entries(cache, keys, config) do
-    case ClusterUtils.peer_list_partial(1.0, config[:max_peers]) do
-      [] ->
-        %{}
-
-      peers ->
-        peers
-        |> :erpc.multicall(__MODULE__, :peer_entries, [cache, keys], config[:peer_timeout])
-        |> Enum.flat_map(fn
-          {:ok, entries} -> entries
-          _error -> []
-        end)
-        |> Enum.reduce(%{}, &keep_longest_ttl/2)
-    end
-  end
-
-  defp keep_longest_ttl({key, value, ttl}, acc) when is_integer(ttl) do
-    case acc do
-      %{^key => {_value, best_ttl}} when best_ttl >= ttl -> acc
-      _ -> Map.put(acc, key, {value, ttl})
-    end
-  end
-
-  defp keep_longest_ttl(_entry_without_ttl, acc), do: acc
-
-  @spec refresh(
-          module(),
-          term(),
-          (-> term()),
-          pos_integer(),
-          {term(), pos_integer()} | nil,
-          float()
-        ) ::
-          result()
-  defp refresh(cache, key, getter, total, peer_entry, threshold) do
-    case cached_value(cache, key) do
-      :missing ->
-        :skipped
-
-      snapshot ->
-        if copyable?(cache, key, peer_entry, total * threshold) do
-          {value, ttl} = peer_entry
-          write(cache, key, snapshot, {value, ttl}, :copied)
-        else
-          write(cache, key, snapshot, {getter.(), total}, :refreshed)
-        end
+  @spec refresh(module(), term(), (-> term()), float()) :: result()
+  defp refresh(cache, key, getter, threshold) do
+    with false <- busted?(cache, key),
+         true <- in_refresh_window?(cache, key, threshold),
+         {:cached, _value} = snapshot <- cached_value(cache, key) do
+      reload(cache, key, snapshot, getter.())
+    else
+      _not_due -> :skipped
     end
   rescue
     e ->
@@ -194,12 +140,6 @@ defmodule Logflare.ContextCache.RefreshAhead do
       :failed
   end
 
-  defp copyable?(_cache, _key, nil, _min_ttl), do: false
-
-  defp copyable?(cache, key, {value, ttl}, min_ttl) do
-    ttl > min_ttl and not cache.stale_entry?(key, value)
-  end
-
   defp cached_value(cache, key) do
     case cache.entry(key) do
       {_key, value, _ttl} -> {:cached, value}
@@ -207,22 +147,26 @@ defmodule Logflare.ContextCache.RefreshAhead do
     end
   end
 
-  @spec write(module(), term(), {:cached, term()}, {term(), pos_integer()}, result()) :: result()
-  defp write(cache, key, snapshot, {value, ttl}, result) do
+  defp reload(cache, _key, _snapshot, {:error, :database_unavailable}) do
+    Logger.warning("Refresh-ahead for #{inspect(cache)} could not reach the database")
+    :failed
+  end
+
+  defp reload(cache, key, snapshot, value) do
     if cached_value(cache, key) == snapshot do
-      :ok = cache.put_entries([{key, value, ttl}])
-      discard_if_busted(cache, key, result)
+      :ok = cache.put_entries([{key, value, nil}])
+      discard_if_busted(cache, key)
     else
       :skipped
     end
   end
 
-  defp discard_if_busted(cache, key, result) do
-    if :ets.lookup_element(@table, {cache, key}, 4, false) do
+  defp discard_if_busted(cache, key) do
+    if busted?(cache, key) do
       {:ok, _deleted} = cache.delete_keys([key])
       :skipped
     else
-      result
+      :refreshed
     end
   end
 end

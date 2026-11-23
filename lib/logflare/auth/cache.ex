@@ -4,7 +4,7 @@ defmodule Logflare.Auth.Cache do
   Cachex `expiration`.
   """
 
-  use Logflare.ContextCache, refresh_ahead: true
+  use Logflare.ContextCache
 
   alias Logflare.Auth
   alias Logflare.Cache.CachexOps
