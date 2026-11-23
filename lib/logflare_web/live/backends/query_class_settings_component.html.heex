@@ -36,13 +36,21 @@
         <% f = class_form(@params, class, Map.fetch!(@input_revisions, class)) %>
         <div class="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-x-6">
           <div :for={{key, label} <- @fields} class="form-group">
+            <% warning_id =
+              if key == "max_execution_time" and ignored_timeout?(@original_policy[class]),
+                do: "query-class-#{class}-timeout-warning" %>
             {label(f, key, label)}
             {number_input(f, key,
               class: "form-control",
               min: if(key == "max_execution_time", do: "0.000001", else: "1"),
               step: if(key == "max_execution_time", do: "any", else: "1"),
-              placeholder: if(class == "default", do: "Not set", else: "Inherit default")
+              placeholder: if(class == "default", do: "Not set", else: "Inherit default"),
+              aria: [describedby: warning_id]
             )}
+            <p :if={warning_id} id={warning_id} class="form-text text-danger">
+              Queries ignore this saved time limit because it is outside ClickHouse's supported range.
+              Enter a supported value or clear the field, then save.
+            </p>
           </div>
         </div>
         <p :if={cache_override?(@hidden_overrides, class)} id={"query-class-#{class}-cache-override"} class="form-text text-muted">

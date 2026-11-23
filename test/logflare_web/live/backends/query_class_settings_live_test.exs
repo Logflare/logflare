@@ -143,6 +143,51 @@ defmodule LogflareWeb.Backends.QueryClassSettingsLiveTest do
            }
   end
 
+  test "saved legacy timeouts are flagged until corrected", %{backend: backend, conn: conn} do
+    policy = %{
+      "default" => %{"priority" => 5, "max_execution_time" => 0.0000005},
+      "api_paid" => %{"max_execution_time" => 2.5},
+      "api_free" => %{"max_execution_time" => 10_000_000_000_000}
+    }
+
+    persisted = Repo.reload!(backend)
+
+    persisted
+    |> Ecto.Changeset.change(
+      config_encrypted: Map.put(persisted.config_encrypted, "query_class_settings", policy)
+    )
+    |> Repo.update!()
+
+    {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}/edit")
+
+    for class <- ["default", "api_free"] do
+      warning_id = "query-class-#{class}-timeout-warning"
+      assert has_element?(view, "##{warning_id}", "Queries ignore this saved time limit")
+
+      assert has_element?(
+               view,
+               "#{policy_input(class, "max_execution_time")}[aria-describedby='#{warning_id}']"
+             )
+    end
+
+    refute has_element?(view, "#query-class-api_paid-timeout-warning")
+    refute has_element?(view, "#query-class-mcp-timeout-warning")
+    assert Backends.get_backend(backend.id).config.query_class_settings == policy
+
+    view
+    |> form("#query-class-settings-form",
+      query_class_settings: %{
+        "default" => %{"priority" => "5", "max_execution_time" => "0.5"},
+        "api_free" => %{"max_execution_time" => ""}
+      }
+    )
+    |> render_submit()
+
+    assert has_element?(view, "[role=status]", "Query-class settings saved")
+    refute has_element?(view, "#query-class-default-timeout-warning")
+    refute has_element?(view, "#query-class-api_free-timeout-warning")
+  end
+
   test "sub-microsecond timeouts cannot be saved through the editor", context do
     {:ok, view, _html} =
       live_with_redirect(context.conn, ~p"/backends/#{context.backend.id}/edit")
