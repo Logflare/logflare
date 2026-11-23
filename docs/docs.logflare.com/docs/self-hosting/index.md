@@ -87,6 +87,27 @@ Use `/ready` for readiness probes. It always performs every check, database incl
 
 Environment variables that influence the logic are prefixed with `LOGFLARE_HEALTH_*`. Refer to above table for customizing the values.
 
+#### Graceful shutdown
+
+On SIGTERM or SIGQUIT, Logflare immediately fails readiness and asks OTP to stop. A supervised drainer shuts down before the endpoints and ingestion workers. It asks spool producers to stop fetching without waiting for outstanding queue nacks, then continues serving during the withdrawal window so load balancers can remove the instance. It then closes application admission (including requests on existing HTTP/2 connections, RPCs, and websocket ingestion batches), attempts to suspend TCP listeners within a bounded phase, waits for admitted work, seals ingestion writes, and, if configured, waits for ingestion queues and flushes the spool. A stalled listener cannot use the time set aside for the write barrier and spool flush. Requests that haven't acquired a write lease when writes are sealed receive a retryable error; a multi-source batch uses one lease for all its source groups. If an in-progress handoff does not finish in time, Logflare records a timeout and skips the queue drain. When configured, Logflare still attempts a bounded best-effort spool sync for already enqueued work and uses the cleanup budget to release outstanding spool receipts for redelivery. The sync does not cover handoffs that arrive after it completes. Liveness remains independent of readiness while the endpoints are still running.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `LOGFLARE_SHUTDOWN_WITHDRAWAL_TIMEOUT_MS` | `15000` | Requested traffic withdrawal window. Logflare shortens it if needed to leave time for listener suspension, admitted work, and any configured final drain. |
+| `LOGFLARE_SHUTDOWN_REQUEST_TIMEOUT_MS` | `30000` | Maximum wait for admitted requests/RPC callbacks after closing admission. When the final drain is enabled, up to half of the overall budget is reserved for spool sync and cleanup; this can shorten the withdrawal and request waits. |
+| `LOGFLARE_SHUTDOWN_DRAIN_TIMEOUT_MS` | Unset | Enables final queue/spool draining and caps its queue-wait phase. |
+| `LOGFLARE_SHUTDOWN_TIMEOUT_MS` | Larger of withdrawal and configured drain timeout, plus `20000` | Maximum shutdown time for the drainer, shared by withdrawal, request draining, spool synchronization, and cleanup. Zero closes admission immediately and skips drain waits. |
+
+After admission closes, new application requests receive HTTP 503 or gRPC UNAVAILABLE; websocket ingestion batches receive a retryable source-unavailable error. Already admitted HTTP requests remain tracked until Bandit completes their responses, avoiding interruption of active HTTP/2 streams at VM shutdown. RPC callbacks are tracked during the request wait. After the ingestion drainer, Cowboy starts graceful shutdown on all gRPC connections concurrently. HTTP/2 connections have up to 5 seconds to finish, within one shared 6-second wire-drain budget independent of the request wait. Ranch drops remaining connections during server teardown. Repeated termination signals do not restart the sequence or extend its deadline.
+
+Set Kubernetes `terminationGracePeriodSeconds` above the drainer timeout **plus** headroom for the rest of OTP shutdown and any pre-stop hook. For example, a 60-second drain setting defaults to an 80-second drainer budget; a 120-second Kubernetes grace period leaves 40 seconds for server teardown and any pre-stop hook. The 60-second queue wait is a cap, not a reservation: with a spool buffer, a 15-second withdrawal and 30-second request wait can leave only about 15 seconds to wait for queues. If the drainer exceeds its budget, OTP kills it and continues shutting down. A timeout can interrupt unfinished work: this is not a durability guarantee under forced termination.
+
+An empty ingestion queue is not proof of direct backend delivery. A backend may already have claimed a batch that is still being inserted or retried. The drainer does not verify completion of those direct deliveries; backend pipelines continue their own OTP shutdown.
+
+Shutdown reports failed spool partition commits separately from sync timeouts. In WAL mode, a successful shutdown sync confirms only the local WAL commit, not upload or queue publication. Undelivered WAL files are recoverable only if the WAL volume survives termination; a Kubernetes `emptyDir` does not survive pod deletion.
+
+These controls improve termination safety; they do not make Argo blue/green ALB target replacement atomic.
+
 #### Metadata
 
 Metadata allows passing in configuration values that will be merged into the logs and traces.

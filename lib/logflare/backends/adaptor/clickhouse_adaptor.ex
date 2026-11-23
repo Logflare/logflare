@@ -36,6 +36,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Backends.QueryError
   alias Logflare.Endpoints.ClickHouseSettings
+  alias Logflare.Endpoints.ClickHouseSqlSettings
   alias Logflare.LogEvent
   alias Logflare.LogEvent.TypeDetection
   alias Logflare.Sources.Source
@@ -795,7 +796,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   def execute_ch_query(%Backend{} = backend, statement, params, opts)
       when is_list_or_map(params) and is_list(opts) do
-    with {:ok, statement} <- prepare_query(backend, statement, opts) do
+    with {:ok, statement} <- prepare_query_result(backend, statement, opts) do
       requested = Keyword.get(opts, :read_cluster)
       label = resolve_read_cluster_label(backend, requested)
 
@@ -832,9 +833,21 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
           }
         )
 
-        {:error, %{query_error(:invalid_query, reason) | description: reason}}
+        {:error, query_policy_error(reason, Keyword.get(opts, :read_cluster))}
     end
   end
+
+  @spec query_policy_error(String.t() | ClickHouseSqlSettings.missing_baseline_error(), term()) ::
+          QueryError.t()
+  defp query_policy_error({:missing_clickhouse_sql_baseline, message}, requested_class) do
+    %{
+      query_error(:invalid_query, {:missing_clickhouse_sql_baseline, requested_class})
+      | description: message
+    }
+  end
+
+  defp query_policy_error(reason, _requested_class),
+    do: %{query_error(:invalid_query, reason) | description: reason}
 
   @doc """
   Applies policy to reads. Recognized raw maintenance statements pass through
@@ -842,7 +855,17 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   """
   @spec prepare_query(Backend.t(), iodata(), Keyword.t()) ::
           {:ok, String.t()} | {:error, String.t()}
-  def prepare_query(%Backend{config: config}, statement, opts \\ []) do
+  def prepare_query(%Backend{} = backend, statement, opts \\ []) do
+    case prepare_query_result(backend, statement, opts) do
+      {:error, {:missing_clickhouse_sql_baseline, message}} -> {:error, message}
+      result -> result
+    end
+  end
+
+  @spec prepare_query_result(Backend.t(), iodata(), keyword()) ::
+          {:ok, String.t()}
+          | {:error, String.t() | ClickHouseSqlSettings.missing_baseline_error()}
+  defp prepare_query_result(%Backend{config: config}, statement, opts) do
     statement = IO.iodata_to_binary(statement)
 
     if raw_maintenance_query?(statement, opts) do
@@ -853,7 +876,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   end
 
   @spec prepare_read_query(map(), String.t(), keyword()) ::
-          {:ok, String.t()} | {:error, String.t()}
+          {:ok, String.t()}
+          | {:error, String.t() | ClickHouseSqlSettings.missing_baseline_error()}
   defp prepare_read_query(config, statement, opts) do
     classes = Map.get(config, :query_class_settings) || %{}
     endpoint_settings = Keyword.get(opts, :enforced_clickhouse_settings, %{})
@@ -866,10 +890,16 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
            ) do
       settings = Map.merge(Keyword.get(opts, :filesystem_cache_settings, %{}), settings)
 
-      if Keyword.get(opts, :validated_clickhouse_sql, false) do
-        ClickHouseSettings.enforce_validated(statement, settings)
-      else
-        ClickHouseSettings.enforce(statement, settings)
+      cond do
+        Keyword.get(opts, :query_type) == :endpoint and
+            Keyword.get(opts, :allow_clickhouse_sql_settings, false) ->
+          ClickHouseSqlSettings.enforce(statement, settings, opts)
+
+        Keyword.get(opts, :validated_clickhouse_sql, false) ->
+          ClickHouseSettings.enforce_validated(statement, settings)
+
+        true ->
+          ClickHouseSettings.enforce(statement, settings)
       end
     end
   end
@@ -887,7 +917,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   end
 
   @spec validate_query_class_settings(Changeset.t()) :: Changeset.t()
-  defp validate_query_class_settings(changeset) do
+  defp validate_query_class_settings(
+         %Changeset{params: %{"query_class_settings" => _}} = changeset
+       ) do
     case Changeset.get_field(changeset, :query_class_settings) do
       nil ->
         changeset
@@ -899,6 +931,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
         end
     end
   end
+
+  defp validate_query_class_settings(changeset), do: changeset
 
   @spec do_ch_query_on_label(
           Backend.t(),

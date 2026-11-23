@@ -27,16 +27,19 @@ defmodule Logflare.KeyValues.CacheWarmerTest do
     end
 
     for {context, keys, limit, warmed} <- [
-          {"usage rows beyond warm_limit", [{"a", 1}, {"b", 2}, {"unused", nil}], 1, ["a"]},
-          {"usage rows below warm_limit", [{"old_unused", nil}, {"used", 5}, {"new_unused", nil}],
-           2, ["used", "new_unused"]},
-          {"empty usage table", [{"old", nil}, {"new", nil}], 1, ["new"]}
+          {"usage rows beyond warm_limit", [{"a", used: 1}, {"b", used: 2}, {"unused", []}], 1,
+           ["a"]},
+          {"usage rows below warm_limit",
+           [{"old_unused", []}, {"used", used: 5}, {"new_unused", []}], 2,
+           ["used", "new_unused"]},
+          {"empty usage table", [{"old", []}, {"new", []}], 1, ["new"]},
+          {"unused key updated after a newer insert",
+           [{"updated", updated: 1}, {"newer", updated: 5}], 1, ["updated"]}
         ] do
       test context, %{user: user} do
-        put_warm_limit(unquote(limit))
         insert_keys(user, unquote(keys))
 
-        CacheWarmer.execute(nil)
+        assert {:ok, :ok} = CacheWarmer.warm_top_n(unquote(limit))
 
         assert cached_keys(user, unquote(keys)) == unquote(warmed)
       end
@@ -108,23 +111,19 @@ defmodule Logflare.KeyValues.CacheWarmerTest do
   end
 
   defp insert_keys(user, keys) do
-    for {key, used_minutes_ago} <- keys do
-      kv = insert(:key_value, user: user, key: key)
+    for {key, opts} <- keys do
+      updated_at = minutes_ago(Keyword.get(opts, :updated, 0))
+      kv = insert(:key_value, user: user, key: key, updated_at: updated_at)
 
-      if used_minutes_ago do
-        last_used_at = DateTime.add(DateTime.utc_now(), -used_minutes_ago, :minute)
-        insert(:key_value_usage, key_value: kv, last_used_at: last_used_at)
+      if used = opts[:used] do
+        insert(:key_value_usage, key_value: kv, last_used_at: minutes_ago(used))
       end
     end
   end
 
+  defp minutes_ago(minutes), do: DateTime.add(DateTime.utc_now(), -minutes, :minute)
+
   defp cached_keys(user, keys) do
     for {key, _} <- keys, Cachex.get!(Cache, {:lookup, [user.id, key, nil]}), do: key
-  end
-
-  defp put_warm_limit(limit) do
-    prev = Application.get_env(:logflare, CacheWarmer, [])
-    Application.put_env(:logflare, CacheWarmer, Keyword.put(prev, :warm_limit, limit))
-    on_exit(fn -> Application.put_env(:logflare, CacheWarmer, prev) end)
   end
 end

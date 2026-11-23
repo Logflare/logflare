@@ -110,6 +110,29 @@ defmodule LogflareWeb.Api.EndpointControllerTest do
   end
 
   describe "create/2" do
+    test "persists explicitly null cache settings", %{conn: conn, user: user} do
+      payload =
+        Jason.encode!(%{
+          name: TestUtils.random_string(),
+          language: "bq_sql",
+          query: "select a from logs",
+          cache_duration_seconds: nil,
+          proactive_requerying_seconds: nil
+        })
+
+      response =
+        conn
+        |> add_access_token(user, ~w(private))
+        |> put_req_header("content-type", "application/json")
+        |> post(~p"/api/endpoints", payload)
+        |> json_response(201)
+
+      assert %{"cache_duration_seconds" => nil, "proactive_requerying_seconds" => nil} = response
+
+      assert %{cache_duration_seconds: nil, proactive_requerying_seconds: nil} =
+               Endpoints.get_endpoint_query(response["id"])
+    end
+
     test "creates a new endpoint query for an authenticated user", %{
       conn: conn,
       user: user
@@ -125,6 +148,8 @@ defmodule LogflareWeb.Api.EndpointControllerTest do
 
       assert response["name"] == name
       assert response["query"] == query
+      assert response["cache_duration_seconds"] == 3_600
+      assert response["proactive_requerying_seconds"] == 1_800
 
       assert [version] = PaperTrail.get_versions(Endpoints.EndpointQuery, response["id"])
       assert version.origin =~ "API: id"
