@@ -619,7 +619,7 @@ defmodule Logflare.Telemetry do
       sum("logflare.backends.ingest.dispatch.count",
         tags: [:backend_type],
         description:
-          "Log events dispatched to backend queues by backend type; counts fan-out copies, not unique ingested events"
+          "Backend dispatch attempts by backend type. Counts each fan-out copy, including attempts that fail to enqueue."
       ),
       distribution("logflare.backends.ingest.dispatch.stop.duration",
         tags: [:backend_type],
