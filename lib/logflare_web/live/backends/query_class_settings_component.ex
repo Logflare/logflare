@@ -1,6 +1,8 @@
 defmodule LogflareWeb.Backends.QueryClassSettingsComponent do
   use LogflareWeb, :live_component
 
+  import Logflare.Endpoints.ClickHouseSettings, only: [is_valid_timeout: 1]
+
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryClassSettings
 
@@ -207,6 +209,10 @@ defmodule LogflareWeb.Backends.QueryClassSettingsComponent do
         into: %{},
         do: {class, overrides}
   end
+
+  @spec ignored_timeout?(term()) :: boolean()
+  defp ignored_timeout?(%{"max_execution_time" => seconds}), do: not is_valid_timeout(seconds)
+  defp ignored_timeout?(_policy), do: false
 
   @spec cache_override?(map(), String.t()) :: boolean()
   defp cache_override?(overrides, class), do: not is_nil(get_in(overrides, [class, @cache_key]))
