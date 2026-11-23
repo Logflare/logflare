@@ -143,6 +143,34 @@ defmodule Logflare.Backends.QueryClassSettingsTest do
     end
   end
 
+  test "ordinary connection edits preserve a legacy timeout rejected by explicit policy writes",
+       %{backend: backend, owner: owner} do
+    policy = %{
+      "default" => %{
+        "priority" => 5,
+        "max_execution_time" => 0.0000005,
+        "timeout_overflow_mode" => "throw"
+      }
+    }
+
+    persisted = Repo.reload!(backend)
+
+    persisted
+    |> Ecto.Changeset.change(
+      config_encrypted: Map.put(persisted.config_encrypted, "query_class_settings", policy)
+    )
+    |> Repo.update!()
+
+    assert {:ok, _} = Backends.update_backend(backend, %{config: %{database: "renamed"}})
+
+    assert {:error, changeset} = Backends.configure_query_class_settings(owner, backend, policy)
+    assert [message] = errors_on(changeset)[:"config.query_class_settings"]
+    assert message =~ "positive signed 64-bit microsecond duration"
+
+    assert %{"database" => "renamed", "query_class_settings" => ^policy} =
+             Repo.reload!(backend).config_encrypted
+  end
+
   test "invalid ordinary saves do not add a misleading policy authorization error", context do
     assert {:ok, configured} =
              Backends.configure_query_class_settings(context.admin, context.backend, @policy)
