@@ -357,6 +357,6 @@ defmodule Logflare.Endpoints.ResultsCache do
   end
 
   defp disable_cache?(query) do
-    query.cache_duration_seconds == 0
+    not is_pos_integer(query.cache_duration_seconds)
   end
 end

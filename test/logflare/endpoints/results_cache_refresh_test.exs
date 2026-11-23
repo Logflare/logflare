@@ -50,6 +50,32 @@ defmodule Logflare.Endpoints.ResultsCacheRefreshTest do
     end
   end
 
+  test "a surviving cache stops after loading an endpoint with a null TTL", context do
+    endpoint =
+      insert(:endpoint,
+        user: context.user,
+        backend: context.backend,
+        language: :ch_sql,
+        query: "SELECT 1 AS n",
+        cache_duration_seconds: 60,
+        proactive_requerying_seconds: 60
+      )
+
+    cache = start_supervised!({ResultsCache, {endpoint, %{}, []}})
+    monitor = Process.monitor(cache)
+
+    endpoint
+    |> change(cache_duration_seconds: nil)
+    |> Repo.update!()
+
+    expect(ClickHouseAdaptor, :execute_query, fn _, _, _ ->
+      {:ok, QueryResult.new([%{"n" => 1}], %{total_bytes_processed: 0})}
+    end)
+
+    assert {:ok, %{rows: [%{"n" => 1}]}} = ResultsCache.query(cache)
+    assert_receive {:DOWN, ^monitor, :process, ^cache, :normal}, 1_000
+  end
+
   test "positive intervals refresh and reschedule while retaining the TTL", context do
     endpoint =
       insert(:endpoint,
