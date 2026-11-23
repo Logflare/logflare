@@ -83,7 +83,7 @@ defmodule Logflare.EndpointsTest do
     setup do
       owner = insert(:user)
       admin = insert(:user, admin: true)
-      insert(:source, user: owner, name: "settings_source")
+      source = insert(:source, user: owner, name: "settings_source")
       backend = insert(:backend, user: owner, type: :clickhouse)
 
       endpoint =
@@ -95,7 +95,7 @@ defmodule Logflare.EndpointsTest do
           query: "WITH src AS (SELECT a FROM settings_source) SELECT a FROM src"
         )
 
-      [owner: owner, admin: admin, endpoint: endpoint]
+      [owner: owner, admin: admin, endpoint: endpoint, source: source]
     end
 
     test "only an administrator can configure validated limits; user updates cannot change them",
@@ -213,10 +213,97 @@ defmodule Logflare.EndpointsTest do
       assert custom_sql =~ "optimize_read_in_order = 1"
       assert custom_sql =~ "max_execution_time = 5"
 
-      assert {:error, "Restricted setting max_execution_time"} =
+      assert {:error, "ClickHouse setting max_execution_time is not supported in sandboxed SQL"} =
                Endpoints.get_transformed_query(endpoint, %{
                  "sql" => "SELECT a FROM src SETTINGS max_execution_time = 100"
                })
+    end
+
+    test "rejects saving lower-only settings alongside sandboxing", %{
+      owner: owner,
+      endpoint: endpoint
+    } do
+      requested_sql = endpoint.query <> " SETTINGS max_threads = 2"
+
+      assert {:error, changeset} =
+               Endpoints.update_query(owner, endpoint, %{query: requested_sql}, owner)
+
+      assert "ClickHouse setting max_threads is not supported in sandboxed SQL" in errors_on(
+               changeset
+             ).query
+
+      assert {:ok, endpoint} =
+               Endpoints.update_query(
+                 owner,
+                 endpoint,
+                 %{query: requested_sql, sandboxable: false},
+                 owner
+               )
+
+      assert {:error, changeset} =
+               Endpoints.update_query(owner, endpoint, %{sandboxable: true}, owner)
+
+      assert "ClickHouse setting max_threads is not supported in sandboxed SQL" in errors_on(
+               changeset
+             ).query
+
+      assert {:ok, endpoint} =
+               Endpoints.update_query(
+                 owner,
+                 endpoint,
+                 %{
+                   query:
+                     "WITH src AS (SELECT a FROM settings_source) SELECT a FROM src " <>
+                       "SETTINGS optimize_read_in_order = 1",
+                   sandboxable: true
+                 },
+                 owner
+               )
+
+      assert endpoint.sandboxable
+    end
+
+    test "saved SQL requests tighten current operator policy without changing it", %{
+      owner: owner,
+      admin: admin,
+      endpoint: endpoint,
+      source: source
+    } do
+      baseline = %{"max_execution_time" => 10, "max_threads" => 4, "priority" => 5}
+
+      assert {:ok, endpoint} =
+               Endpoints.configure_enforced_clickhouse_settings(admin, endpoint, baseline)
+
+      requested_sql =
+        endpoint.query <> " SETTINGS max_execution_time = 20, max_threads = 2, priority = 1"
+
+      assert {:ok, endpoint} =
+               Endpoints.update_query(
+                 owner,
+                 endpoint,
+                 %{query: requested_sql, sandboxable: false},
+                 owner
+               )
+
+      assert endpoint.source_mapping == %{source.name => to_string(source.token)}
+      assert endpoint.enforced_clickhouse_settings["priority"] == 5
+      assert {:ok, sql} = Endpoints.get_transformed_query(endpoint)
+      assert sql =~ "max_execution_time = 10"
+      assert sql =~ "max_threads = 2"
+      assert sql =~ "priority = 5"
+
+      assert {:ok, _updated} =
+               Endpoints.configure_enforced_clickhouse_settings(admin, endpoint, %{
+                 "max_execution_time" => 5,
+                 "max_threads" => 1,
+                 "priority" => 10
+               })
+
+      assert {:ok, sql} = Endpoints.get_transformed_query(endpoint)
+      assert sql =~ "max_execution_time = 5"
+      assert sql =~ "max_threads = 1"
+      assert sql =~ "priority = 10"
+      assert Endpoints.get_endpoint_query(endpoint.id).query == requested_sql
     end
   end
 
