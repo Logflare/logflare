@@ -340,7 +340,7 @@ defmodule LogflareWeb.Endpoints.Components do
   defp format_language(:lql), do: "Logflare Query Language"
   defp format_language(language), do: language |> to_string() |> Phoenix.Naming.humanize()
 
-  defp format_cache_duration(n) when n in [0, nil], do: "disabled"
+  defp format_cache_duration(n) when is_nil(n) or n <= 0, do: "disabled"
   defp format_cache_duration(value), do: to_string(value) <> " seconds"
 
   defp format_toggle(true), do: "enabled"

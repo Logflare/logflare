@@ -374,6 +374,21 @@ defmodule LogflareWeb.EndpointsLiveTest do
       assert_patched(view, "/endpoints/#{endpoint.id}/edit?t=#{team.id}")
     end
 
+    test "shows a negative refresh interval as disabled while caching stays enabled", %{
+      conn: conn,
+      endpoint: endpoint
+    } do
+      endpoint
+      |> Ecto.Changeset.change(cache_duration_seconds: 60, proactive_requerying_seconds: -1)
+      |> Repo.update!()
+
+      {:ok, _view, html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}")
+      text = html |> Floki.parse_document!() |> Floki.text()
+
+      assert text =~ ~r/Caching:\s*60 seconds/
+      assert text =~ ~r/Cache warming:\s*disabled/
+    end
+
     test "includes enabled endpoint headers in UUID and name curl examples", %{
       conn: conn,
       user: user
