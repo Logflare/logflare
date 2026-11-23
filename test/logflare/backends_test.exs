@@ -2000,12 +2000,16 @@ defmodule Logflare.BackendsTest do
         |> insert(user: user, type: :clickhouse)
         |> Map.merge(%{consolidated_ingest?: true, config: %{max_event_age_hours: 0}})
 
+      queue_key = {:consolidated, backend.id}
+      IngestEventQueue.upsert_tid({:consolidated, backend.id, nil})
       TestUtils.attach_forwarder([:logflare, :backends, :ingest, :dispatch])
 
       log_count = 3
       events = for _n <- 1..log_count, do: build(:log_event, source: source)
 
       assert {:ok, ^log_count} = Backends.ingest_logs(events, source, backend)
+      assert {:ok, queued_events} = IngestEventQueue.fetch_events(queue_key, log_count + 1)
+      assert Enum.sort(Enum.map(queued_events, & &1.id)) == Enum.sort(Enum.map(events, & &1.id))
 
       assert_receive {:telemetry_event, [:logflare, :backends, :ingest, :dispatch],
                       %{count: ^log_count}, %{backend_type: :clickhouse}}
