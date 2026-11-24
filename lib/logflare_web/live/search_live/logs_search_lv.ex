@@ -117,6 +117,7 @@ defmodule LogflareWeb.Source.SearchLV do
       uri: nil,
       lql_rules: [],
       saved_searches: saved_searches(source),
+      search_form: search_form(%{"querystring" => Map.get(params, "querystring", "")}),
       force_query: Map.get(params, "force", "false") == "true"
     )
     |> reset_event_pagination()
@@ -145,6 +146,12 @@ defmodule LogflareWeb.Source.SearchLV do
     |> Sources.preload_defaults()
     |> Sources.put_bq_table_id()
     |> Sources.put_bq_dataset_id()
+  end
+
+  defp search_form(%{} = params) do
+    %{"querystring" => ""}
+    |> Map.merge(params)
+    |> Phoenix.Component.to_form(as: :search)
   end
 
   def handle_params(%{"fields" => fields, "querystring" => qs} = params, _uri, socket)
@@ -217,6 +224,11 @@ defmodule LogflareWeb.Source.SearchLV do
     socket = assign_new_user_timezone(socket, socket.assigns[:team_user], socket.assigns.user)
 
     socket =
+      socket
+      |> assign(:querystring, qs)
+      |> assign(:search_form, search_form(%{"querystring" => qs}))
+
+    socket =
       with {:ok, lql_rules} <-
              Lql.decode(qs, SourceSchemas.source_schema_flatmap_or_default(source)),
            lql_rules = Rules.put_new_chart_rule(lql_rules, Rules.default_chart_rule()),
@@ -231,6 +243,7 @@ defmodule LogflareWeb.Source.SearchLV do
           |> assign(:tailing_initial?, true)
           |> assign(:lql_rules, lql_rules)
           |> assign(:querystring, qs)
+          |> assign(:search_form, search_form(%{"querystring" => qs}))
 
         if connected?(socket) do
           kickoff_queries(source.token, socket.assigns)
@@ -245,14 +258,10 @@ defmodule LogflareWeb.Source.SearchLV do
           error_socket(socket, :suggested_field_not_found)
 
         {:error, error} ->
-          socket
-          |> assign(:querystring, qs)
-          |> error_socket(error)
+          error_socket(socket, error)
 
         {:error, :field_not_found = type, suggested_querystring, error} ->
-          socket
-          |> assign(:querystring, qs)
-          |> error_socket(type, suggested_querystring, error)
+          error_socket(socket, type, suggested_querystring, error)
       end
 
     {:noreply, socket}
@@ -323,7 +332,7 @@ defmodule LogflareWeb.Source.SearchLV do
         )}
       </div>
       <FormComponents.search_controls
-        querystring={@querystring}
+        search_form={@search_form}
         saved_searches={@saved_searches}
         loading={@loading}
         tailing?={@tailing?}
@@ -394,6 +403,15 @@ defmodule LogflareWeb.Source.SearchLV do
 
   def handle_event(
         "start_search",
+        %{"search" => %{"querystring" => qs}} = params,
+        socket
+      ) do
+    params = params |> Map.delete("search") |> Map.put("querystring", qs)
+    handle_event("start_search", params, socket)
+  end
+
+  def handle_event(
+        "start_search",
         %{"querystring" => qs} = params,
         socket
       ) do
@@ -417,6 +435,10 @@ defmodule LogflareWeb.Source.SearchLV do
 
     {_result, socket} = start_search(socket, qs, Map.get(params, "fields", %{}))
     {:noreply, socket}
+  end
+
+  def handle_event("update_search_form", %{"search" => params}, socket) do
+    {:noreply, assign(socket, :search_form, search_form(params))}
   end
 
   def handle_event(
@@ -601,10 +623,6 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
-  def handle_event("querystring_changed", %{"querystring" => _qs}, socket) do
-    {:noreply, socket}
-  end
-
   def handle_event(
         "chart_controls_update",
         %{"chart_aggregate" => new_chart_agg, "chart_period" => new_chart_period},
@@ -646,6 +664,7 @@ defmodule LogflareWeb.Source.SearchLV do
       |> assign(:tailing?, false)
       |> assign(:lql_rules, lql_list)
       |> assign(:querystring, qs)
+      |> assign(:search_form, search_form(%{"querystring" => qs}))
       |> push_patch_with_params(%{querystring: qs, tailing?: false})
 
     {:noreply, socket}
@@ -767,6 +786,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
       socket
       |> assign(:querystring, qs)
+      |> assign(:search_form, search_form(%{"querystring" => qs}))
       |> assign(:lql_rules, lql_rules)
       |> assign(:loading, true)
       |> assign(:chart_loading, true)
@@ -1261,6 +1281,7 @@ defmodule LogflareWeb.Source.SearchLV do
         |> clear_flash()
         |> assign(:lql_rules, lql_rules)
         |> assign(:querystring, qs)
+        |> assign(:search_form, search_form(%{"querystring" => qs}))
         |> push_patch_with_params(%{querystring: qs, tz: tz, tailing?: tailing?})
 
       {:error, error} ->
