@@ -4,6 +4,7 @@ defmodule LogflareWeb.DashboardLiveTest do
 
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Repo
+  alias Logflare.SavedSearches
   alias Logflare.Sources.UserMetricsPoller
 
   setup %{conn: conn} do
@@ -197,6 +198,9 @@ defmodule LogflareWeb.DashboardLiveTest do
       view |> element("#edit-saved-search-name-#{deleted.id}") |> render_click()
       view |> element("#delete-saved-search-#{deleted.id}") |> render_click()
 
+      assert %{saved_by_user: false, name: nil, description: nil, favorite: false} =
+               SavedSearches.get(deleted.id)
+
       TestUtils.retry_assert(fn ->
         refute has_element?(view, "#saved-search-shortcut-#{deleted.id}")
         assert has_element?(view, "#saved-search-shortcut-#{search.id}")
@@ -207,6 +211,12 @@ defmodule LogflareWeb.DashboardLiveTest do
       TestUtils.retry_assert(fn ->
         refute has_element?(view, "#source-#{source.id}-saved-searches")
       end)
+
+      assert {:ok, restored} =
+               SavedSearches.save_by_user(deleted.querystring, [], source, false)
+
+      assert restored.id == deleted.id
+      assert %{saved_by_user: true, name: nil, description: nil, favorite: false} = restored
     end
   end
 

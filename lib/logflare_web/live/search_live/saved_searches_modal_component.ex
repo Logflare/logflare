@@ -50,9 +50,28 @@ defmodule LogflareWeb.SearchLive.SavedSearchesModalComponent do
 
   def handle_event(
         "update_saved_search",
-        %{"id" => saved_search_id, "saved_search" => params},
+        %{"saved_search" => %{"saved_by_user" => saved_by_user} = params} = event,
         socket
-      ) do
+      )
+      when saved_by_user in [false, "false"] do
+    params = Map.merge(params, %{"name" => nil, "description" => nil, "favorite" => false})
+    update_saved_search(%{event | "saved_search" => params}, socket)
+  end
+
+  def handle_event("update_saved_search", params, socket) do
+    update_saved_search(params, socket)
+  end
+
+  def handle_event("cancel_rename", _params, socket) do
+    {:noreply, assign(socket, name_form: nil, initial_edit_id: nil)}
+  end
+
+  @spec update_saved_search(map(), Phoenix.LiveView.Socket.t()) ::
+          {:noreply, Phoenix.LiveView.Socket.t()}
+  defp update_saved_search(
+         %{"id" => saved_search_id, "saved_search" => params},
+         socket
+       ) do
     %{user: user, source_id: source_id} = socket.assigns
     params = Map.take(params, ["name", "description", "favorite", "saved_by_user"])
 
@@ -90,10 +109,6 @@ defmodule LogflareWeb.SearchLive.SavedSearchesModalComponent do
       end
 
     {:noreply, socket}
-  end
-
-  def handle_event("cancel_rename", _params, socket) do
-    {:noreply, assign(socket, name_form: nil, initial_edit_id: nil)}
   end
 
   @spec render(map()) :: Phoenix.LiveView.Rendered.t()
