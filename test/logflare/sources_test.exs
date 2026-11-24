@@ -871,7 +871,7 @@ defmodule Logflare.SourcesTest do
       end
     end
 
-    test "loads a traces system source without creating one", %{user: user} do
+    test "keeps an existing traces system source", %{user: user} do
       traces = insert(:source, user: user, system_source: true, system_source_type: :traces)
 
       sources = Sources.create_user_system_sources(user.id)

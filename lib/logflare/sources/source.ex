@@ -119,8 +119,7 @@ defmodule Logflare.Sources.Source do
     end
   end
 
-  @system_source_types [:metrics, :logs]
-  @system_source_type_values [:metrics, :logs, :traces]
+  @system_source_types [:metrics, :logs, :traces]
   @reserved_drop_field_heads ~w(id event_message timestamp)
 
   typed_schema "sources" do
@@ -160,7 +159,7 @@ defmodule Logflare.Sources.Source do
     field :transform_drop_fields_parsed, {:array, {:array, :string}}, virtual: true
     field :bigquery_clustering_fields, :string
     field :system_source, :boolean, default: false
-    field :system_source_type, Ecto.Enum, values: @system_source_type_values
+    field :system_source_type, Ecto.Enum, values: @system_source_types
     field :labels, :string
 
     field :default_ingest_backend_enabled?, :boolean,
