@@ -3,6 +3,11 @@ defmodule Logflare.ContextCache.PeerWarmer do
   Warms a starting node's context caches by copying entries from an already running peer, so
   that nodes joining the cluster don't all hydrate their caches from the database at once.
 
+  Only `Logflare.KeyValues.Cache` is copied. A copied cache relies on `CacheBuster` invalidating
+  entries that change during and after the copy, and a running `CacheBuster` doesn't prove it is
+  already receiving WAL changes. Caches gating access, like `Logflare.Sources.Cache`, therefore
+  warm from the database only. KeyValues additionally reloads rows changed since the peer's warm.
+
   Each supported cache publishes a status on every node: whether it is warm and when its data
   was last loaded from the database (`warmed_at`). On startup, a cache warmer calls
   `copy_from_peer/1`, which:
@@ -11,8 +16,8 @@ defmodule Logflare.ContextCache.PeerWarmer do
        `CacheBuster`, invalidations during the copy would be missed, so it does not copy.
     2. Asks up to `:max_peers` random peers, one after another, to send the cache. Each peer
        decides itself with `source_status/2` whether it may serve the copy: it must be ready, run
-       the same release, hold at least one entry and, when the cache has a max age, have fresh
-       enough data. Picking peers randomly spreads the copy load.
+       the same release, hold at least one entry and have data younger than the cache's max age.
+       Picking peers randomly spreads the copy load.
     3. Copies `c:Logflare.ContextCache.entries/0` in acknowledged chunks, skipping negative
        lookups, entries for which `c:Logflare.ContextCache.stale_entry?/2` holds and keys already
        cached locally. All attempts share one `:copy_timeout`.
@@ -33,11 +38,9 @@ defmodule Logflare.ContextCache.PeerWarmer do
   alias Logflare.ContextCache.CacheBuster
   alias Logflare.ContextCache.PeerWarmer.Transfer
   alias Logflare.KeyValues
-  alias Logflare.Sources
 
   @max_age_config %{
-    KeyValues.Cache => :key_values_max_age,
-    Sources.Cache => nil
+    KeyValues.Cache => :key_values_max_age
   }
 
   @poll_interval 100
@@ -224,8 +227,6 @@ defmodule Logflare.ContextCache.PeerWarmer do
 
   defp attempt_result({:error, :not_eligible}, _node, last_error), do: {:cont, last_error}
   defp attempt_result({:error, _reason} = error, _node, _last_error), do: {:cont, error}
-
-  defp fresh?(_warmed_at, nil), do: true
 
   defp fresh?(warmed_at, max_age_key) do
     DateTime.diff(DateTime.utc_now(), warmed_at, :millisecond) <= config(max_age_key)

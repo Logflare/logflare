@@ -4,7 +4,6 @@ defmodule Logflare.ContextCache.PeerWarmer.DistributedTest do
   alias Ecto.Adapters.SQL.Sandbox, as: EctoSandbox
   alias Logflare.ContextCache.PeerWarmer
   alias Logflare.KeyValues
-  alias Logflare.Sources
 
   @moduletag :cluster
 
@@ -31,31 +30,14 @@ defmodule Logflare.ContextCache.PeerWarmer.DistributedTest do
       Keyword.merge(original_config, enabled: true, peer_wait: 100)
     )
 
-    Cachex.clear!(Sources.Cache)
     Cachex.clear!(KeyValues.Cache)
 
     on_exit(fn ->
       Application.put_env(:logflare, PeerWarmer, original_config)
-      Cachex.clear!(Sources.Cache)
       Cachex.clear!(KeyValues.Cache)
     end)
 
     :ok
-  end
-
-  test "copies Sources entries cached on the peer", %{peer: peer} do
-    unboxed_insert_then_delete_on_exit(:plan)
-    user = unboxed_insert_then_delete_on_exit(:user)
-    source = unboxed_insert_then_delete_on_exit(:source, user: user)
-    cache_key = {:get_by, [[id: source.id]]}
-
-    assert %{id: source_id} = :erpc.call(peer, Sources.Cache, :get_by, [[id: source.id]])
-    assert %{state: :ready} = :erpc.call(peer, PeerWarmer, :status, [Sources.Cache])
-    assert Cachex.get!(Sources.Cache, cache_key) == nil
-
-    assert {:ok, %{node: ^peer, count: count}} = PeerWarmer.copy_from_peer(Sources.Cache)
-    assert count >= 1
-    assert {:cached, %{id: ^source_id}} = Cachex.get!(Sources.Cache, cache_key)
   end
 
   test "copies KeyValues entries cached on the peer", %{peer: peer} do
