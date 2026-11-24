@@ -1,6 +1,8 @@
 defmodule Logflare.Backends.UserMonitoring.QueryTracesTest do
   use LogflareWeb.ConnCase, async: false
 
+  import ExUnit.CaptureLog
+
   alias GoogleApi.BigQuery.V2.Api.Jobs
   alias GoogleApi.BigQuery.V2.Api.Tabledata
   alias GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse
@@ -191,6 +193,24 @@ defmodule Logflare.Backends.UserMonitoring.QueryTracesTest do
 
       assert_receive {:dropped, %{count: 1}, %{reason: :unavailable}}
       refute_receive {:insert_all, _rows}, 500
+    end
+
+    test "drop the trace and keep the worker running when the ingest fails", %{user: user} do
+      set_mimic_global()
+      attach_trace_drops()
+      pid = Process.whereis(QueryTraces)
+      stub(Users.Cache, :get, fn _user_id -> raise "boom" end)
+
+      capture_log(fn ->
+        QueryTraces.measure(user.id, %{query_type: :endpoint, query: "SELECT 1"}, fn ->
+          {:ok, QueryResult.new([], %{})}
+        end)
+
+        assert_receive {:dropped, %{count: 1}, %{reason: :failed}}, 5_000
+      end)
+
+      assert Process.whereis(QueryTraces) == pid
+      assert Process.alive?(pid)
     end
   end
 

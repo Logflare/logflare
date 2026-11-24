@@ -9,12 +9,14 @@ defmodule Logflare.Backends.UserMonitoring.QueryTraces do
         adaptor.execute_query(backend, query_args, opts)
       end)
 
-  The caller only sends the trace to this process and never waits for it. This process checks
-  whether the user has system monitoring on and ingests the trace. When this process is down or
-  its mailbox holds `max_queue_len` traces (10 000 by default, set with
-  `config :logflare, Logflare.Backends.UserMonitoring.QueryTraces, max_queue_len: n`), the trace
-  is dropped and
-  `[:logflare, :user_monitoring, :query_traces, :dropped]` is emitted.
+  The caller only sends the trace to this process and never waits for it. This process ingests
+  traces one at a time, each in a supervised task, so a failing lookup or ingest can not crash
+  it. The task checks whether the user has system monitoring on before ingesting.
+
+  A trace is dropped and `[:logflare, :user_monitoring, :query_traces, :dropped]` is emitted when
+  this process is down, when its mailbox holds `max_queue_len` traces (10 000 by default, set with
+  `config :logflare, Logflare.Backends.UserMonitoring.QueryTraces, max_queue_len: n`), or when
+  its ingest task fails or takes longer than 15 seconds.
   """
 
   use GenServer
@@ -30,6 +32,7 @@ defmodule Logflare.Backends.UserMonitoring.QueryTraces do
   alias Logflare.Users
 
   @default_max_queue_len 10_000
+  @ingest_timeout :timer.seconds(15)
 
   @type attrs :: %{
           required(:query_type) => atom(),
@@ -89,15 +92,29 @@ defmodule Logflare.Backends.UserMonitoring.QueryTraces do
 
   @impl GenServer
   def handle_info({:trace, user_id, attrs}, state) do
-    with %User{system_monitoring: true} <- Users.Cache.get(user_id),
-         %Source{} = source <- Sources.Cache.get_by(user_id: user_id, system_source_type: :traces) do
-      Processor.ingest([build_event(attrs)], Raw, source)
+    task =
+      Task.Supervisor.async_nolink(
+        {:via, PartitionSupervisor, {Logflare.TaskSupervisors, user_id}},
+        fn -> ingest(user_id, attrs) end
+      )
+
+    case Task.yield(task, @ingest_timeout) || Task.shutdown(task, :brutal_kill) do
+      {:ok, _result} -> :ok
+      _failed -> drop(:failed)
     end
 
     {:noreply, state}
   end
 
   def handle_info(_message, state), do: {:noreply, state}
+
+  @spec ingest(pos_integer(), map()) :: term()
+  defp ingest(user_id, attrs) do
+    with %User{system_monitoring: true} <- Users.Cache.get(user_id),
+         %Source{} = source <- Sources.Cache.get_by(user_id: user_id, system_source_type: :traces) do
+      Processor.ingest([build_event(attrs)], Raw, source)
+    end
+  end
 
   @spec push(pos_integer(), map()) :: :ok
   defp push(user_id, attrs) do
@@ -114,7 +131,7 @@ defmodule Logflare.Backends.UserMonitoring.QueryTraces do
     end
   end
 
-  @spec drop(:saturated | :unavailable) :: :ok
+  @spec drop(:saturated | :unavailable | :failed) :: :ok
   defp drop(reason) do
     :telemetry.execute(
       [:logflare, :user_monitoring, :query_traces, :dropped],

@@ -508,7 +508,7 @@ defmodule Logflare.Telemetry do
         measurement: :count,
         tags: [:reason],
         description:
-          "Count of query traces dropped before they reached a user's system.traces source. Tagged `:unavailable` when the trace worker was down, or `:saturated` when its queue was full"
+          "Count of query traces dropped before they reached a user's system.traces source. Tagged `:unavailable` when the trace worker was down, `:saturated` when its queue was full, or `:failed` when the ingest of the trace failed or timed out"
       ),
       sum("logflare.logs.ingest_logs.rejected",
         event_name: [:logflare, :logs, :ingest_logs, :rejected],
