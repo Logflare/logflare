@@ -25,6 +25,7 @@ import $ from "jquery";
 import moment from "moment";
 import { CodeEditorHook } from "../../deps/live_monaco_editor/priv/static/live_monaco_editor.esm"
 import LqlEditorWrapper from "./lql_editor_wrapper_hook"
+import QueryClassSettings from "./query_class_settings_hook";
 import { scrollToPageBottom } from "./utils"
 
 
@@ -55,6 +56,7 @@ const hooks = {
   ...BillingHooks,
   CodeEditorHook,
   LqlEditorWrapper,
+  QueryClassSettings,
 };
 
 let liveSocket = new LiveSocket("/live", Socket, {

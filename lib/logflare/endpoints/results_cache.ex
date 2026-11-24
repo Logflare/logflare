@@ -3,6 +3,8 @@ defmodule Logflare.Endpoints.ResultsCache do
   Handles the Endpoint query results caching logic.
   """
 
+  import Logflare.Utils.Guards, only: [is_pos_integer: 1]
+
   require Logger
 
   alias Logflare.Backends.QueryError
@@ -124,8 +126,12 @@ defmodule Logflare.Endpoints.ResultsCache do
     :syn.join(endpoints, endpoint_cache_key, self())
     :syn.join(:core, {__MODULE__, query_id, :all_versions}, self())
 
-    timer = query |> cache_duration_ms() |> shutdown()
-    refresh_timer = if disable_cache?(query), do: nil, else: refresh(proactive_querying_ms(query))
+    shutdown_timer = schedule_shutdown(query.cache_duration_seconds)
+
+    refresh_timer =
+      if disable_cache?(query),
+        do: nil,
+        else: schedule_refresh(query.proactive_requerying_seconds)
 
     state =
       %__MODULE__{
@@ -135,7 +141,7 @@ defmodule Logflare.Endpoints.ResultsCache do
         endpoint_version_number: query.version_number,
         params: params,
         opts: opts,
-        shutdown_timer: timer,
+        shutdown_timer: shutdown_timer,
         refresh_timer: refresh_timer,
         parsed_labels: query.parsed_labels
       }
@@ -206,8 +212,8 @@ defmodule Logflare.Endpoints.ResultsCache do
     if state.draining? or disable_cache?(query) or is_nil(state.shutdown_timer) do
       {:stop, :normal, state}
     else
-      timer = refresh(proactive_querying_ms(query))
-      {:noreply, %{state | cached_result: results, refresh_timer: timer}}
+      refresh_timer = schedule_refresh(query.proactive_requerying_seconds)
+      {:noreply, %{state | cached_result: results, refresh_timer: refresh_timer}}
     end
   end
 
@@ -352,23 +358,19 @@ defmodule Logflare.Endpoints.ResultsCache do
     Endpoints.Cache.get_mapped_query_by_token(state.endpoint_query_token)
   end
 
-  defp refresh(every) do
-    Process.send_after(self(), :refresh, every)
+  @spec schedule_refresh(integer() | nil) :: reference() | nil
+  defp schedule_refresh(seconds) when is_pos_integer(seconds) do
+    Process.send_after(self(), :refresh, seconds * 1_000)
   end
 
-  defp shutdown(every) do
-    Process.send_after(self(), :shutdown, every)
-  end
+  defp schedule_refresh(_seconds), do: nil
 
-  defp proactive_querying_ms(query) do
-    query.proactive_requerying_seconds * 1_000
-  end
-
-  defp cache_duration_ms(query) do
-    query.cache_duration_seconds * 1_000
+  @spec schedule_shutdown(non_neg_integer()) :: reference()
+  defp schedule_shutdown(seconds) do
+    Process.send_after(self(), :shutdown, seconds * 1_000)
   end
 
   defp disable_cache?(query) do
-    query.cache_duration_seconds == 0
+    not is_pos_integer(query.cache_duration_seconds)
   end
 end

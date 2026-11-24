@@ -46,6 +46,48 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryClassSettingsTest do
     assert settings["timeout_overflow_mode"] == "throw"
   end
 
+  test "backend timeouts must fit ClickHouse's positive microsecond range" do
+    for timeout <- [0.0000005, 9_223_372_036_855] do
+      for label <- ["default", "api_paid"] do
+        classes = put_in(@classes[label]["max_execution_time"], timeout)
+        assert {:error, reason} = QueryClassSettings.normalize(classes)
+        assert reason =~ "max_execution_time"
+        assert reason =~ "microsecond"
+      end
+    end
+
+    for timeout <- [0.000001, 0.5, 9_223_372_036_854] do
+      classes = put_in(@classes["default"]["max_execution_time"], timeout)
+      assert {:ok, normalized} = QueryClassSettings.normalize(classes)
+      assert normalized["default"]["max_execution_time"] == timeout
+    end
+  end
+
+  test "legacy invalid backend timeouts do not displace valid class or endpoint timeouts" do
+    for {default, selected} <- [{0.0000005, 9_223_372_036_855}, {9_223_372_036_855, 0.0000005}] do
+      classes =
+        @classes
+        |> put_in(["default", "max_execution_time"], default)
+        |> put_in(["api_paid", "max_execution_time"], selected)
+
+      assert {:ok, effective} =
+               QueryClassSettings.resolve(classes, "api_paid", %{"max_execution_time" => 2.5})
+
+      assert effective["max_execution_time"] == 2.5
+      assert effective["timeout_overflow_mode"] == "throw"
+
+      assert {:ok, effective} = QueryClassSettings.resolve(classes, "api_paid", %{})
+      refute Map.has_key?(effective, "max_execution_time")
+
+      classes = put_in(classes["api_paid"]["max_execution_time"], 1.5)
+
+      assert {:ok, effective} =
+               QueryClassSettings.resolve(classes, "api_paid", %{"max_execution_time" => 2.5})
+
+      assert effective["max_execution_time"] == 1.5
+    end
+  end
+
   test "resolution preserves normalized default and class overflow modes" do
     assert {:ok, classes} =
              QueryClassSettings.normalize(%{

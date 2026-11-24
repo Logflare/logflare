@@ -5,14 +5,14 @@ defmodule Logflare.Endpoints.ClickHouseSqlSettings do
   Every requested key requires an explicit inherited baseline at execution time.
   """
 
+  import Logflare.Endpoints.ClickHouseSettings, only: [is_valid_timeout: 1]
+
   require Logger
 
   alias Logflare.Endpoints.ClickHouseSettings
   alias Logflare.Sql.Parser
 
   @keys ~w(max_execution_time max_memory_usage max_rows_to_read max_bytes_to_read max_threads priority)
-  @microseconds_per_second 1_000_000.0
-  @exclusive_timeout_microseconds 9_223_372_036_854_775_808
 
   @type missing_baseline_error :: {:missing_clickhouse_sql_baseline, String.t()}
 
@@ -158,16 +158,10 @@ defmodule Logflare.Endpoints.ClickHouseSqlSettings do
   end
 
   @spec validate_timeout(map()) :: :ok | {:error, String.t()}
-  defp validate_timeout(%{"max_execution_time" => seconds}) do
-    microseconds = seconds * @microseconds_per_second
-
-    if microseconds >= 1 and microseconds < @exclusive_timeout_microseconds do
-      :ok
-    else
+  defp validate_timeout(%{"max_execution_time" => seconds}) when not is_valid_timeout(seconds),
+    do:
       {:error,
        "ClickHouse setting max_execution_time must fit in a positive signed 64-bit microsecond duration"}
-    end
-  end
 
   defp validate_timeout(_settings), do: :ok
 

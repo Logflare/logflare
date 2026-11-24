@@ -1444,23 +1444,57 @@ defmodule Logflare.EndpointsTest do
       assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_cached_query(endpoint)
     end
 
-    test "run_cached_query/1 with cache disabled" do
-      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 2, fn _conn, _proj_id, _opts ->
-        {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
-      end)
+    for duration <- [0, nil] do
+      @tag cache_duration_seconds: duration
+      test "run_cached_query/1 bypasses the cache with TTL #{inspect(duration)}", context do
+        expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 2, fn _conn,
+                                                                           _proj_id,
+                                                                           _opts ->
+          {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
+        end)
 
+        endpoint =
+          build(:endpoint,
+            user: insert(:user),
+            query: "select current_datetime() as testing"
+          )
+          |> change(cache_duration_seconds: context.cache_duration_seconds)
+          |> Repo.insert!()
+
+        assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_cached_query(endpoint)
+        assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_cached_query(endpoint)
+      end
+    end
+
+    test "update_query/4 invalidates the cache when a stale endpoint disables refresh" do
       user = insert(:user)
 
-      endpoint =
-        insert(:endpoint,
-          user: user,
-          query: "select current_datetime() as testing",
-          cache_duration_seconds: 0
-        )
+      stale_endpoint =
+        build(:endpoint, user: user)
+        |> change(proactive_requerying_seconds: nil)
+        |> Repo.insert!()
 
-      assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_cached_query(endpoint)
-      # 2nd query should hit local cache
-      assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_cached_query(endpoint)
+      assert {:ok, enabled} =
+               Endpoints.update_query(
+                 user,
+                 stale_endpoint,
+                 %{proactive_requerying_seconds: 60},
+                 user
+               )
+
+      cache = start_supervised!({ResultsCache, {enabled, %{}, []}})
+      monitor = Process.monitor(cache)
+      assert is_reference(:sys.get_state(cache).refresh_timer)
+
+      assert {:ok, %{proactive_requerying_seconds: nil}} =
+               Endpoints.update_query(
+                 user,
+                 stale_endpoint,
+                 %{proactive_requerying_seconds: nil},
+                 user
+               )
+
+      assert_receive {:DOWN, ^monitor, :process, ^cache, :normal}, 1_000
     end
 
     for field_changed <- [

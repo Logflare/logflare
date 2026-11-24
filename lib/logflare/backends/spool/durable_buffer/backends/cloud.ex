@@ -148,7 +148,7 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.Cloud do
     :telemetry.execute(
       [:logflare, :backends, :pipeline, :handle_batch],
       %{batch_size: Encoder.count_events(body), batch_trigger: nil},
-      %{backend_type: :spool_producer, batch_trigger: nil}
+      %{pipeline: :spool_producer, batch_trigger: nil}
     )
   end
 
