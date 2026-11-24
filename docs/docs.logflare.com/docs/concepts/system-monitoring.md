@@ -41,20 +41,33 @@ Contains application logs related to your sources, backends, and endpoints.
 
 ### system.traces
 
-Contains one event per query that Logflare executes on your behalf. Endpoint queries are traced, including background refreshes of cached results. Requests served from the results cache are not traced. Tracing is best effort: under heavy load, some traces may be dropped.
+Contains one event per query that Logflare executes on your behalf. Tracing is best effort: under heavy load, some traces may be dropped. The following queries are traced:
+
+- **Endpoint queries** (`query.endpoint`), including background refreshes of cached results. Requests served from the results cache are not traced.
+- **Log search queries** (`query.search`): the events query, the chart query, and the query behind the event context view. A live tail re-runs its queries every second; only the first query of a tail is traced.
 
 Each event includes:
 
-- **`event_message`** - Query kind, such as `query.endpoint`
-- **`query`** - The endpoint SQL after translation to the backend's dialect. The backend adaptor may still rewrite parameter placeholders before running it
-- **`endpoint_language`** - Language the endpoint is written in: `bq_sql`, `pg_sql`, or `ch_sql`. The query may run in another dialect, see `backend_type`
-- **`backend_type`** and **`backend_id`** - The backend that ran the query
+- **`event_message`** - Query kind, `query.endpoint` or `query.search`
+- **`query`** - The SQL sent to the backend adaptor. For endpoints, the adaptor may still rewrite parameter placeholders before running it
+- **`backend_type`** - The backend that ran the query
 - **`total_bytes_processed`** - Bytes scanned, for backends that report it (BigQuery, ClickHouse)
-- **`duration_ms`** - Time the endpoint spent waiting for the backend adaptor to run the query
+- **`duration_ms`** - Time spent waiting for the backend adaptor to run the query
 - **`status`** and **`error`** - `ok` or `error`, with the error message
+
+Endpoint query events also include:
+
+- **`endpoint_language`** - Language the endpoint is written in: `bq_sql`, `pg_sql`, or `ch_sql`. The query may run in another dialect, see `backend_type`
+- **`backend_id`** - The backend that ran the query
 - **`params`** - Values of the parameters declared in the query, as a list of `name` and `value` records. Values are strings. Credentials such as `api_key` are never stored
 - **`labels`** - Endpoint labels, as a list of `name` and `value` records
 - **`endpoint_id`** and **`endpoint_uuid`** - The endpoint that ran the query
+
+Log search events also include:
+
+- **`search_kind`** - `events`, `aggregates` (the chart), or `context` (the event context view)
+- **`lql`** - The LQL query as typed in the search bar
+- **`source_id`**, **`source_token`**, and **`source_name`** - The source that was searched
 
 To find the traces of one tenant, filter on a parameter value. For example, on BigQuery:
 

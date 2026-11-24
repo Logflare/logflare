@@ -12,6 +12,10 @@ defmodule Logflare.Backends.UserMonitoring.QueryTracesTest do
   alias Logflare.Backends.SourceSup
   alias Logflare.Backends.UserMonitoring.QueryTraces
   alias Logflare.Endpoints
+  alias Logflare.Logs.Search
+  alias Logflare.Logs.SearchOperation, as: SO
+  alias Logflare.Lql.Rules.ChartRule
+  alias Logflare.Lql.Rules.FilterRule
   alias Logflare.Sources.Source.BigQuery.SchemaBuilder
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.Users
@@ -139,6 +143,71 @@ defmodule Logflare.Backends.UserMonitoring.QueryTracesTest do
     end
   end
 
+  describe "search queries" do
+    setup :start_traces_source
+
+    setup %{user: user} do
+      stub(Jobs, :bigquery_jobs_query, fn _conn, _project, _opts ->
+        {:ok, TestUtils.gen_bq_response([])}
+      end)
+
+      schema = TestUtils.build_bq_schema(%{"metadata" => %{"level" => "error"}})
+      source = insert(:source, user: user, bq_table_id: "test_table")
+      insert(:source_schema, source: source, bigquery_schema: schema)
+      %{source: source}
+    end
+
+    test "trace the events and chart queries of a search", %{source: source} do
+      so = search_op(source, tailing?: false)
+
+      assert {:ok, _result} = Search.search(so)
+      assert_receive {:insert_all, [events_trace]}, 5_000
+
+      assert {:ok, _result} = Search.aggs(so)
+      assert_receive {:insert_all, [chart_trace]}, 5_000
+
+      source_id = source.id
+      source_name = source.name
+      source_token = Atom.to_string(source.token)
+
+      assert %{
+               "event_message" => "query.search",
+               "query_type" => "search",
+               "search_kind" => "events",
+               "lql" => "m.level:error",
+               "backend_type" => "bigquery",
+               "source_id" => ^source_id,
+               "source_name" => ^source_name,
+               "source_token" => ^source_token,
+               "status" => "ok",
+               "total_bytes_processed" => 0,
+               "query" => events_sql
+             } = events_trace
+
+      assert %{"search_kind" => "aggregates", "query" => chart_sql} = chart_trace
+      assert events_sql =~ "SELECT"
+      assert chart_sql =~ "SELECT"
+      refute Map.has_key?(events_trace, "endpoint_language")
+    end
+
+    test "trace only the first query of a tail", %{source: source} do
+      assert {:ok, _result} =
+               source |> search_op(tailing?: true, tailing_initial?: true) |> Search.search()
+
+      assert_receive {:insert_all, [_trace]}, 5_000
+
+      repeated_tick = search_op(source, tailing?: true, tailing_initial?: false)
+      assert {:ok, _result} = Search.search(repeated_tick)
+      assert {:ok, _result} = Search.aggs(repeated_tick)
+
+      marker = search_op(source, tailing?: false, querystring: "m.level:marker")
+      assert {:ok, _result} = Search.search(marker)
+
+      assert_receive {:insert_all, rows}, 5_000
+      assert [%{"lql" => "m.level:marker"}] = rows
+    end
+  end
+
   describe "measure/3" do
     setup :start_traces_source
 
@@ -224,6 +293,23 @@ defmodule Logflare.Backends.UserMonitoring.QueryTracesTest do
 
       assert schema_a == schema_b
     end
+  end
+
+  @spec search_op(Logflare.Sources.Source.t(), keyword()) :: SO.t()
+  defp search_op(source, opts) do
+    lql_rules = [
+      %ChartRule{path: "timestamp", aggregate: :count, period: :minute, value_type: :datetime},
+      %FilterRule{path: "metadata.level", operator: :=, value: "error", modifiers: %{}}
+    ]
+
+    %{
+      source: source,
+      lql_rules: lql_rules,
+      querystring: "m.level:error",
+      chart_data_shape_id: nil
+    }
+    |> Map.merge(Map.new(opts))
+    |> SO.new()
   end
 
   @spec event_schema(map()) :: map()

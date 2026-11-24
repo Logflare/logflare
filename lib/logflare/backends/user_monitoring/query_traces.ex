@@ -36,8 +36,13 @@ defmodule Logflare.Backends.UserMonitoring.QueryTraces do
 
   @type attrs :: %{
           required(:query_type) => atom(),
-          required(:query) => String.t(),
+          required(:query) => String.t() | (-> String.t() | nil),
           optional(:endpoint_language) => atom(),
+          optional(:search_kind) => atom(),
+          optional(:lql) => String.t() | nil,
+          optional(:source_id) => pos_integer(),
+          optional(:source_token) => atom(),
+          optional(:source_name) => String.t(),
           optional(:backend_type) => atom(),
           optional(:backend_id) => pos_integer() | nil,
           optional(:endpoint_id) => pos_integer() | nil,
@@ -75,13 +80,17 @@ defmodule Logflare.Backends.UserMonitoring.QueryTraces do
   Builds the `system.traces` event body.
 
   `params` and `labels` become lists of `%{"name" => name, "value" => value}` records, so the
-  source schema does not grow with each new parameter or label name.
+  source schema does not grow with each new parameter or label name. A `query` function is
+  called here, so the caller does not pay for building the query text.
   """
   @spec build_event(map()) :: map()
   def build_event(attrs) do
     event =
-      for {key, value} <- attrs, not is_nil(value), into: %{} do
-        {Atom.to_string(key), event_value(key, value)}
+      for {key, value} <- attrs,
+          value = event_value(key, value),
+          not is_nil(value),
+          into: %{} do
+        {Atom.to_string(key), value}
       end
 
     Map.put(event, "event_message", "query.#{attrs.query_type}")
@@ -161,6 +170,9 @@ defmodule Logflare.Backends.UserMonitoring.QueryTraces do
   defp error_message(error), do: inspect(error)
 
   @spec event_value(atom(), term()) :: term()
+  defp event_value(_key, nil), do: nil
+  defp event_value(:query, fun) when is_function(fun, 0), do: fun.()
+
   defp event_value(key, map) when key in [:params, :labels] and is_map(map) do
     for {name, value} <- Enum.sort(map), not is_nil(value) do
       %{"name" => to_string(name), "value" => stringify(value)}

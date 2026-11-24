@@ -9,6 +9,7 @@ defmodule Logflare.Logs.SearchOperations do
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.Backends.Adaptor.QueryResult
+  alias Logflare.Backends.UserMonitoring.QueryTraces
   alias Logflare.DateTimeUtils
   alias Logflare.Google.BigQuery.GCPConfig
   alias Logflare.Google.BigQuery.GenUtils
@@ -109,7 +110,7 @@ defmodule Logflare.Logs.SearchOperations do
 
   @spec do_query(SO.t()) :: SO.t()
   def do_query(%SO{} = so) do
-    with {:ok, response} <- execute_backend_query(so) do
+    with {:ok, response} <- trace_backend_query(so) do
       response = normalize_query_result(so, response)
 
       so
@@ -128,6 +129,42 @@ defmodule Logflare.Logs.SearchOperations do
   end
 
   defp normalize_query_result(%SO{}, %QueryResult{} = response), do: response
+
+  @spec trace_backend_query(SO.t()) :: {:ok, map()} | {:error, term()}
+  defp trace_backend_query(%SO{tailing?: true, tailing_initial?: false} = so),
+    do: execute_backend_query(so)
+
+  defp trace_backend_query(%SO{} = so) do
+    QueryTraces.measure(so.source.user_id, search_trace_attrs(so), fn ->
+      execute_backend_query(so)
+    end)
+  end
+
+  @spec search_trace_attrs(SO.t()) :: QueryTraces.attrs()
+  defp search_trace_attrs(%SO{backend_type: backend_type, source: source} = so) do
+    query = query_for_execution(so)
+
+    %{
+      query_type: :search,
+      search_kind: so.type || :context,
+      query: fn -> query_sql(backend_type, query) end,
+      lql: so.querystring,
+      backend_type: backend_type,
+      source_id: source.id,
+      source_token: source.token,
+      source_name: source.name
+    }
+  end
+
+  @spec query_sql(:bigquery | :postgres, Ecto.Query.t()) :: String.t() | nil
+  defp query_sql(:postgres, query), do: query |> PostgresAdaptor.ecto_to_sql([]) |> sql_string()
+
+  defp query_sql(_backend_type, query),
+    do: query |> BigQueryAdaptor.ecto_to_sql([]) |> sql_string()
+
+  @spec sql_string({:ok, {String.t(), list()}} | {:error, term()}) :: String.t() | nil
+  defp sql_string({:ok, {sql, _params}}), do: sql
+  defp sql_string({:error, _reason}), do: nil
 
   @spec execute_backend_query(SO.t()) :: {:ok, map()} | {:error, term()}
   defp execute_backend_query(%SO{backend_type: :postgres} = so) do
