@@ -149,6 +149,13 @@ defmodule LogflareWeb.SearchLive.FormComponentsTest do
         overrides
       )
 
+    assigns =
+      Map.put(
+        assigns,
+        :search_form,
+        Phoenix.Component.to_form(%{"querystring" => assigns.querystring}, as: :search)
+      )
+
     render_component(&FormComponents.search_controls/1, assigns)
     |> Floki.parse_document!()
   end

@@ -204,14 +204,7 @@ defmodule Logflare.Endpoints.EndpointQuery do
       end
 
     validate_change(changeset, field, fn field, value ->
-      with {:ok, expanded_query} <- Sql.expand_subqueries(language, value, queries),
-           {:ok, _} <-
-             Sql.transform(language, expanded_query, user, allow_clickhouse_sql_settings: true) do
-        []
-      else
-        {:error, :database_unavailable} -> [{field, "source catalog is temporarily unavailable"}]
-        {:error, error} -> [{field, error}]
-      end
+      validate_query_change(language, user, queries, field, value)
     end)
   end
 
@@ -232,6 +225,19 @@ defmodule Logflare.Endpoints.EndpointQuery do
   end
 
   defp validate_sandboxable_clickhouse_query(changeset), do: changeset
+
+  @spec validate_query_change(atom(), User.t() | nil, list(), atom(), String.t()) ::
+          keyword(String.t())
+  defp validate_query_change(language, user, queries, field, value) do
+    with {:ok, expanded_query} <- Sql.expand_subqueries(language, value, queries),
+         {:ok, _} <-
+           Sql.transform(language, expanded_query, user, allow_clickhouse_sql_settings: true) do
+      []
+    else
+      {:error, :database_unavailable} -> [{field, "source catalog is temporarily unavailable"}]
+      {:error, error} -> [{field, error}]
+    end
+  end
 
   # Only update source mapping if there are no errors
   def update_source_mapping(%Changeset{errors: [], changes: %{query: query}} = changeset)
