@@ -10,14 +10,18 @@ defmodule Logflare.LogEvent.TypeDetection do
   @doc """
   Determines the log type from raw ingestion params.
 
-  Checks `metadata.type` first (set by OTEL processors), then falls back
-  to heuristic key detection for raw JSON payloads. Defaults to `:log`.
+  Checks `metadata.type` first (set by OTEL and Vector processors), then
+  falls back to heuristic key detection for raw JSON payloads. Defaults to
+  `:log`.
   """
   @spec detect(map()) :: event_type()
   def detect(%{"metadata" => %{"type" => "span"}}), do: :trace
   def detect(%{"metadata" => %{"type" => "metric"}}), do: :metric
   def detect(%{"metadata" => %{"type" => "event"}}), do: :log
   def detect(%{"metadata" => %{"type" => "otel_log"}}), do: :log
+  def detect(%{"metadata" => %{"type" => "vector_metric"}}), do: :metric
+  def detect(%{"metadata" => %{"type" => "vector_trace"}}), do: :trace
+  def detect(%{"metadata" => %{"type" => "vector_log"}}), do: :log
 
   def detect(params) when is_map(params) do
     cond do
