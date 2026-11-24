@@ -80,7 +80,6 @@ defmodule Logflare.Google.BigQuery do
       when is_binary(project_id) and is_binary(dataset_id) and is_binary(table_id) do
     GenUtils.get_conn()
     |> Api.Tables.bigquery_tables_delete(project_id, dataset_id, table_id)
-    |> GenUtils.maybe_parse_google_api_result()
   end
 
   @spec create_table(atom, binary, binary, any) ::
