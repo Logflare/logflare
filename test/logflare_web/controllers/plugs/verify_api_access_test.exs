@@ -1,6 +1,9 @@
 defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
   @moduledoc false
   use LogflareWeb.ConnCase
+
+  import ExUnit.CaptureLog
+
   alias Logflare.Auth
   alias Logflare.OauthAccessTokens.OauthAccessToken
   alias Logflare.RecordUsages
@@ -38,17 +41,29 @@ defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
           Supervisor.restart_child(Logflare.ContextCache.Supervisor, child)
         end)
 
-        for credential <- [token.token, user.api_key] do
-          build_conn(:post, "/logs")
-          |> put_req_header("x-api-key", credential)
-          |> VerifyApiAccess.call(%{})
-          |> assert_authorized(user)
-        end
+        log =
+          capture_log([format: "$level $message $metadata", metadata: [:error_string]], fn ->
+            for credential <- [token.token, user.api_key] do
+              build_conn(:post, "/logs")
+              |> put_req_header("x-api-key", credential)
+              |> VerifyApiAccess.call(%{})
+              |> assert_authorized(user)
+            end
 
-        build_conn(:post, "/logs")
-        |> put_req_header("x-api-key", "invalid-token")
-        |> VerifyApiAccess.call(%{})
-        |> assert_unauthorized()
+            build_conn(:post, "/logs")
+            |> put_req_header("x-api-key", "invalid-token")
+            |> VerifyApiAccess.call(%{})
+            |> assert_unauthorized()
+          end)
+
+        if child == RecordUsages.Cache do
+          assert log =~ "warning Record usage cache read failed"
+          assert log =~ "no_cache"
+          refute log =~ token.token
+          refute log =~ user.api_key
+        else
+          refute log =~ "Record usage cache read failed"
+        end
 
         {:ok, _} = Supervisor.restart_child(Logflare.ContextCache.Supervisor, child)
       end

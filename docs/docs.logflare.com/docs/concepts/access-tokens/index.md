@@ -42,6 +42,14 @@ To revoke access tokens, clikc on the **Revoke** button. This would immediately 
 
 ![Revoke token](./revoke.png)
 
+### Last authenticated
+
+The access token table shows when each token last authenticated. Usage timestamps
+are buffered locally and saved to the database periodically, so this value is
+not updated immediately. Usage tracking
+is best effort: a cache failure logs a warning without rejecting an otherwise
+valid request.
+
 ## Authentication
 
 There are 3 supported methods to attach an accees token with an API request:

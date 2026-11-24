@@ -12,6 +12,8 @@ defmodule Logflare.RecordUsages.Cache do
 
   import Cachex.Spec, only: [hook: 1]
 
+  require Logger
+
   alias Logflare.Cache.CachexOps
   alias Logflare.RecordUsages.Writer
 
@@ -34,13 +36,15 @@ defmodule Logflare.RecordUsages.Cache do
       {:ok, _} ->
         Writer.record(key, timestamp)
 
-      {:error, _reason} ->
-        :ok
+      {:error, reason} ->
+        Logger.warning("Record usage cache read failed", error_string: inspect(reason))
     end
 
     :ok
   rescue
-    ArgumentError -> :ok
+    error in ArgumentError ->
+      Logger.warning("Record usage cache read failed", error_string: Exception.message(error))
+      :ok
   end
 
   @spec snapshot(drain: boolean()) :: snapshot()
