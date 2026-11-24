@@ -523,7 +523,7 @@ To deploy OpenTelemetry to Cloudflare + GCP successfully, the following need to 
 
 1. Expose instance group named port 50051 (or whatever it is set on the server.)
 2. Set load balancer to send `otel.logflare.app:443` to the above named port on the designated backend. Backend must be set to HTTP/2 protocol.
-3. Between instances and load balancer, connections need to be TLS encrypted. Can be self-signed. Generate self-signed certs with `make ssl.prod` and `make ssl.staging`. No CA cert needs to be used when self-signing, can use public certs.
+3. Between instances and load balancer, connections need to be TLS encrypted. Can be self-signed, e.g. `openssl req -x509 -newkey rsa:2048 -keyout cert.key -out cert.pem -days 3650 -nodes -subj "/CN=<your-domain>"`. No CA cert needs to be used when self-signing, can use public certs.
 4. Between CF and GCP, connections should have Full SSL (optionally strict). Generate an origin cert on CF and use it on the load balancer. SSL is terminated at the load balancer.
 5. Connecting client should not need an SSL cert to connect (unless you want to encrypt the traffic between client and instance)
 

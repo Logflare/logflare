@@ -199,10 +199,10 @@ stripe:
 # Encryption and decryption of secrets
 # Usage:
 #
-#     make decrypt.{dev,staging,prod} # Decrypt secrets for given environment
-#     make encrypt.{dev,staging,prod} # Encrypt secrets for given environment
+#     make decrypt.dev # Decrypt local dev secrets
+#     make encrypt.dev # Encrypt local dev secrets
 
-%: cloudbuild/%.enc
+.dev.env: cloudbuild/.dev.env.enc
 	@gcloud kms decrypt --ciphertext-file=$< --plaintext-file=$@ \
 		--location=${GCLOUD_LOCATION} \
 		--keyring=${GCLOUD_KEYRING} \
@@ -210,48 +210,17 @@ stripe:
 		--project=${GCLOUD_PROJECT}
 	@echo "$@ has been decrypted"
 
-%.enc:
-	@gcloud kms encrypt --ciphertext-file=cloudbuild/$@ --plaintext-file=$(@:.enc=) \
+decrypt.dev: .dev.env
+
+encrypt.dev:
+	@gcloud kms encrypt --ciphertext-file=cloudbuild/.dev.env.enc --plaintext-file=.dev.env \
 		--location=${GCLOUD_LOCATION} \
 		--keyring=${GCLOUD_KEYRING} \
 		--key=${GCLOUD_KEY} \
 		--project=${GCLOUD_PROJECT}
-	@echo "$@ has been encrypted"
-
-.PRECIOUS: %.enc
-
-decrypt.dev: .dev.env
-encrypt.dev: .dev.env.enc
+	@echo "cloudbuild/.dev.env.enc has been encrypted"
 
 .PHONY: decrypt.dev encrypt.dev
-
-envs = staging prod
-
-%crypt.prod: GCLOUD_KEYRING = logflare-prod-keyring-us-central1
-%crypt.prod: GCLOUD_KEY = logflare-prod-secrets-key
-%crypt.prod: GCLOUD_PROJECT = logflare-232118
-
-.SECONDEXPANSION:
-$(addprefix decrypt.,${envs}): decrypt.%: \
-	.$$*.gcloud.json \
- 	.$$*.env \
- 	.$$*.cert.key \
- 	.$$*.cert.pem \
- 	.$$*.db-client-cert.pem \
- 	.$$*.db-client-key.pem \
- 	.$$*.db-server-ca.pem
-
-$(addprefix encrypt.,${envs}): encrypt.%: \
-	.$$*.gcloud.json.enc \
-	.$$*.env.enc \
-	.$$*.cert.key.enc \
-	.$$*.cert.pem.enc \
- 	.$$*.db-client-cert.pem.enc \
- 	.$$*.db-client-key.pem.enc \
- 	.$$*.db-server-ca.pem.enc
-
-.PHONY: $(addprefix encrypt.,${envs})
-.PHONY: $(addprefix decrypt.,${envs})
 
 # OpenTelemetry Protobufs
 
@@ -296,14 +265,6 @@ tag-versioned:
 
 .PHONY: tag-versioned
 
-
-ssl.prod: CERT_DOMAIN = logflare.app
-ssl.staging: CERT_DOMAIN = logflarestaging.com
-
-$(addprefix ssl.,${envs}): ssl.%:
-	@echo "Generating self-signed certificate..."
-	@openssl req -x509 -newkey rsa:2048 -keyout .$*.cert.key -out .$*.cert.pem -days 3650 \
-		-nodes -subj "/C=US/ST=DE/O=Supabase/OU=Logflare/CN=$(CERT_DOMAIN)"
 
 TELEGRAF_KEYS_DIR := priv/telegraf
 TELEGRAF_KEYS_SENTINEL := $(TELEGRAF_KEYS_DIR)/client.crt
@@ -350,13 +311,4 @@ $(TELEGRAF_KEYS_SENTINEL):
 docker.multi-step:
 	docker-compose build base runner
 
-ops.sign-export:
-	@if [ -z "$(PROJECT)" ]; then \
-		echo "Error: PROJECT env variable must be set. Usage: make ops.sign-export PROJECT=your_project"; \
-		exit 1; \
-	fi
-	@CLOUDSDK_PYTHON=python3 CLOUDSDK_PYTHON_SITEPACKAGES=1 gcloud storage sign-url 'gs://supabase-log-exports-prod/$(PROJECT)-*.json.gz' \
-		--private-key-file=.log-export.gcloud.json  \
-		--duration=5d > export-dl-$(PROJECT).txt
-
-.PHONY: $(addprefix ssl.,${envs}) ssl.telegraf docker.build.multistep ops.sign-export
+.PHONY: ssl.telegraf docker.build.multistep
