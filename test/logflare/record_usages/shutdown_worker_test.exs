@@ -108,15 +108,25 @@ defmodule Logflare.RecordUsages.ShutdownWorkerTest do
     assert Repo.get_by(RecordUsage, oauth_access_token_id: token.id) == nil
   end
 
-  test "failed shared flush logs the failure without blocking shutdown" do
+  test "a database failure during flush logs the failure without blocking shutdown" do
     token = insert(:access_token)
     RecordUsages.record(OauthAccessToken, token.id)
     snapshot = Cache.snapshot()
-    stub(RecordUsages, :flush, fn -> raise "database unavailable" end)
 
-    assert capture_log(fn ->
-             assert :ok = Supervisor.terminate_child(Logflare.Supervisor, ShutdownWorker)
-           end) =~ "Record usage shutdown flush failed"
+    Repo.query!("""
+    ALTER TABLE record_usages
+    ADD CONSTRAINT reject_usage_flush CHECK (false) NOT VALID
+    """)
+
+    log =
+      capture_log(fn ->
+        assert :ok = Supervisor.terminate_child(Logflare.Supervisor, ShutdownWorker)
+      end)
+
+    Repo.query!("ALTER TABLE record_usages DROP CONSTRAINT reject_usage_flush")
+
+    assert log =~ "Record usage shutdown flush failed"
+    assert log =~ "reject_usage_flush"
 
     assert Repo.get_by(RecordUsage, oauth_access_token_id: token.id) == nil
     assert Cache.snapshot() == snapshot
