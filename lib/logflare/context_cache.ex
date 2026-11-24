@@ -70,6 +70,9 @@ defmodule Logflare.ContextCache do
 
   @callback cached?(key :: term()) :: boolean()
 
+  @doc """
+  Returns the number of unexpired entries.
+  """
   @callback size() :: non_neg_integer()
 
   @doc """

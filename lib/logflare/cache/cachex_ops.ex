@@ -290,7 +290,7 @@ defmodule Logflare.Cache.CachexOps do
   @impl Logflare.ContextCache.Ops
   @spec size(Cachex.t()) :: non_neg_integer()
   def size(cache) do
-    {:ok, size} = Cachex.size(cache)
+    {:ok, size} = Cachex.size(cache, expired: false)
     size
   end
 

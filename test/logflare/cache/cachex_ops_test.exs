@@ -352,6 +352,14 @@ defmodule Logflare.Cache.CachexOpsTest do
       refute CachexOps.cached?(@cache, :other)
       assert CachexOps.size(@cache) == 1
     end
+
+    test "size does not count expired entries that are not purged yet" do
+      Cachex.put(@cache, :expired, {:cached, :value}, expire: 1)
+      Cachex.put(@cache, :live, {:cached, :value})
+      Process.sleep(5)
+
+      assert CachexOps.size(@cache) == 1
+    end
   end
 
   defp start_cache(opts), do: start_supervised!(CachexOps.child_spec(@cache, opts))

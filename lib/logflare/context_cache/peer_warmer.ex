@@ -19,6 +19,8 @@ defmodule Logflare.ContextCache.PeerWarmer do
     4. Checks written entries against `c:Logflare.ContextCache.stale_entry?/2` again and deletes
        the stale ones. A bust records its tombstones before deleting, so either this check sees
        the tombstone or the bust's delete runs after the write.
+    5. Discards an attempt that fails or copies no entries: the entries it wrote are deleted
+       before the next peer is tried, so a copy never mixes entries from several peers.
 
   When every peer refuses or fails, it returns `:fallback` and the warmer loads from the
   database as before. A copy inherits the peer's `warmed_at`, so a copy of a copy never looks
@@ -39,6 +41,7 @@ defmodule Logflare.ContextCache.PeerWarmer do
   }
 
   @poll_interval 100
+  @written_keys {__MODULE__, :written_keys}
 
   @type state :: :warming | :ready
   @type status :: %{
@@ -52,6 +55,7 @@ defmodule Logflare.ContextCache.PeerWarmer do
           :cache_buster_not_started
           | :no_peers
           | :no_eligible_peer
+          | :no_entries
           | :rpc_failed
           | :timeout
           | :peer_down
@@ -189,7 +193,7 @@ defmodule Logflare.ContextCache.PeerWarmer do
       case deadline - System.monotonic_time(:millisecond) do
         remaining when remaining > 0 ->
           node
-          |> Transfer.run(cache, guard, &import_entries(cache, &1), remaining)
+          |> copy_attempt(cache, guard, remaining)
           |> attempt_result(node, last_error)
 
         _deadline_passed ->
@@ -197,6 +201,23 @@ defmodule Logflare.ContextCache.PeerWarmer do
       end
     end)
   end
+
+  defp copy_attempt(node, cache, guard, timeout) do
+    Process.put(@written_keys, [])
+    result = Transfer.run(node, cache, guard, &import_entries(cache, &1), timeout)
+    written = Process.delete(@written_keys)
+    discard_unless_copied(result, cache, written)
+  end
+
+  defp discard_unless_copied({:ok, count, _meta} = result, _cache, _written) when count > 0,
+    do: result
+
+  defp discard_unless_copied(result, cache, written) do
+    {:ok, _deleted} = cache.delete_keys(written)
+    result
+  end
+
+  defp attempt_result({:ok, 0, _meta}, _node, _last_error), do: {:cont, {:error, :no_entries}}
 
   defp attempt_result({:ok, count, %{warmed_at: warmed_at}}, node, _last_error),
     do: {:halt, {:ok, node, count, warmed_at}}
@@ -213,8 +234,14 @@ defmodule Logflare.ContextCache.PeerWarmer do
   defp import_entries(cache, entries) do
     importable = Enum.filter(entries, &importable?(cache, &1))
     :ok = cache.put_entries(importable)
+    remember_written(importable)
     {:ok, dropped} = drop_invalidated(cache, importable)
     length(importable) - dropped
+  end
+
+  defp remember_written(entries) do
+    keys = for {key, _value, _ttl} <- entries, do: key
+    Process.put(@written_keys, keys ++ Process.get(@written_keys, []))
   end
 
   defp drop_invalidated(cache, imported) do
