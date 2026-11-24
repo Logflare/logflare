@@ -1,6 +1,8 @@
 defmodule LogflareWeb.BertParserTest do
   @moduledoc false
   use LogflareWeb.ConnCase
+
+  alias Ecto.Query.DynamicExpr
   alias LogflareWeb.BertParser
 
   describe "LogflareWeb.BertParser" do
@@ -109,6 +111,110 @@ defmodule LogflareWeb.BertParserTest do
       end
     end
 
+    test "rejects a top level struct", %{conn: conn} do
+      body = :erlang.term_to_binary(%DynamicExpr{fun: nil, binding: [], file: "poc", line: 0})
+
+      assert_raise Plug.Parsers.ParseError, ~r/structs are not allowed/, fn ->
+        BertParser.decode({:ok, body, conn})
+      end
+    end
+
+    test "rejects a struct nested in a map value", %{conn: conn} do
+      body =
+        :erlang.term_to_binary(%{
+          "authentications" => %DynamicExpr{fun: nil, binding: [], file: "poc", line: 0}
+        })
+
+      assert_raise Plug.Parsers.ParseError, ~r/structs are not allowed/, fn ->
+        BertParser.decode({:ok, body, conn})
+      end
+    end
+
+    test "rejects a struct nested in a list", %{conn: conn} do
+      body =
+        :erlang.term_to_binary(%{
+          "batch" => [
+            %{"message" => "info log"},
+            %DynamicExpr{fun: nil, binding: [], file: "poc", line: 0}
+          ]
+        })
+
+      assert_raise Plug.Parsers.ParseError, ~r/structs are not allowed/, fn ->
+        BertParser.decode({:ok, body, conn})
+      end
+    end
+
+    test "rejects a struct assembled from a bert dict", %{conn: conn} do
+      body =
+        :erlang.term_to_binary(
+          {:bert, :dict,
+           [{:__struct__, DynamicExpr}, {:fun, nil}, {:binding, []}, {:file, "poc"}, {:line, 0}]}
+        )
+
+      assert_raise Plug.Parsers.ParseError, ~r/structs are not allowed/, fn ->
+        BertParser.decode({:ok, body, conn})
+      end
+    end
+
+    test "rejects a struct with an Enumerable implementation wrapped in a bert dict", %{
+      conn: conn
+    } do
+      body = :erlang.term_to_binary({:bert, :dict, MapSet.new([{"a", 1}])})
+
+      assert_raise Plug.Parsers.ParseError, ~r/structs are not allowed/, fn ->
+        BertParser.decode({:ok, body, conn})
+      end
+    end
+
+    test "rejects a struct without an Enumerable implementation wrapped in a bert dict", %{
+      conn: conn
+    } do
+      body = :erlang.term_to_binary({:bert, :dict, URI.parse("https://example.com")})
+
+      error =
+        assert_raise Plug.Parsers.ParseError, ~r/structs are not allowed/, fn ->
+          BertParser.decode({:ok, body, conn})
+        end
+
+      refute Exception.message(error) =~ "%URI{"
+    end
+
+    test "rejects a struct nested in a tuple", %{conn: conn} do
+      body =
+        :erlang.term_to_binary(%{
+          "pair" => {:ok, %DynamicExpr{fun: nil, binding: [], file: "poc", line: 0}}
+        })
+
+      assert_raise Plug.Parsers.ParseError, ~r/structs are not allowed/, fn ->
+        BertParser.decode({:ok, body, conn})
+      end
+    end
+
+    test "rejects an external function reference", %{conn: conn} do
+      body = :erlang.term_to_binary(%{"log" => &:os.cmd/1})
+
+      assert_raise Plug.Parsers.ParseError, ~r/not safe for deserialization/, fn ->
+        BertParser.decode({:ok, body, conn})
+      end
+    end
+
+    test "rejects an anonymous function nested in a list", %{conn: conn} do
+      body = :erlang.term_to_binary(%{"batch" => [%{"callback" => fn entry -> entry end}]})
+
+      assert_raise Plug.Parsers.ParseError, ~r/not safe for deserialization/, fn ->
+        BertParser.decode({:ok, body, conn})
+      end
+    end
+
+    test "decodes nested maps and lists that contain no structs", %{conn: conn} do
+      data = %{
+        "batch" => [%{"message" => "info log", "metadata" => %{"context_key" => 1}}],
+        "source_name" => "dashboard1"
+      }
+
+      assert BertParser.decode({:ok, Bertex.encode(data), conn}) == {:ok, data, conn}
+    end
+
     test "decodes an uncompressed term sent with HTTP gzip content encoding" do
       data = %{"batch" => [%{"message" => "gzipped"}], "source_name" => "dashboard1"}
 
@@ -120,6 +226,18 @@ defmodule LogflareWeb.BertParserTest do
       opts = BertParser.init(body_reader: {PlugCaisson, :read_body, []})
 
       assert {:ok, ^data, _conn} = BertParser.parse(conn, "application", "bert", %{}, opts)
+    end
+  end
+
+  describe "BERT reachability" do
+    test "application/bert is unsupported on the unauthenticated :api pipeline", %{conn: conn} do
+      body = :erlang.term_to_binary(%{"batch" => []})
+
+      assert_raise Plug.Parsers.UnsupportedMediaTypeError, fn ->
+        conn
+        |> put_req_header("content-type", "application/bert")
+        |> post(~p"/webhooks/cloudflare/v1", body)
+      end
     end
   end
 end
