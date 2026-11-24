@@ -41,20 +41,28 @@ Contains application logs related to your sources, backends, and endpoints.
 
 ### system.traces
 
-Contains one event per query that Logflare executes on your behalf. Endpoint queries are traced, including background refreshes of cached results. Requests served from the results cache are not traced.
+Contains one event per query that Logflare executes on your behalf. Endpoint queries are traced, including background refreshes of cached results. Requests served from the results cache are not traced. Tracing is best effort: under heavy load, some traces may be dropped.
 
 Each event includes:
 
 - **`event_message`** - Query kind, such as `query.endpoint`
-- **`query`** - The SQL executed on the backend
-- **`query_language`** - Language of the endpoint query: `bq_sql`, `pg_sql`, or `ch_sql`
+- **`query`** - The endpoint SQL after translation to the backend's dialect. The backend adaptor may still rewrite parameter placeholders before running it
+- **`endpoint_language`** - Language the endpoint is written in: `bq_sql`, `pg_sql`, or `ch_sql`. The query may run in another dialect, see `backend_type`
 - **`backend_type`** and **`backend_id`** - The backend that ran the query
 - **`total_bytes_processed`** - Bytes scanned, for backends that report it (BigQuery, ClickHouse)
-- **`duration_ms`** - Query execution time
+- **`duration_ms`** - Time the endpoint spent waiting for the backend adaptor to run the query
 - **`status`** and **`error`** - `ok` or `error`, with the error message
-- **`params`** - Query parameters, as strings
-- **`labels`** - Endpoint labels
+- **`params`** - Values of the parameters declared in the query, as a list of `name` and `value` records. Values are strings. Credentials such as `api_key` are never stored
+- **`labels`** - Endpoint labels, as a list of `name` and `value` records
 - **`endpoint_id`** and **`endpoint_uuid`** - The endpoint that ran the query
+
+To find the traces of one tenant, filter on a parameter value. For example, on BigQuery:
+
+```sql
+select timestamp, query, total_bytes_processed
+from `system.traces` t
+where exists (select 1 from unnest(t.params) p where p.name = 'project' and p.value = 'abc')
+```
 
 ## Metrics Collected
 

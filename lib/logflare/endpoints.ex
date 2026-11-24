@@ -39,6 +39,7 @@ defmodule Logflare.Endpoints do
 
   @endpoint_version_label "endpoint_version"
   @valid_sql_languages ~w(bq_sql ch_sql pg_sql)a
+  @trace_excluded_params ~w(api_key access_token)
 
   @typep language :: :bq_sql | :ch_sql | :pg_sql | :lql
   @typep origin :: User.t() | TeamUser.t() | OauthAccessToken.t()
@@ -1227,32 +1228,40 @@ defmodule Logflare.Endpoints do
       trace_attrs = %{
         query_type: :endpoint,
         query: final_query,
-        query_language: sql_language,
+        endpoint_language: sql_language,
         backend_type: backend.type,
         backend_id: backend.id,
         endpoint_id: endpoint_query.id,
         endpoint_uuid: endpoint_query.token && Utils.stringify(endpoint_query.token),
-        params: input_params,
+        params: input_params |> Map.take(declared_params) |> Map.drop(@trace_excluded_params),
         labels: endpoint_query.parsed_labels
       }
 
-      QueryTraces.measure(endpoint_query.user_id, trace_attrs, fn ->
+      endpoint_query.user_id
+      |> QueryTraces.measure(trace_attrs, fn ->
         backend
         |> adaptor.execute_query(query_args, query_opts)
-        |> redact_query_result(redact_pii)
+        |> redact_error_result(redact_pii)
       end)
+      |> redact_rows_result(redact_pii)
     end
   end
 
-  @spec redact_query_result({:ok, QueryResult.t()} | {:error, term()}, boolean()) ::
+  @spec redact_error_result({:ok, QueryResult.t()} | {:error, term()}, boolean()) ::
+          {:ok, QueryResult.t()} | {:error, term()}
+  defp redact_error_result({:error, error}, redact_pii),
+    do: {:error, redact_query_error(error, redact_pii)}
+
+  defp redact_error_result(result, _redact_pii), do: result
+
+  @spec redact_rows_result({:ok, QueryResult.t()} | {:error, term()}, boolean()) ::
           run_query_return()
-  defp redact_query_result({:ok, %QueryResult{rows: rows} = result}, redact_pii) do
+  defp redact_rows_result({:ok, %QueryResult{rows: rows} = result}, redact_pii) do
     redacted_rows = PiiRedactor.redact_query_result(rows, redact_pii)
     {:ok, result |> Map.put(:rows, redacted_rows) |> Map.from_struct()}
   end
 
-  defp redact_query_result({:error, error}, redact_pii),
-    do: {:error, redact_query_error(error, redact_pii)}
+  defp redact_rows_result(error, _redact_pii), do: error
 
   @spec redact_query_error(term(), boolean()) :: term()
   defp redact_query_error(%QueryError{description: description} = error, true)

@@ -1,5 +1,5 @@
 defmodule Logflare.Backends.UserMonitoring.QueryTracesTest do
-  use Logflare.DataCase, async: false
+  use LogflareWeb.ConnCase, async: false
 
   alias GoogleApi.BigQuery.V2.Api.Jobs
   alias GoogleApi.BigQuery.V2.Api.Tabledata
@@ -10,6 +10,7 @@ defmodule Logflare.Backends.UserMonitoring.QueryTracesTest do
   alias Logflare.Backends.SourceSup
   alias Logflare.Backends.UserMonitoring.QueryTraces
   alias Logflare.Endpoints
+  alias Logflare.Sources.Source.BigQuery.SchemaBuilder
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.Users
 
@@ -50,15 +51,15 @@ defmodule Logflare.Backends.UserMonitoring.QueryTracesTest do
       assert %{
                "event_message" => "query.endpoint",
                "query_type" => "endpoint",
-               "query_language" => "bq_sql",
+               "endpoint_language" => "bq_sql",
                "backend_type" => "bigquery",
                "status" => "ok",
                "total_bytes_processed" => 1024,
                "endpoint_id" => ^endpoint_id,
                "duration_ms" => duration_ms,
                "query" => query,
-               "params" => [%{"project" => "abc", "limit" => "10"}],
-               "labels" => [%{"team" => "core"}]
+               "params" => [%{"name" => "project", "value" => "abc"}],
+               "labels" => [%{"name" => "team", "value" => "core"}]
              } = trace
 
       assert is_integer(duration_ms)
@@ -82,7 +83,7 @@ defmodule Logflare.Backends.UserMonitoring.QueryTracesTest do
       backend_id = backend.id
 
       assert %{
-               "query_language" => "ch_sql",
+               "endpoint_language" => "ch_sql",
                "backend_type" => "clickhouse",
                "backend_id" => ^backend_id,
                "total_bytes_processed" => 100
@@ -104,6 +105,35 @@ defmodule Logflare.Backends.UserMonitoring.QueryTracesTest do
       assert_receive {:insert_all, [trace]}, 5_000
       assert %{"status" => "error", "error" => "Unknown table"} = trace
       refute Map.has_key?(trace, "total_bytes_processed")
+    end
+  end
+
+  describe "endpoint requests" do
+    setup :start_traces_source
+
+    test "trace declared params without credentials or undeclared params", %{
+      conn: conn,
+      user: user
+    } do
+      stub(Jobs, :bigquery_jobs_query, fn _conn, _project, _opts ->
+        {:ok, TestUtils.gen_bq_response([%{"result" => "1"}])}
+      end)
+
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          enable_auth: true,
+          query: "SELECT @project AS result, @api_key AS key"
+        )
+
+      params = %{project: "abc", api_key: user.api_key, foo: "1"}
+
+      conn
+      |> get(~p"/endpoints/query/#{endpoint.token}?#{params}")
+      |> json_response(200)
+
+      assert_receive {:insert_all, [trace]}, 5_000
+      assert trace["params"] == [%{"name" => "project", "value" => "abc"}]
     end
   end
 
@@ -132,7 +162,79 @@ defmodule Logflare.Backends.UserMonitoring.QueryTracesTest do
 
       refute_receive {:insert_all, _rows}, 500
     end
+
+    test "drop the trace and keep the result when the worker is saturated", %{user: user} do
+      attach_trace_drops()
+      previous = Application.get_env(:logflare, QueryTraces)
+      Application.put_env(:logflare, QueryTraces, max_queue_len: 0)
+      on_exit(fn -> restore_env(previous) end)
+      result = {:error, "boom"}
+
+      assert QueryTraces.measure(user.id, %{query_type: :endpoint, query: "SELECT 1"}, fn ->
+               result
+             end) == result
+
+      assert_receive {:dropped, %{count: 1}, %{reason: :saturated}}
+      refute_receive {:insert_all, _rows}, 500
+    end
+
+    test "drop the trace and keep the result when the worker is down", %{user: user} do
+      attach_trace_drops()
+      pid = Process.whereis(QueryTraces)
+      Process.unregister(QueryTraces)
+      on_exit(fn -> Process.register(pid, QueryTraces) end)
+      result = {:ok, QueryResult.new([%{"a" => 1}], %{})}
+
+      assert QueryTraces.measure(user.id, %{query_type: :endpoint, query: "SELECT 1"}, fn ->
+               result
+             end) == result
+
+      assert_receive {:dropped, %{count: 1}, %{reason: :unavailable}}
+      refute_receive {:insert_all, _rows}, 500
+    end
   end
+
+  describe "build_event/1" do
+    test "keep the same schema for different param and label names" do
+      schema_a =
+        event_schema(%{params: %{"project" => "abc"}, labels: %{"team" => "core"}})
+
+      schema_b =
+        event_schema(%{params: %{"region" => "eu", "limit" => 10}, labels: %{"env" => "prod"}})
+
+      assert schema_a == schema_b
+    end
+  end
+
+  @spec event_schema(map()) :: map()
+  defp event_schema(attrs) do
+    %{query_type: :endpoint, query: "SELECT 1"}
+    |> Map.merge(attrs)
+    |> QueryTraces.build_event()
+    |> SchemaBuilder.build_table_schema(SchemaBuilder.initial_table_schema())
+  end
+
+  @spec attach_trace_drops() :: :ok
+  defp attach_trace_drops do
+    test_pid = self()
+    ref = make_ref()
+    event = [:logflare, :user_monitoring, :query_traces, :dropped]
+
+    :telemetry.attach(
+      ref,
+      event,
+      fn ^event, measurements, metadata, _config ->
+        send(test_pid, {:dropped, measurements, metadata})
+      end,
+      nil
+    )
+
+    on_exit(fn -> :telemetry.detach(ref) end)
+  end
+
+  @spec restore_env(keyword() | nil) :: :ok
+  defp restore_env(nil), do: Application.delete_env(:logflare, QueryTraces)
+  defp restore_env(previous), do: Application.put_env(:logflare, QueryTraces, previous)
 
   @spec start_traces_source(map()) :: map()
   defp start_traces_source(_context) do
