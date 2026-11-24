@@ -536,6 +536,6 @@ defmodule LogflareWeb.EndpointsVersionsLiveTest do
   defp assert_query_displayed(view, query) do
     {:ok, formatted_query} = Logflare.Sql.format(query)
 
-    assert has_element?(view, "code", formatted_query)
+    assert has_element?(view, "code", String.replace(formatted_query, ~r/\s+/, " "))
   end
 end

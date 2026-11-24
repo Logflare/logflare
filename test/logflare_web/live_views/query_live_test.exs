@@ -473,7 +473,7 @@ defmodule LogflareWeb.QueryLiveTest do
       {:ok, view, _html} = live_with_redirect(conn, "/query?backend_id=#{backend.id}")
       html = render(view)
 
-      assert html =~ ~s(selected="selected" value="#{backend.id}")
+      assert html =~ ~s(selected="" value="#{backend.id}")
       assert html =~ backend.name
     end
 
