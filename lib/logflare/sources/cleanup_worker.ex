@@ -90,12 +90,22 @@ defmodule Logflare.Sources.CleanupWorker do
   defp delete_table(nil), do: :ok
 
   defp delete_table(%{"project_id" => project, "dataset_id" => dataset, "table_id" => table}) do
-    case BigQuery.delete_table(project, dataset, table) do
-      {:ok, _} -> :ok
-      {:error, %Tesla.Env{status: 404}} -> :ok
-      {:error, %Tesla.Env{status: status}} -> {:error, {:bigquery_delete_failed, status}}
-      {:error, reason} when is_atom(reason) -> {:error, {:bigquery_delete_failed, reason}}
-      {:error, _reason} -> {:error, {:bigquery_delete_failed, :transport_error}}
-    end
+    project
+    |> BigQuery.delete_table(dataset, table)
+    |> normalize_delete_result()
   end
+
+  @doc false
+  @spec normalize_delete_result({:ok, term()} | {:error, term()}) :: :ok | {:error, term()}
+  def normalize_delete_result({:ok, _}), do: :ok
+  def normalize_delete_result({:error, %Tesla.Env{status: 404}}), do: :ok
+
+  def normalize_delete_result({:error, %Tesla.Env{status: status}}),
+    do: {:error, {:bigquery_delete_failed, status}}
+
+  def normalize_delete_result({:error, reason}) when is_atom(reason),
+    do: {:error, {:bigquery_delete_failed, reason}}
+
+  def normalize_delete_result({:error, _reason}),
+    do: {:error, {:bigquery_delete_failed, :transport_error}}
 end
