@@ -3,6 +3,9 @@ defmodule LogflareWeb.Endpoints.Components do
   use LogflareWeb, :routes
   use Phoenix.Component
 
+  import Logflare.Utils.Guards, only: [is_pos_integer: 1]
+
+  alias Logflare.Endpoints.FilesystemCachePolicy
   alias Logflare.Sql
   alias LogflareWeb.Endpoints.RunQuery
   alias LogflareWeb.QueryComponents
@@ -19,6 +22,79 @@ defmodule LogflareWeb.Endpoints.Components do
     redact_pii: "Redact PII",
     enable_dynamic_reservation: "Dynamic reservation"
   ]
+
+  attr :form, :map, required: true
+  attr :declared_params, :list, default: []
+
+  @spec filesystem_cache_policy_form(map()) :: Phoenix.LiveView.Rendered.t()
+  def filesystem_cache_policy_form(assigns) do
+    policy =
+      Map.get(
+        assigns.form.params,
+        "filesystem_cache_policy",
+        assigns.form[:filesystem_cache_policy].value
+      )
+
+    values = FilesystemCachePolicy.form_values(policy)
+
+    assigns =
+      assign(assigns,
+        policy_form:
+          to_form(values,
+            as: "#{assigns.form.name}[filesystem_cache_policy]",
+            id: "endpoint_filesystem_cache_policy"
+          )
+      )
+
+    ~H"""
+    <fieldset id="filesystem-cache-policy" class="tw-mt-4">
+      <legend class="tw-text-base">Filesystem cache policy</legend>
+      {checkbox(@policy_form, :enabled, class: "form-check-input")}
+      {label(@policy_form, :enabled, "Avoid populating cache for large time windows", class: "form-check-label")}
+      <p class="form-text text-muted">
+        Large-window queries read existing filesystem-cache entries without adding new entries.
+        This does not disable Logflare's endpoint result cache.
+      </p>
+      <div :if={@policy_form[:enabled].value not in [false, "false"]}>
+        {label(@policy_form, :start_param, "Start parameter")}
+        {select(@policy_form, :start_param, @declared_params, prompt: "Select start parameter", class: "form-control")}
+        {label(@policy_form, :end_param, "End parameter")}
+        {select(@policy_form, :end_param, @declared_params, prompt: "Select end parameter", class: "form-control")}
+        {label(@policy_form, :timestamp_format, "Timestamp format")}
+        {select(
+          @policy_form,
+          :timestamp_format,
+          [
+            {"ISO 8601 (with timezone)", "iso8601"},
+            {"Unix seconds", "unix_seconds"},
+            {"Unix milliseconds", "unix_milliseconds"}
+          ],
+          class: "form-control"
+        )}
+        {label(@policy_form, :window_threshold, "Window threshold")}
+        {number_input(@policy_form, :window_threshold, min: 1, step: 1, class: "form-control")}
+        {label(@policy_form, :window_unit, "Threshold unit")}
+        {select(
+          @policy_form,
+          :window_unit,
+          [
+            {"Seconds", "seconds"},
+            {"Minutes", "minutes"},
+            {"Hours", "hours"},
+            {"Days", "days"}
+          ],
+          class: "form-control"
+        )}
+        <p class="form-text text-muted">
+          Select parameters that bound the endpoint's time range. Missing or null boundaries leave
+          the cache hint unspecified. Supplied invalid timestamps or reversed windows cause a query error.
+          Only windows strictly above the threshold trigger this policy.
+        </p>
+      </div>
+      {error_tag(@form, :filesystem_cache_policy)}
+    </fieldset>
+    """
+  end
 
   def docs_link(assigns) do
     ~H"""
@@ -84,7 +160,7 @@ defmodule LogflareWeb.Endpoints.Components do
         <.setting_row label={:enable_auth} value={format_toggle(@endpoint.enable_auth)} />
         <.setting_row label={:max_limit} value={to_string(@endpoint.max_limit)} />
         <.setting_row label={:cache_duration_seconds} value={format_cache_duration(@endpoint.cache_duration_seconds)} />
-        <.setting_row :if={(@endpoint.cache_duration_seconds || 0) > 0} label={:proactive_requerying_seconds} value={format_cache_duration(@endpoint.proactive_requerying_seconds)} />
+        <.setting_row :if={is_pos_integer(@endpoint.cache_duration_seconds)} label={:proactive_requerying_seconds} value={format_cache_duration(@endpoint.proactive_requerying_seconds)} />
         <.setting_row label={:sandboxable} value={format_toggle(@endpoint.sandboxable)} />
         <.setting_row label={:redact_pii} value={format_toggle(@endpoint.redact_pii)} />
         <.setting_row label={:enable_dynamic_reservation} value={format_toggle(@endpoint.enable_dynamic_reservation)} />
@@ -121,7 +197,7 @@ defmodule LogflareWeb.Endpoints.Components do
       <.property_row label={:enable_auth} value={format_toggle(@endpoint.enable_auth)} />
       <.property_row label={:max_limit} value={to_string(@endpoint.max_limit)} />
       <.property_row label={:cache_duration_seconds} value={format_cache_duration(@endpoint.cache_duration_seconds)} />
-      <.property_row :if={(@endpoint.cache_duration_seconds || 0) > 0} label={:proactive_requerying_seconds} value={format_cache_duration(@endpoint.proactive_requerying_seconds)} />
+      <.property_row :if={is_pos_integer(@endpoint.cache_duration_seconds)} label={:proactive_requerying_seconds} value={format_cache_duration(@endpoint.proactive_requerying_seconds)} />
       <.property_row label={:sandboxable} value={format_toggle(@endpoint.sandboxable)} />
       <.property_row label={:redact_pii} value={format_toggle(@endpoint.redact_pii)} />
       <.property_row label={:enable_dynamic_reservation} value={format_toggle(@endpoint.enable_dynamic_reservation)} />
@@ -266,8 +342,8 @@ defmodule LogflareWeb.Endpoints.Components do
   defp format_language(:lql), do: "Logflare Query Language"
   defp format_language(language), do: language |> to_string() |> Phoenix.Naming.humanize()
 
-  defp format_cache_duration(n) when n in [0, nil], do: "disabled"
-  defp format_cache_duration(value), do: to_string(value) <> " seconds"
+  defp format_cache_duration(seconds) when is_pos_integer(seconds), do: "#{seconds} seconds"
+  defp format_cache_duration(_seconds), do: "disabled"
 
   defp format_toggle(true), do: "enabled"
   defp format_toggle(value) when value in [false, nil], do: "disabled"

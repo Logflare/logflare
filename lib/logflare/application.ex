@@ -8,11 +8,15 @@ defmodule Logflare.Application do
   alias Logflare.Networking
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Backends.Spool.Health, as: SpoolHealth
+  alias Logflare.Backends.Spool.ObjectDeleter
   alias Logflare.Backends.Spool.SpoolAck
   alias Logflare.Backends.UserMonitoring
   alias Logflare.ContextCache
+  alias Logflare.IngressGate
+  alias Logflare.IngressGate.Sweeper
   alias Logflare.Logs
   alias Logflare.NaturalLanguageLql.AnthropicClient
+  alias Logflare.Shutdown
   alias Logflare.SingleTenant
   alias Logflare.SystemMetricsSup
   alias Logflare.Sources.Counters
@@ -23,6 +27,7 @@ defmodule Logflare.Application do
 
   def start(_type, _args) do
     Logflare.Readiness.initialize()
+    Logflare.IngressGate.initialize()
     SpoolHealth.initialize()
 
     # set inspect function to redact sensitive information
@@ -46,7 +51,7 @@ defmodule Logflare.Application do
 
     # Routes user-specific logs to their respective system source, when appliable
 
-    children = get_children(env)
+    children = get_children(env) ++ [Sweeper, Shutdown]
 
     if Application.get_env(:logflare, :opentelemetry_enabled?) do
       OpentelemetryBandit.setup()
@@ -69,11 +74,13 @@ defmodule Logflare.Application do
         Logflare.Repo,
         Logflare.Vault,
         ContextCache.Supervisor,
+        Logflare.RecordUsages.ShutdownWorker,
         Logflare.LogEvent.DayBucket,
         Counters,
         RateCounters,
         RateSampler,
         SpoolAck,
+        ObjectDeleter,
         Logs.LogEvents.Cache,
         {Phoenix.PubSub, name: Logflare.PubSub},
         PubSubRates,
@@ -111,6 +118,8 @@ defmodule Logflare.Application do
         {Oban, Application.fetch_env!(:logflare, Oban)},
         {Phoenix.PubSub, name: Logflare.PubSub, pool_size: pool_size},
         ContextCache.Supervisor,
+        Logflare.RecordUsages.ShutdownWorker,
+        Logflare.RecordUsages.SyncWorker,
         Logflare.LogEvent.DayBucket,
         Logs.LogEvents.Cache,
         PubSubRates,
@@ -120,6 +129,7 @@ defmodule Logflare.Application do
         RateCounters,
         RateSampler,
         SpoolAck,
+        ObjectDeleter,
         # Backends needs to be before Source.Supervisor
         Logflare.Backends,
         Logflare.Sources.Source.Supervisor,
@@ -129,7 +139,7 @@ defmodule Logflare.Application do
          endpoint: LogflareGrpc.Endpoint,
          port: grpc_port,
          start_server: true,
-         adapter_opts: [cred: grpc_creds],
+         adapter_opts: [cred: grpc_creds] ++ LogflareGrpc.Shutdown.protocol_options(),
          exception_log_filter: {LogflareGrpc.ExceptionLogFilter, :emit_log?}},
         # Monitor system level metrics
         SystemMetricsSup,
@@ -142,7 +152,8 @@ defmodule Logflare.Application do
         {Task, fn -> startup_tasks() end},
         # active users tracking for UserMetricsPoller
         {Logflare.ActiveUserTracker,
-         [name: Logflare.ActiveUserTracker, pubsub_server: Logflare.PubSub]}
+         [name: Logflare.ActiveUserTracker, pubsub_server: Logflare.PubSub]},
+        {LogflareGrpc.Shutdown, wait?: Shutdown.timeout_ms() > 0}
       ]
   end
 
@@ -223,6 +234,7 @@ defmodule Logflare.Application do
 
   def prep_stop(state) do
     Logflare.Readiness.begin_draining()
+    if Shutdown.timeout_ms() == 0, do: IngressGate.seal()
     state
   end
 

@@ -1473,11 +1473,11 @@ defmodule Logflare.BackendsTest do
       assert {:ok, {:cached, %Source{id: ^source_id}}} =
                Cachex.get(Logflare.Sources.Cache, {:get_by, [[id: source_id]]})
 
-      assert {:ok, {:cached, %User{id: ^user_id} = cached_user}} =
+      assert {:ok, {:cached, %User{id: ^user_id}}} =
                Cachex.get(Logflare.Users.Cache, {:get, [user_id]})
 
       assert {:ok, {:cached, %{}}} =
-               Cachex.get(Logflare.Billing.Cache, {:get_plan_by_user, [cached_user]})
+               Cachex.get(Logflare.Billing.Cache, {:get_plan_by_user, [user_id]})
 
       assert {:ok, {:cached, %{id: ^source_schema_id}}} =
                Cachex.get(Logflare.SourceSchemas.Cache, {
@@ -1984,6 +1984,35 @@ defmodule Logflare.BackendsTest do
       # for system default
       assert_receive {:telemetry_event, [:logflare, :backends, :ingest, :dispatch],
                       %{count: ^log_count}, %{backend_type: :bigquery}}
+
+      # for direct dispatch, including the path used by backend-routing rules
+      assert {:ok, ^log_count} = Backends.ingest_logs(events, source, backend)
+
+      assert_receive {:telemetry_event, [:logflare, :backends, :ingest, :dispatch],
+                      %{count: ^log_count}, %{backend_type: :postgres}}
+    end
+
+    test "emits count telemetry for direct consolidated backend ingestion", %{source: source} do
+      user = Repo.get(User, source.user_id)
+
+      backend =
+        :backend
+        |> insert(user: user, type: :clickhouse)
+        |> Map.merge(%{consolidated_ingest?: true, config: %{max_event_age_hours: 0}})
+
+      queue_key = {:consolidated, backend.id}
+      IngestEventQueue.upsert_tid({:consolidated, backend.id, nil})
+      TestUtils.attach_forwarder([:logflare, :backends, :ingest, :dispatch])
+
+      log_count = 3
+      events = for _n <- 1..log_count, do: build(:log_event, source: source)
+
+      assert {:ok, ^log_count} = Backends.ingest_logs(events, source, backend)
+      assert {:ok, queued_events} = IngestEventQueue.fetch_events(queue_key, log_count + 1)
+      assert Enum.sort(Enum.map(queued_events, & &1.id)) == Enum.sort(Enum.map(events, & &1.id))
+
+      assert_receive {:telemetry_event, [:logflare, :backends, :ingest, :dispatch],
+                      %{count: ^log_count}, %{backend_type: :clickhouse}}
     end
   end
 
@@ -3041,12 +3070,12 @@ defmodule Logflare.BackendsTest do
       :sys.get_state(partition_pid).pending_count
     end
 
-    test "in :both mode, does not dispatch to the spool producer when source.enable_spooling is false, even if allow_spooling is true",
+    test "in :both mode, does not dispatch to the spool producer when source.enable_spooling is false, for client ingestion",
          %{source: source} do
       Application.put_env(:logflare, :spool, mode: :both)
 
       params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
-      assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
+      assert {:ok, 1} = Backends.ingest_client_logs(params, source)
 
       assert pending_entry_count() == 0
     end
@@ -3075,7 +3104,7 @@ defmodule Logflare.BackendsTest do
       start_supervised!(SpoolDurableBufferSup)
 
       params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
-      assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
+      assert {:ok, 1} = Backends.ingest_client_logs(params, source)
 
       assert_receive :put_called, 1000
       assert pending_entry_count() == 0
@@ -3104,7 +3133,7 @@ defmodule Logflare.BackendsTest do
       start_supervised!(SpoolDurableBufferSup)
 
       params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
-      assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
+      assert {:ok, 1} = Backends.ingest_client_logs(params, source)
 
       assert_receive :put_called, 1000
     end
@@ -3117,7 +3146,7 @@ defmodule Logflare.BackendsTest do
       future_timestamp = now_us + 2 * 3_600 * 1_000_000
       params = [%{"message" => "too future", "timestamp" => future_timestamp}]
 
-      assert {:ok, 0} = Backends.ingest_logs(params, source, nil, true)
+      assert {:ok, 0} = Backends.ingest_client_logs(params, source)
 
       assert pending_entry_count() == 0
     end
@@ -3135,7 +3164,7 @@ defmodule Logflare.BackendsTest do
 
       source = %{source | enable_spooling: true}
       params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
-      assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
+      assert {:ok, 1} = Backends.ingest_client_logs(params, source)
 
       assert pending_entry_count() == 0
     end
@@ -3153,7 +3182,7 @@ defmodule Logflare.BackendsTest do
 
       source = %{source | enable_spooling: true}
       params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
-      assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
+      assert {:ok, 1} = Backends.ingest_client_logs(params, source)
 
       assert pending_entry_count() == 0
     end
@@ -3171,7 +3200,7 @@ defmodule Logflare.BackendsTest do
 
       source = %{source | enable_spooling: true}
       params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
-      assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
+      assert {:ok, 1} = Backends.ingest_client_logs(params, source)
 
       assert pending_entry_count() == 0
     end
@@ -3203,7 +3232,7 @@ defmodule Logflare.BackendsTest do
 
       source = %{source | enable_spooling: true}
       params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
-      assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
+      assert {:ok, 1} = Backends.ingest_client_logs(params, source)
 
       assert_receive :put_called, 1000
     end
@@ -3238,7 +3267,7 @@ defmodule Logflare.BackendsTest do
       on_exit(fn -> Health.report_recovery!(:upload) end)
 
       params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
-      assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
+      assert {:ok, 1} = Backends.ingest_client_logs(params, source)
 
       assert_receive :put_called, 1000
     end
@@ -3256,7 +3285,7 @@ defmodule Logflare.BackendsTest do
       source = %{source | enable_spooling: true}
       params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
 
-      assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
+      assert {:ok, 1} = Backends.ingest_client_logs(params, source)
     end
 
     test "in :producer mode, fails the request when no spool partition is registered, instead of falling back to a dispatch path with no backend adaptors to receive it",
@@ -3268,7 +3297,7 @@ defmodule Logflare.BackendsTest do
       source = %{source | enable_spooling: true}
       params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
 
-      assert {:error, :spool_unavailable} = Backends.ingest_logs(params, source, nil, true)
+      assert {:error, :spool_unavailable} = Backends.ingest_client_logs(params, source)
     end
 
     test "in :both mode, falls back to normal dispatch and logs an error when the spool commit itself fails (e.g. GCS unavailable)",
@@ -3301,7 +3330,7 @@ defmodule Logflare.BackendsTest do
 
       log =
         capture_log(fn ->
-          assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
+          assert {:ok, 1} = Backends.ingest_client_logs(params, source)
         end)
 
       assert log =~ "spool dispatch failed"
@@ -3332,24 +3361,24 @@ defmodule Logflare.BackendsTest do
 
       log =
         capture_log(fn ->
-          assert {:error, :spool_unavailable} = Backends.ingest_logs(params, source, nil, true)
+          assert {:error, :spool_unavailable} = Backends.ingest_client_logs(params, source)
         end)
 
       assert log =~ "spool dispatch failed"
     end
 
-    test "does not dispatch to the spool producer when the global mode is off, even if source.enable_spooling and allow_spooling are true",
+    test "does not dispatch to the spool producer for client ingestion when the global mode is off, even if source.enable_spooling is true",
          %{source: source} do
       Application.put_env(:logflare, :spool, mode: :disable)
 
       source = %{source | enable_spooling: true}
       params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
-      assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
+      assert {:ok, 1} = Backends.ingest_client_logs(params, source)
 
       assert pending_entry_count() == 0
     end
 
-    test "in :both mode, dispatches to the spool producer only when the global mode, source.enable_spooling, and allow_spooling are all true",
+    test "in :both mode, dispatches to the spool producer only when the global mode, source.enable_spooling, permit client spooling",
          %{source: source} do
       # :mem buffer, restarted with its own observable stub — proving the
       # segment reached storage doesn't depend on WAL rotation timing, and
@@ -3376,7 +3405,7 @@ defmodule Logflare.BackendsTest do
 
       source = %{source | enable_spooling: true}
       params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
-      assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
+      assert {:ok, 1} = Backends.ingest_client_logs(params, source)
 
       # Proves the segment actually reached the spool buffer and got
       # committed to storage before ingest_logs/4 returned (:mem mode
@@ -3396,10 +3425,10 @@ defmodule Logflare.BackendsTest do
       # ingest_logs/4 blocks on DurableBuffer.append/3, which only replies
       # once the segment has been written and fsynced to the local WAL — so
       # this succeeding at all proves that happened.
-      assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
+      assert {:ok, 1} = Backends.ingest_client_logs(params, source)
     end
 
-    test "does not dispatch to the spool producer when allow_spooling is omitted, even if the global mode and source.enable_spooling are true",
+    test "does not dispatch to the spool producer on internal routing, even if the global mode and source.enable_spooling are true",
          %{source: source} do
       Application.put_env(:logflare, :spool, mode: :producer)
 
@@ -3410,7 +3439,7 @@ defmodule Logflare.BackendsTest do
       assert pending_entry_count() == 0
     end
 
-    test "in :both mode, does not dispatch to the spool producer when the event already has a via_rule_id, even if allow_spooling is true",
+    test "in :both mode, does not dispatch to the spool producer when the event already has a via_rule_id, for client ingestion",
          %{source: source} do
       Application.put_env(:logflare, :spool, mode: :both)
 
@@ -3418,7 +3447,7 @@ defmodule Logflare.BackendsTest do
       le = build(:log_event, source: source)
       le = %{le | via_rule_id: 123}
 
-      assert {:ok, 1} = Backends.ingest_logs([le], source, nil, true)
+      assert {:ok, 1} = Backends.ingest_client_logs([le], source)
 
       assert pending_entry_count() == 0
     end
@@ -3448,7 +3477,7 @@ defmodule Logflare.BackendsTest do
       le = build(:log_event, source: source)
       le = %{le | via_rule_id: 123}
 
-      assert {:ok, 1} = Backends.ingest_logs([le], source, nil, true)
+      assert {:ok, 1} = Backends.ingest_client_logs([le], source)
 
       assert_receive :put_called, 1000
     end

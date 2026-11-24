@@ -91,9 +91,10 @@ defmodule Logflare.Endpoints.PolicyCacheTest do
   test "policy reads ignore stale replica-backed endpoint entries", %{endpoint: endpoint} do
     stale = %{endpoint | enforced_clickhouse_settings: %{}}
     Cachex.put(Cache, {:get_endpoint_query, [endpoint.id]}, {:cached, stale})
-    Cachex.put(Cache, {:get_mapped_query_by_token, [endpoint.token]}, {:cached, stale})
+    Cachex.put(Cache, {:get_query_with_user_by_token, [endpoint.token]}, {:cached, stale})
 
     assert Cache.get_endpoint_query(endpoint.id).enforced_clickhouse_settings == %{}
+    assert Cache.get_mapped_query_by_token(endpoint.token).enforced_clickhouse_settings == %{}
 
     assert Cache.get_endpoint_policy(endpoint.id).enforced_clickhouse_settings == %{
              "max_execution_time" => 7

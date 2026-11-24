@@ -23,7 +23,9 @@ defmodule LogflareWeb.SourceController do
   @lql_dialect :routing
 
   def new(conn, _params) do
-    changeset = Source.update_by_user_changeset(%Source{}, %{})
+    changeset =
+      Source.update_by_user_changeset(%Source{default_ingest_backend_enabled?: true}, %{})
+
     render(conn, "new.html", changeset: changeset)
   end
 

@@ -9,9 +9,34 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
   alias Logflare.Backends.Spool.MemoryMonitor
   alias Logflare.Backends.Spool.Queue.PubSub, as: QueueMod
   alias Logflare.Backends.Spool.SpoolAck
+  alias Logflare.Backends.Spool.Storage.GCS, as: StorageMod
   alias Logflare.TestUtils
 
-  setup :set_mimic_global
+  setup :verify_on_exit!
+
+  test "configures spool-consumer telemetry tags" do
+    previous_spool_config = Application.get_env(:logflare, :spool)
+    expect(QueueMod, :resolve, fn "test-queue" -> {:ok, "test-queue"} end)
+
+    Application.put_env(:logflare, :spool,
+      bucket: "test-bucket",
+      queue_name: "test-queue",
+      queue_mod: QueueMod,
+      storage_mod: StorageMod
+    )
+
+    on_exit(fn ->
+      if previous_spool_config do
+        Application.put_env(:logflare, :spool, previous_spool_config)
+      else
+        Application.delete_env(:logflare, :spool)
+      end
+    end)
+
+    TestUtils.assert_broadway_telemetry_tags(%{pipeline: :spool_consumer}, fn ->
+      ConsumerPipeline.start_link(name: :spool_consumer_telemetry_tags_test)
+    end)
+  end
 
   defp record(source_id, event_id, extra_body \\ %{}) do
     body =
@@ -125,6 +150,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
     end
 
     test "dispatches events to the correct source by integer source_id", %{source: source} do
+      TestUtils.attach_forwarder([:logflare, :backends, :pipeline, :handle_batch])
       event_id = Ecto.UUID.generate()
       messages = [line_message(source.id, event_id, %{"message" => "hello"})]
 
@@ -135,8 +161,18 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
         {:ok, length(event_params)}
       end)
 
-      ConsumerPipeline.handle_batch(:default, messages, %{}, %{})
+      assert ^messages =
+               ConsumerPipeline.handle_batch(
+                 :default,
+                 messages,
+                 %{size: 1, trigger: :timeout},
+                 %{}
+               )
 
+      assert_receive {:telemetry_event, [:logflare, :backends, :pipeline, :handle_batch],
+                      %{batch_size: 1, batch_trigger: :timeout}, metadata}
+
+      assert metadata == %{pipeline: :spool_consumer, batch_trigger: :timeout}
       assert_receive {:dispatched, [params], source_id}
       assert source_id == source.id
       assert params["id"] == event_id
@@ -412,14 +448,14 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
       assert ConsumerPipeline.ack(:ref, successful, failed) == :ok
 
       assert_receive {:acked, "queue-url", ^success_handle}
-      assert :ets.lookup(:spool_ack, success_handle) == []
+      assert SpoolAck.lookup(success_handle) == :error
 
       # a dispatch_error never reached any pipeline's own ack/3, so releasing
       # its bump here would ack a segment that was never actually delivered
       refute_receive {:acked, "queue-url", ^failed_handle}
 
-      assert [{^failed_handle, 1, QueueMod, "queue-url", _registered_at}] =
-               :ets.lookup(:spool_ack, failed_handle)
+      assert {:ok, %{count: 1, queue_mod: QueueMod, queue_url: "queue-url"}} =
+               SpoolAck.lookup(failed_handle)
     end
 
     test "returns each message's bytes (not its count) to the producer's in-flight budget" do

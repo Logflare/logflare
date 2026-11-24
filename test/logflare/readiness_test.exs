@@ -1,6 +1,7 @@
 defmodule Logflare.ReadinessTest do
   use ExUnit.Case, async: false
 
+  alias Logflare.IngressGate
   alias Logflare.Readiness
 
   setup do
@@ -29,6 +30,24 @@ defmodule Logflare.ReadinessTest do
 
     assert Readiness.ready?()
     refute Readiness.startup_checks_passed?()
+  end
+
+  test "application stop with a zero budget closes admission before child teardown" do
+    original = Application.fetch_env(:logflare, :shutdown_timeout_ms)
+    Application.put_env(:logflare, :shutdown_timeout_ms, 0)
+
+    on_exit(fn ->
+      :ets.insert(IngressGate, {:admission, :open})
+
+      case original do
+        {:ok, timeout} -> Application.put_env(:logflare, :shutdown_timeout_ms, timeout)
+        :error -> Application.delete_env(:logflare, :shutdown_timeout_ms)
+      end
+    end)
+
+    assert Logflare.Application.prep_stop(:state) == :state
+    refute IngressGate.open?()
+    assert IngressGate.with_write(fn -> :ok end) == {:error, :source_unavailable}
   end
 
   test "passing startup checks cannot undo draining" do

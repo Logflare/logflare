@@ -17,7 +17,7 @@
       )}
       {error_tag(f, :name)}
       <small class="form-text text-muted">
-        This endpoint will can be queried at:<br />
+        This endpoint can be queried at:<br />
         <code>{url(~p"/api/endpoints/query/YourApp.EndpointName")}</code>
       </small>
     </div>
@@ -162,7 +162,7 @@
         </div>
         {error_tag(f, :proactive_requerying_seconds)}
         <small class="form-text text-muted">
-          Cached results will be refreshed at this interval. Ignored if caching is disabled.
+          Cached results will be refreshed at this interval. Set to <code>0</code> to disable proactive refresh without disabling caching. Ignored if caching is disabled.
         </small>
       </div>
       <div>
@@ -179,6 +179,7 @@
           Key value pairs will be added to the query execution backend using the <code>LF-ENDPOINT-LABELS: my_other_field=some-val,meta=123</code> request header.
         </small>
       </div>
+      <.filesystem_cache_policy_form :if={Ecto.Changeset.get_field(@endpoint_changeset, :language) == :ch_sql} form={f} declared_params={@declared_params} />
     </section>
   </.form>
   <aside class="tw-w-1/2">

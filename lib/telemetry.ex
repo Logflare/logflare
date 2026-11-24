@@ -3,7 +3,9 @@ defmodule Logflare.Telemetry do
 
   import Telemetry.Metrics
   import Logflare.Utils, only: [ets_info: 1]
-  import Logflare.Utils.Guards, only: [is_non_empty_binary: 1, is_pos_integer: 1]
+
+  import Logflare.Utils.Guards,
+    only: [is_atom_value: 1, is_non_empty_binary: 1, is_pos_integer: 1]
 
   require Logger
 
@@ -18,7 +20,8 @@ defmodule Logflare.Telemetry do
   @caches [
             {Logflare.Logs.LogEvents.Cache, :log_events},
             {Logflare.Logs.RejectedLogEvents, :rejected_log_events},
-            {Logflare.PubSubRates.Cache, :pub_sub_rates}
+            {Logflare.PubSubRates.Cache, :pub_sub_rates},
+            {Logflare.RecordUsages.Cache, :record_usages}
           ] ++ context_caches_with_metrics
 
   @process_metrics %{
@@ -201,19 +204,31 @@ defmodule Logflare.Telemetry do
     ]
 
     database_metrics = [
-      distribution("logflare.repo.query.total_time", unit: {:native, :millisecond}),
+      distribution("logflare.repo.query.total_time",
+        unit: {:native, :millisecond},
+        tags: [:role],
+        tag_values: &repo_query_tags/1
+      ),
       # decode_time and queue_time/idle_time can be nil for certain query types
       # (e.g. Oban internal queries that bypass the pool). OtelMetricExporter crashes on
       # round(nil) when converting native time units, detaching the whole event handler.
       # Default nil to 0: semantically correct (nil queue_time = no pool wait).
-      distribution("logflare.repo.query.query_time", unit: {:native, :millisecond}),
+      distribution("logflare.repo.query.query_time",
+        unit: {:native, :millisecond},
+        tags: [:role],
+        tag_values: &repo_query_tags/1
+      ),
       distribution("logflare.repo.query.queue_time",
         measurement: fn m -> m[:queue_time] || 0 end,
-        unit: {:native, :millisecond}
+        unit: {:native, :millisecond},
+        tags: [:role],
+        tag_values: &repo_query_tags/1
       ),
       distribution("logflare.repo.query.idle_time",
         measurement: fn m -> m[:idle_time] || 0 end,
-        unit: {:native, :millisecond}
+        unit: {:native, :millisecond},
+        tags: [:role],
+        tag_values: &repo_query_tags/1
       )
     ]
 
@@ -260,6 +275,8 @@ defmodule Logflare.Telemetry do
         1 ->
           [
             distribution("broadway.processor.message.stop.duration",
+              tags: [:backend_type, :pipeline],
+              tag_values: &broadway_tags/1,
               unit: {:native, :millisecond}
             )
           ]
@@ -267,6 +284,8 @@ defmodule Logflare.Telemetry do
         denominator ->
           [
             distribution("broadway.processor.message.stop.duration",
+              tags: [:backend_type, :pipeline],
+              tag_values: &broadway_tags/1,
               unit: {:native, :millisecond},
               keep: &sample_broadway_processor_message_duration?(&1, denominator)
             )
@@ -275,11 +294,25 @@ defmodule Logflare.Telemetry do
 
     broadway_metrics =
       [
-        distribution("broadway.batcher.stop.duration", unit: {:native, :millisecond}),
-        distribution("broadway.batch_processor.stop.duration", unit: {:native, :millisecond})
+        distribution("broadway.batcher.stop.duration",
+          tags: [:backend_type, :pipeline],
+          tag_values: &broadway_tags/1,
+          unit: {:native, :millisecond}
+        ),
+        distribution("broadway.batch_processor.stop.duration",
+          tags: [:backend_type, :pipeline],
+          tag_values: &broadway_tags/1,
+          unit: {:native, :millisecond}
+        )
       ] ++
         broadway_processor_message_metrics ++
-        [distribution("broadway.processor.stop.duration", unit: {:native, :millisecond})]
+        [
+          distribution("broadway.processor.stop.duration",
+            tags: [:backend_type, :pipeline],
+            tag_values: &broadway_tags/1,
+            unit: {:native, :millisecond}
+          )
+        ]
 
     application_metrics = [
       distribution("logflare.goth.fetch.stop.duration",
@@ -302,13 +335,13 @@ defmodule Logflare.Telemetry do
         description: "Distribution of log request batch sizes ingested by processor"
       ),
       distribution("logflare.backends.pipeline.handle_batch.batch_size",
-        tags: [:backend_type],
+        tags: [:backend_type, :pipeline],
         reporter_options: batch_size_reporter_opts(),
-        description: "Distribution of batch sizes for broadway pipeline by backend type"
+        description: "Distribution of batch sizes by backend type or internal pipeline"
       ),
       sum("logflare.backends.pipeline.handle_batch.batch_size",
-        tags: [:backend_type],
-        description: "Sum of batch sizes for broadway pipeline by backend type"
+        tags: [:backend_type, :pipeline],
+        description: "Sum of batch sizes by backend type or internal pipeline"
       ),
       distribution("logflare.backends.clickhouse.pipeline.handle_batch.batch_size",
         event_name: [:logflare, :backends, :pipeline, :handle_batch],
@@ -328,18 +361,17 @@ defmodule Logflare.Telemetry do
       distribution("logflare.backends.spool.pipeline.handle_batch.batch_size",
         event_name: [:logflare, :backends, :pipeline, :handle_batch],
         measurement: :batch_size,
-        tags: [:backend_type, :batch_trigger],
+        tags: [:pipeline, :batch_trigger],
         keep: &spool_batch?/1,
         reporter_options: batch_size_reporter_opts(),
-        description:
-          "Distribution of spool producer/consumer batch sizes by backend type and trigger"
+        description: "Distribution of spool producer/consumer batch sizes by pipeline and trigger"
       ),
       sum("logflare.backends.spool.pipeline.handle_batch.batch_size",
         event_name: [:logflare, :backends, :pipeline, :handle_batch],
         measurement: :batch_size,
-        tags: [:backend_type, :batch_trigger],
+        tags: [:pipeline, :batch_trigger],
         keep: &spool_batch?/1,
-        description: "Sum of spool producer/consumer batch sizes by backend type and trigger"
+        description: "Sum of spool producer/consumer batch sizes by pipeline and trigger"
       ),
       distribution("logflare.backends.spool.queue.poll_backoff.backoff_ms",
         reporter_options: [buckets: [100, 200, 400, 800, 1_000]],
@@ -506,7 +538,9 @@ defmodule Logflare.Telemetry do
           "Ingest requests rejected (429) — pending buffer full (per request, not per event)"
       ),
       last_value("logflare.system.finch.in_flight_requests", tags: [:pool, :url]),
-      distribution("logflare.backends.dynamic_pipeline.pipeline_count"),
+      distribution("logflare.backends.dynamic_pipeline.pipeline_count",
+        tags: [:backend_type]
+      ),
       distribution("logflare.ingest.pipeline.stream_batch.stop.duration",
         unit: {:native, :millisecond}
       ),
@@ -584,7 +618,8 @@ defmodule Logflare.Telemetry do
       ),
       sum("logflare.backends.ingest.dispatch.count",
         tags: [:backend_type],
-        description: "Ingest counts by backend type"
+        description:
+          "Backend dispatch attempts by backend type. Counts each fan-out copy, including attempts that fail to enqueue."
       ),
       distribution("logflare.backends.ingest.dispatch.stop.duration",
         tags: [:backend_type],
@@ -676,6 +711,15 @@ defmodule Logflare.Telemetry do
         description:
           "Spool queue ack (delete) count by reason, and whether the underlying SQS/PubSub call itself succeeded"
       ),
+      counter("logflare.backends.spool.storage.delete.count",
+        tags: [:result],
+        description: "Spool object deletes after ack, by result (ok, error, timeout)"
+      ),
+      counter("logflare.backends.spool.delete_buffer.dropped.count",
+        tags: [:reason],
+        description:
+          "Spool object deletes dropped, by reason (buffer_full, or not_running when the deleter is down)"
+      ),
       counter("logflare.backends.spool.queue.nack.count",
         tags: [:reason, :result],
         description:
@@ -757,6 +801,7 @@ defmodule Logflare.Telemetry do
       sum("logflare.ingest_event_queue.requeue_lookup_miss.count",
         event_name: [:logflare, :ingest_event_queue, :requeue_lookup_miss],
         measurement: :count,
+        tags: [:backend_type],
         description:
           "Count of retriable events whose generation-store row was already gone by requeue lookup time"
       ),
@@ -816,6 +861,12 @@ defmodule Logflare.Telemetry do
       application_metrics,
       finch_metrics
     ])
+  end
+
+  @spec repo_query_tags(map()) :: %{role: :primary | :replica}
+  defp repo_query_tags(%{repo: repo} = metadata) do
+    fallback_role = if(repo.get_dynamic_repo() == repo, do: :primary, else: :replica)
+    %{role: Keyword.get(Map.get(metadata, :options, []), :role, fallback_role)}
   end
 
   defp periodic_measurements do
@@ -1085,10 +1136,24 @@ defmodule Logflare.Telemetry do
     |> String.replace(@number_suffix_regex, "")
   end
 
+  @spec broadway_tags(map()) :: %{
+          optional(:backend_type) => atom(),
+          optional(:pipeline) => atom()
+        }
+  defp broadway_tags(%{context: %{telemetry_tags: %{backend_type: backend_type}}})
+       when is_atom_value(backend_type),
+       do: %{backend_type: backend_type}
+
+  defp broadway_tags(%{context: %{telemetry_tags: %{pipeline: pipeline}}})
+       when is_atom_value(pipeline),
+       do: %{pipeline: pipeline}
+
+  defp broadway_tags(_metadata), do: %{pipeline: :unknown}
+
   defp clickhouse_batch?(%{backend_type: :clickhouse}), do: true
   defp clickhouse_batch?(_metadata), do: false
 
-  defp spool_batch?(%{backend_type: type}) when type in [:spool_producer, :spool_consumer],
+  defp spool_batch?(%{pipeline: type}) when type in [:spool_producer, :spool_consumer],
     do: true
 
   defp spool_batch?(_metadata), do: false

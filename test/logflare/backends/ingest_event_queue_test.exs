@@ -440,10 +440,10 @@ defmodule Logflare.Backends.IngestEventQueueTest do
 
       assert {:ok, 1} = IngestEventQueue.move(queue, target)
 
-      assert :ets.lookup(:spool_ack, stranded_handle) == []
+      assert SpoolAck.lookup(stranded_handle) == :error
 
-      assert [{^moved_handle, 1, QueueMod, "queue-url", _registered_at}] =
-               :ets.lookup(:spool_ack, moved_handle)
+      assert {:ok, %{count: 1, queue_mod: QueueMod, queue_url: "queue-url"}} =
+               SpoolAck.lookup(moved_handle)
 
       assert IngestEventQueue.total_pending(target) == 1
     end
@@ -1012,8 +1012,8 @@ defmodule Logflare.Backends.IngestEventQueueTest do
 
       assert :ok = IngestEventQueue.add_to_table(sbp, [winner, loser])
 
-      assert [{^handle, 1, QueueMod, "queue-url", _registered_at}] =
-               :ets.lookup(:spool_ack, handle)
+      assert {:ok, %{count: 1, queue_mod: QueueMod, queue_url: "queue-url"}} =
+               SpoolAck.lookup(handle)
 
       assert IngestEventQueue.total_pending(sbp) == 1
     end
@@ -1168,7 +1168,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       queues_key = {sid, bid}
       assert :ok = IngestEventQueue.new_generations([queues_key])
 
-      assert [{^handle, 2, _, _, _}] = :ets.lookup(:spool_ack, handle)
+      assert {:ok, %{count: 2}} = SpoolAck.lookup(handle)
 
       assert {:error, :already_exists} =
                IngestEventQueue.requeue_payload(
@@ -1177,7 +1177,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
                  fn new_pointer -> {:retried, new_pointer} end
                )
 
-      assert [{^handle, 1, _, _, _}] = :ets.lookup(:spool_ack, handle)
+      assert {:ok, %{count: 1}} = SpoolAck.lookup(handle)
     end
 
     test "replaces a same-ID pointer whose generation payload is gone", %{
@@ -1223,7 +1223,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       # the dangling row's own unit is acked exactly once, atomically with the
       # ETS row being reclaimed -- not left outstanding, not double-acked
       assert_receive {:acked, "queue-url", ^dangling_handle}
-      assert :ets.lookup(:spool_ack, dangling_handle) == []
+      assert SpoolAck.lookup(dangling_handle) == :error
 
       assert {:ok, [^published_pointer], _tid} =
                IngestEventQueue.pop_pending_pointers(sbp, 1)

@@ -7,6 +7,7 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.CloudTest do
   alias Logflare.Backends.Spool.Health
   alias Logflare.Backends.Spool.Queue.PubSub, as: QueueMod
   alias Logflare.Backends.Spool.Storage.GCS, as: StorageMod
+  alias Logflare.TestUtils
 
   setup :set_mimic_global
 
@@ -61,6 +62,7 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.CloudTest do
   describe "commit/4" do
     test "uploads the framed batch and publishes a queue notification" do
       test_pid = self()
+      TestUtils.attach_forwarder([:logflare, :backends, :pipeline, :handle_batch])
 
       stub(StorageMod, :put, fn "test-bucket", key, body, opts ->
         send(test_pid, {:put, key, body, opts})
@@ -76,6 +78,11 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.CloudTest do
       {:ok, state} = Backend.open(config, 0)
 
       assert {:ok, _new_state} = Backend.commit(state, batch(["one", "two"]), 0, {0, 2})
+
+      assert_receive {:telemetry_event, [:logflare, :backends, :pipeline, :handle_batch],
+                      %{batch_size: 2, batch_trigger: nil}, metadata}
+
+      assert metadata == %{pipeline: :spool_producer, batch_trigger: nil}
 
       assert_receive {:put, "0/" <> _ = key, body, [headers: %{"content-type" => ct}]}
       assert ct == "application/octet-stream"
@@ -176,6 +183,7 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.CloudTest do
     end
 
     test "async?/1 reports Cloud as an async backend" do
+      Code.ensure_loaded!(Backend)
       assert DurableBuffer.Backend.async?(Backend)
     end
 
@@ -235,9 +243,14 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.CloudTest do
     end
 
     test "a :DOWN from the task being killed outright still resolves the tag, instead of wedging every later commit on the partition behind it" do
+      test_pid = self()
+
       stub(StorageMod, :put, fn _b, _k, _body, _opts ->
-        # Never actually reached — the task is killed before this runs.
-        {:ok, %{}}
+        send(test_pid, {:upload_started, self()})
+
+        receive do
+          :finish_upload -> {:ok, %{}}
+        end
       end)
 
       config = config(%{max_commit_attempts: 1})
@@ -246,12 +259,18 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.CloudTest do
 
       assert {:pending, state} = Backend.commit_async(state, batch(["one"]), 0, {0, 1}, tag)
       assert [ref] = Map.keys(state.inflight)
+      assert_receive {:upload_started, upload_pid}, 1_000
+      on_exit(fn -> Process.exit(upload_pid, :kill) end)
+
+      Process.exit(upload_pid, :kill)
+      assert_receive {:DOWN, ^ref, :process, ^upload_pid, :killed} = down, 1_000
 
       assert {[{^tag, {:error, {:task_down, :killed}}}], new_state} =
-               Backend.handle_message({:DOWN, ref, :process, self(), :killed}, state)
+               Backend.handle_message(down, state)
 
       assert new_state.inflight == %{}
       assert Health.healthy?(:upload) == false
+      refute_received {:backend, {^tag, _result}}
     end
 
     test "a :DOWN for a tag already resolved by its own completion message is a no-op" do

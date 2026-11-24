@@ -130,6 +130,9 @@ defmodule Logflare.ContextCache.Gossip do
   # Ignore caches with complicated or missing primary key structures, where staleness cannot be reliably detected
   defp do_multicast(Logflare.Auth.Cache, _key, _value), do: :ignore
   defp do_multicast(Logflare.Rules.Cache, _key, _value), do: :ignore
+  defp do_multicast(Logflare.Sources.Catalog.Cache, _key, _value), do: :ignore
+
+  defp do_multicast(Logflare.Billing.Cache, {:get_plan_by_user, _args}, _value), do: :ignore
 
   defp do_multicast(cache, key, value) when is_atom(cache) do
     %{enabled: enabled, ratio: ratio, max_nodes: max_nodes} =
@@ -178,6 +181,19 @@ defmodule Logflare.ContextCache.Gossip do
       end
     end
   end
+
+  @doc """
+  Returns true when any record in a cached value was recently invalidated. Values without
+  primary keys (e.g. empty lists) are not considered busted.
+  """
+  @spec recently_busted?(atom(), term()) :: boolean()
+  def recently_busted?(cache, {:cached, value}) do
+    value
+    |> pkeys_from_cached_value()
+    |> Enum.any?(&Tombstones.Cache.tombstoned?(cache, &1))
+  end
+
+  def recently_busted?(_cache, _value), do: false
 
   defp pkeys_from_cached_value(values) when is_list(values) do
     Enum.flat_map(values, &pkeys_from_cached_value/1)

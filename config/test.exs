@@ -5,6 +5,7 @@ config :logflare,
   cache_stats: true,
   sql_sandbox: true,
   static_gzip: false,
+  sigterm_shutdown_grace_period_ms: 0,
   encryption_key_default: "Q+IS7ogkzRxsj+zAIB1u6jNFquxkFzSrBZXItN27K/Q="
 
 config :logflare, LogflareWeb.Endpoint,
@@ -44,6 +45,8 @@ config :logflare, Logflare.Repo.Migrator, replication_sets: []
 
 config :logflare, Logflare.PubSub, pool_size: 10
 
+config :logflare, Logflare.Cache.CachexOps, warmer_refresh_enabled: false
+
 config :logflare, :stripe_webhook_secret, "whsec_test_only_secret_for_testing"
 
 defmodule LogflareTest.LogFilters do
@@ -73,6 +76,9 @@ config :logger,
   ]
 
 config :tesla, Logflare.Backends.Adaptor.WebhookAdaptor.Client, adapter: Tesla.Mock
+
+config :tesla, GoogleApi.BigQuery.V2.Connection, adapter: Logflare.Tesla.GoogleApi401Stub
+config :tesla, GoogleApi.PubSub.V1.Connection, adapter: Logflare.Tesla.GoogleApi401Stub
 
 config :logflare, Oban, testing: :manual
 

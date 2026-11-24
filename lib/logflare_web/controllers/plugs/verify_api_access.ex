@@ -10,6 +10,8 @@ defmodule LogflareWeb.Plugs.VerifyApiAccess do
   """
   import Plug.Conn
   alias Logflare.Auth
+  alias Logflare.OauthAccessTokens.OauthAccessToken
+  alias Logflare.RecordUsages
   alias Logflare.Users
   alias Logflare.User
   alias Logflare.Partners.Partner
@@ -94,23 +96,41 @@ defmodule LogflareWeb.Plugs.VerifyApiAccess do
          {:ok, token, %User{id: user_id}} <-
            Auth.Cache.verify_access_token(access_token_or_api_key, scopes),
          %User{} = user <- Users.Cache.get(user_id) do
+      RecordUsages.record(OauthAccessToken, token.id)
       {:ok, token, user}
     else
       # don't preload for partners
-      {:ok, _token, %Partner{} = partner} -> {:ok, partner}
-      {:error, :no_token} = err -> err
-      {:error, _} = err -> handle_legacy_api_key(extracted_token, err, is_private_route?)
-      nil -> {:error, :unauthorized}
+      {:ok, _token, %Partner{} = partner} ->
+        {:ok, partner}
+
+      {:error, :no_token} = err ->
+        err
+
+      {:error, _} = err ->
+        handle_legacy_api_key(extracted_token, err, is_private_route?)
+
+      nil ->
+        {:error, :unauthorized}
     end
   end
 
   defp handle_legacy_api_key({:ok, api_key}, err, is_private_route?) do
     case Users.Cache.get_by(api_key: api_key) do
-      %_{} = user when is_private_route? == false -> {:ok, nil, user}
-      {:error, :database_unavailable} = db_err -> db_err
-      _ when is_private_route? == false -> {:error, :no_token}
-      _ when is_private_route? == true -> {:error, :unauthorized}
-      _ -> err
+      %User{} = user when is_private_route? == false ->
+        RecordUsages.record(User, user.id)
+        {:ok, nil, user}
+
+      {:error, :database_unavailable} = db_err ->
+        db_err
+
+      _ when is_private_route? == false ->
+        {:error, :no_token}
+
+      _ when is_private_route? == true ->
+        {:error, :unauthorized}
+
+      _ ->
+        err
     end
   end
 

@@ -29,6 +29,17 @@ defmodule Logflare.Backends.Spool.Storage.S3 do
     e -> {:error, Exception.message(e)}
   end
 
+  @impl Logflare.Backends.Spool.Storage
+  def delete(bucket, key) do
+    case ExAws.S3.delete_object(bucket, key) |> ExAws.request(http_client: HttpClient) do
+      {:ok, _} -> :ok
+      {:error, {:http_error, 404, _}} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  rescue
+    e -> {:error, Exception.message(e)}
+  end
+
   @spec put_object_opts(map()) :: keyword()
   defp put_object_opts(headers) do
     [content_type: Map.get(headers, "content-type", "application/octet-stream")] ++

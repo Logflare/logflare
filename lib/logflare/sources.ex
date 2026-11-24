@@ -49,6 +49,15 @@ defmodule Logflare.Sources do
     |> Enum.map(&put_retention_days/1)
   end
 
+  @spec list_source_catalog_by_user(pos_integer()) :: [Source.t()]
+  def list_source_catalog_by_user(user_id) when is_integer(user_id) do
+    from(s in Source,
+      where: s.user_id == ^user_id,
+      select: struct(s, [:id, :user_id, :name, :token])
+    )
+    |> Repo.all()
+  end
+
   @spec list_ingest_sources_by_user(pos_integer(), :all | [pos_integer()]) :: [map()]
   def list_ingest_sources_by_user(user_id, :all) do
     ingest_sources_query(user_id)
@@ -126,8 +135,8 @@ defmodule Logflare.Sources do
   def create_source(source_params, user) do
     source_params =
       source_params
-      |> Enum.map(fn {k, v} -> {to_string(k), v} end)
-      |> Map.new()
+      |> Map.new(fn {k, v} -> {to_string(k), v} end)
+      |> Map.put_new("default_ingest_backend_enabled?", true)
 
     with {:ok, source} <-
            user
@@ -419,8 +428,23 @@ defmodule Logflare.Sources do
     end
   end
 
-  def delete_source(source) do
-    Repo.delete(source)
+  @doc """
+  Deletes a source along with its `sources_backends` join rows.
+
+  The `sources_backends.source_id` foreign key has no `ON DELETE` action, so the
+  join rows must go first or the delete raises `Ecto.ConstraintError`.
+  """
+  @spec delete_source(Source.t()) :: {:ok, Source.t()} | {:error, Ecto.Changeset.t()}
+  def delete_source(%Source{} = source) do
+    Repo.transaction(fn ->
+      from(sb in "sources_backends", where: sb.source_id == ^source.id)
+      |> Repo.delete_all()
+
+      case Repo.delete(source) do
+        {:ok, deleted} -> deleted
+        {:error, changeset} -> Repo.rollback(changeset)
+      end
+    end)
   end
 
   def node_rate_limiter_failsafe(node_metrics, cluster_size) do

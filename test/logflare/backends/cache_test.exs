@@ -21,6 +21,30 @@ defmodule Logflare.Backends.CacheTest do
     {:ok, backend: backend, source: source, user: user}
   end
 
+  test "backend inserts still invalidate legacy negative row lookups", %{user: user} do
+    id = 1_000_000_000
+    assert nil == Backends.Cache.get_backend(id)
+    created = insert(%{build(:backend, user: user) | id: id})
+
+    assert {:ok, 1} = Logflare.ContextCache.bust_keys([{Backends, :not_found}])
+    assert Backends.Cache.get_backend(id).id == created.id
+  end
+
+  test "backend updates and deletes invalidate owner lists", %{user: user} do
+    backend = insert(:backend, user: user)
+    assert [cached] = Backends.Cache.list_backends(user_id: user.id)
+    assert cached.id == backend.id
+
+    updated = Repo.update!(Ecto.Changeset.change(backend, name: "Updated"))
+    assert {:ok, 1} = Logflare.ContextCache.bust_keys([{Backends, backend.id}])
+    assert [cached] = Backends.Cache.list_backends(user_id: user.id)
+    assert cached.name == updated.name
+
+    Repo.delete!(updated)
+    assert {:ok, 1} = Logflare.ContextCache.bust_keys([{Backends, backend.id}])
+    assert [] = Backends.Cache.list_backends(user_id: user.id)
+  end
+
   test "clear_list_backends_cache/1 refreshes cached source backends", %{
     backend: backend,
     source: source

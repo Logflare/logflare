@@ -47,6 +47,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
     field(:backend_token, String.t())
     field(:source_token, atom())
     field(:pipeline_name, tuple())
+    field(:telemetry_tags, %{backend_type: atom()})
   end
 
   @impl Logflare.Backends.Adaptor
@@ -213,8 +214,8 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
     changeset
     |> validate_format(:url, ~r/(?:postgres|postgresql)\:\/\/.+/)
     |> then(fn changeset ->
-      url = get_change(changeset, :url)
-      hostname = get_change(changeset, :hostname)
+      url = get_field(changeset, :url)
+      hostname = get_field(changeset, :hostname)
 
       if url == nil and hostname == nil do
         msg = "either connection url or separate connection credentials must be provided"

@@ -84,11 +84,3 @@ jobs:
         run: |
           docker buildx imagetools create -t ${{ env.tag_sha }}  \
           ${{ env.tag_amd64 }} ${{ env.tag_arm64 }}
-
-  trigger_cloudbuild:
-    uses: ./.github/workflows/trigger-cloudbuild.yml
-    needs:
-      - settings
-      - build
-      - merge_publish
-    secrets: inherit

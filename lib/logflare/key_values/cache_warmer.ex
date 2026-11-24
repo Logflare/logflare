@@ -13,6 +13,7 @@ defmodule Logflare.KeyValues.CacheWarmer do
 
   @pt_key {__MODULE__, :initialized}
   @pt_warmed_at {__MODULE__, :warmed_at}
+  @warm_limit Application.compile_env!(:logflare, [__MODULE__, :warm_limit])
 
   @impl true
   def execute(_state) do
@@ -32,25 +33,44 @@ defmodule Logflare.KeyValues.CacheWarmer do
     :ignore
   end
 
-  def warm_top_n do
-    limit =
-      Application.get_env(:logflare, __MODULE__, [])
-      |> Keyword.get(:warm_limit, 500_000)
-
-    ordered =
-      KeyValue
-      |> join(:left, [kv], u in KeyValueUsage, on: u.key_value_id == kv.id)
-      |> order_by([kv, u], desc_nulls_last: u.last_used_at, desc: kv.updated_at)
-      |> limit(^limit)
-
+  @doc """
+  Warms up to `limit` entries: keys with recorded usage, most recently used
+  first, then keys never used, most recently updated first.
+  """
+  @spec warm_top_n(pos_integer()) :: {:ok, :ok} | {:error, term()}
+  def warm_top_n(limit \\ @warm_limit) do
     Repo.transaction(fn ->
-      ordered
-      |> Repo.stream()
-      |> Stream.chunk_every(500)
-      |> Enum.each(fn chunk ->
-        entries = Enum.map(chunk, &to_cache_entry/1)
-        Cachex.put_many(Cache, entries)
-      end)
+      warmed = limit |> recently_used_query() |> put_all()
+      remaining = limit - warmed
+      if remaining > 0, do: remaining |> never_used_query() |> put_all()
+      :ok
+    end)
+  end
+
+  defp recently_used_query(limit) do
+    KeyValueUsage
+    |> join(:inner, [u], kv in assoc(u, :key_value))
+    |> order_by([u], desc: u.last_used_at)
+    |> limit(^limit)
+    |> select([_u, kv], kv)
+  end
+
+  defp never_used_query(limit) do
+    used = where(KeyValueUsage, [u], u.key_value_id == parent_as(:kv).id)
+
+    from(kv in KeyValue, as: :kv)
+    |> where(not exists(used))
+    |> order_by(desc: :updated_at)
+    |> limit(^limit)
+  end
+
+  defp put_all(query) do
+    query
+    |> Repo.stream()
+    |> Stream.chunk_every(500)
+    |> Enum.reduce(0, fn chunk, count ->
+      Cachex.put_many(Cache, Enum.map(chunk, &to_cache_entry/1))
+      count + length(chunk)
     end)
   end
 

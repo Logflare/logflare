@@ -1,3 +1,23 @@
+defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTelemetryTest do
+  use ExUnit.Case, async: true
+
+  import Mimic
+
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline
+  alias Logflare.Backends.Backend
+  alias Logflare.TestUtils
+
+  setup :verify_on_exit!
+
+  test "configures ClickHouse telemetry tags" do
+    backend = %Backend{id: 301, type: :clickhouse}
+
+    TestUtils.assert_broadway_telemetry_tags(%{backend_type: :clickhouse}, fn ->
+      Pipeline.start_link(name: :clickhouse_telemetry_tags_test, backend: backend)
+    end)
+  end
+end
+
 defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
   use Logflare.DataCase, async: false
 
@@ -1422,7 +1442,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       assert :ok = Pipeline.ack(:ack_ref, [message], [])
 
       assert_receive {:acked, "queue-url", ^handle}
-      assert :ets.lookup(:spool_ack, handle) == []
+      assert SpoolAck.lookup(handle) == :error
     end
 
     test "acks the pointer's spool handle when dropped after exhausting retries", %{
@@ -1450,7 +1470,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       capture_log(fn -> Pipeline.ack(:ack_ref, [], [failed_message]) end)
 
       assert_receive {:acked, "queue-url", ^handle}
-      assert :ets.lookup(:spool_ack, handle) == []
+      assert SpoolAck.lookup(handle) == :error
     end
 
     test "acks the pointer's spool handle only once retries are actually exhausted, not on an intermediate retry",
@@ -1480,8 +1500,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       # no ack yet even though this specific attempt failed
       refute_receive {:acked, "queue-url", ^handle}
 
-      assert [{^handle, 1, QueueMod, "queue-url", _registered_at}] =
-               :ets.lookup(:spool_ack, handle)
+      assert {:ok, %{count: 1, queue_mod: QueueMod, queue_url: "queue-url"}} =
+               SpoolAck.lookup(handle)
 
       assert {:ok, [retry_pointer], ^queue_tid} =
                IngestEventQueue.pop_pending_pointers(retry_key, 1)
@@ -1499,7 +1519,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
       assert log =~ "Dropping 1 ClickHouse events: exhausted #{Pipeline.max_retries()} retries"
       assert_receive {:acked, "queue-url", ^handle}
-      assert :ets.lookup(:spool_ack, handle) == []
+      assert SpoolAck.lookup(handle) == :error
     end
 
     test "does not ack the pointer's spool handle when a retriable event's generation is already gone",
@@ -1528,8 +1548,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
       refute_receive {:acked, "queue-url", ^handle}
 
-      assert [{^handle, 1, QueueMod, "queue-url", _registered_at}] =
-               :ets.lookup(:spool_ack, handle)
+      assert {:ok, %{count: 1, queue_mod: QueueMod, queue_url: "queue-url"}} =
+               SpoolAck.lookup(handle)
     end
 
     test "a nil spool handle (an event that never came from the spool) is untouched by ack/3", %{
@@ -1927,7 +1947,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         log = capture_log(fn -> Pipeline.ack(:ack_ref, [], [failed_message]) end)
 
         assert log =~ "Dropped 1 ClickHouse event(s) during retry requeue"
-        assert_receive {^telemetry_event, ^ref, %{count: 1}, %{backend_id: backend_id}}
+
+        assert_receive {^telemetry_event, ^ref, %{count: 1},
+                        %{backend_id: backend_id, backend_type: :clickhouse}}
+
         assert backend_id == backend.id
 
         # nothing landed in the current generation — the event was already gone at

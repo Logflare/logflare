@@ -155,7 +155,7 @@ defmodule Logflare.Mixfile do
       # Concurrency and pipelines
       {:broadway, "~> 1.3"},
       {:syn, github: "Logflare/syn"},
-      {:durable_buffer, github: "chasers/durable_buffer", tag: "v0.5.0"},
+      {:durable_buffer, github: "chasers/durable_buffer", tag: "v0.6.3"},
 
       # Test
       {:mix_test_watch, "~> 1.0", only: [:dev, :test], runtime: false},
@@ -237,7 +237,7 @@ defmodule Logflare.Mixfile do
       {:excoveralls, "~> 0.10", only: :test},
 
       # Postgres Subscribe
-      {:cainophile, github: "Logflare/cainophile", ref: "f92a552"},
+      {:cainophile, github: "Logflare/cainophile", ref: "438bedd"},
       {:open_api_spex, "~> 3.22"},
       # required for yaml open api generation
       {:ymlr, "~> 5.1"},

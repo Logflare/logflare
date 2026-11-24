@@ -3,17 +3,19 @@ defmodule Logflare.Endpoints.ClickHouseSettings do
   Typed ClickHouse resource and scheduling policy. Consumer SQL is validated separately;
   trusted settings are combined before being applied to the final assembled query.
 
-  Only internal administrators can configure these limits; the public endpoint
-  editor and API do not accept them. The final outer SETTINGS clause is built
-  from parsed SQL, and a matching key anywhere in the query is rejected rather
-  than relying on ClickHouse precedence between nested/outer settings. For
-  hard cluster-wide ceilings, also use ClickHouse query-user profile constraints.
+  Only internal administrators can configure enforced endpoint policy. Endpoint
+  SQL can request stricter resource limits and lower scheduling priority through
+  `ClickHouseSqlSettings`, which removes and merges those requests first. This
+  module rejects any remaining conflicting SQL keys rather than relying on
+  nested/outer setting precedence. Hard cluster-wide ceilings also require
+  ClickHouse query-user profile constraints.
   """
 
   alias Logflare.Sql.Parser
 
   @resource_limits ~w(max_bytes_to_read max_rows_to_read max_memory_usage max_execution_time max_threads)
   @setting_types %{
+    "read_from_filesystem_cache_if_exists_otherwise_bypass_cache" => {:enum, [0, 1]},
     "priority" => :integer,
     "max_threads" => :integer,
     "max_bytes_to_read" => :integer,
@@ -24,10 +26,17 @@ defmodule Logflare.Endpoints.ClickHouseSettings do
     "timeout_overflow_mode" => {:enum, ["throw"]}
   }
   @max_limit 9_223_372_036_854_775_807
+  @microseconds_per_second 1_000_000.0
+  @min_timeout_seconds 1.0 / @microseconds_per_second
+  @exclusive_timeout_microseconds @max_limit + 1
   @empty_span %{
     "start" => %{"line" => 0, "column" => 0},
     "end" => %{"line" => 0, "column" => 0}
   }
+
+  defguard is_valid_timeout(seconds)
+           when is_number(seconds) and seconds >= @min_timeout_seconds and seconds <= @max_limit and
+                  seconds * @microseconds_per_second < @exclusive_timeout_microseconds
 
   @spec normalize(map()) :: {:ok, map()} | {:error, String.t()}
   def normalize(settings) when is_map(settings) do

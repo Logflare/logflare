@@ -31,6 +31,113 @@ defmodule LogflareWeb.EndpointsControllerTest do
       {:ok, user: user, source: source}
     end
 
+    for version <- [nil, "1"], cache_duration <- [0, 60] do
+      @version version
+      @cache_duration cache_duration
+
+      test "missing saved sources return HTTP 400 for version #{inspect(version)} with cache #{cache_duration}",
+           %{conn: conn, user: user} do
+        insert(:source, user: user, name: "reused_source")
+
+        endpoint =
+          insert(:endpoint,
+            user: user,
+            enable_auth: false,
+            cache_duration_seconds: @cache_duration,
+            query: "SELECT id FROM reused_source",
+            source_mapping: %{"reused_source" => Ecto.UUID.generate()}
+          )
+
+        insert(:endpoint_version,
+          endpoint: endpoint,
+          version_number: 1,
+          snapshot_overrides: %{"source_mapping" => endpoint.source_mapping}
+        )
+
+        reject(&Endpoints.run_cached_query/3)
+
+        conn = if @version, do: put_req_header(conn, "lf-endpoint-version", @version), else: conn
+        conn = get(conn, ~p"/endpoints/query/#{endpoint.token}")
+
+        assert %{"error" => "can't find source reused_source"} = json_response(conn, 400)
+        assert conn.halted
+      end
+    end
+
+    for version <- [nil, "1"] do
+      @unavailable_version version
+
+      test "catalog outages return HTTP 503 for version #{inspect(version)}", %{
+        conn: conn,
+        user: user
+      } do
+        endpoint = insert(:endpoint, user: user, enable_auth: false, query: "SELECT 1")
+        insert(:endpoint_version, endpoint: endpoint, version_number: 1)
+        Cachex.clear!(Logflare.Sources.Catalog.Cache)
+
+        stub(Sources, :list_source_catalog_by_user, fn _ ->
+          raise DBConnection.ConnectionError, message: "primary unavailable"
+        end)
+
+        reject(&Endpoints.run_cached_query/3)
+
+        conn =
+          if @unavailable_version,
+            do: put_req_header(conn, "lf-endpoint-version", @unavailable_version),
+            else: conn
+
+        conn = get(conn, ~p"/endpoints/query/#{endpoint.token}")
+
+        assert %{"error" => _message} = json_response(conn, 503)
+        assert get_resp_header(conn, "retry-after") == ["5"]
+        assert conn.halted
+      end
+    end
+
+    test "a referenced endpoint's lower-only settings return an actionable error", %{
+      conn: conn,
+      user: user
+    } do
+      reject(&ClickHouseAdaptor.execute_query/3)
+      backend = insert(:backend, type: :clickhouse, user: user)
+
+      upstream =
+        insert(:endpoint,
+          user: user,
+          backend: backend,
+          language: :ch_sql,
+          name: "upstream_query",
+          query: "SELECT 1 AS value"
+        )
+
+      downstream =
+        insert(:endpoint,
+          user: user,
+          backend: backend,
+          language: :ch_sql,
+          enable_auth: true,
+          query: "SELECT value FROM upstream_query"
+        )
+
+      assert {:ok, _} =
+               Endpoints.update_query(
+                 user,
+                 upstream,
+                 %{query: "SELECT 1 AS value SETTINGS max_threads = 2"},
+                 user
+               )
+
+      conn =
+        conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> get(~p"/api/endpoints/query/#{downstream.name}")
+
+      assert %{
+               "error" =>
+                 "Lower-only ClickHouse settings are only supported in the outer SETTINGS clause. Remove them from any referenced endpoint or subquery."
+             } = json_response(conn, 200)
+    end
+
     test "GET query", %{conn: init_conn, user: user} do
       endpoint = insert(:endpoint, user: user, enable_auth: false)
       pid = self()
@@ -748,6 +855,33 @@ defmodule LogflareWeb.EndpointsControllerTest do
 
       assert json_response(conn, 200)["error"] == ~s(Table "function_logs" does not exist.)
       refute json_response(conn, 200)["result"]
+    end
+
+    test "unsupported ClickHouse settings return the sandbox validation message", %{
+      conn: conn,
+      user: user
+    } do
+      reject(&ClickHouseAdaptor.execute_query/3)
+
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          backend: insert(:backend, type: :clickhouse, user: user),
+          language: :ch_sql,
+          enable_auth: true,
+          sandboxable: true,
+          query: "WITH a AS (SELECT 1 AS b) SELECT b FROM a"
+        )
+
+      conn =
+        conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> get(~p"/api/endpoints/query/#{endpoint.name}", %{
+          sql: "SELECT b FROM a SETTINGS max_threads = 1"
+        })
+
+      assert %{"error" => "ClickHouse setting max_threads is not supported in sandboxed SQL"} =
+               json_response(conn, 200)
     end
 
     test "sql that fails to parse returns the parser error", %{conn: conn, user: user} do

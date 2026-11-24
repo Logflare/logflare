@@ -211,7 +211,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryClassExecutionTest do
         user: Logflare.Users.get(context.backend.user_id),
         backend: context.backend,
         language: :ch_sql,
-        query: "SELECT 'cached-policy' AS value",
+        query: "SELECT 'cached-policy' AS value SETTINGS max_threads = 3",
         cache_duration_seconds: 60,
         proactive_requerying_seconds: 60
       )
@@ -231,6 +231,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryClassExecutionTest do
 
     assert_received {:executed, first_sql}
     assert first_sql =~ "priority = 10"
+    assert first_sql =~ "max_threads = 3"
 
     assert {:ok, %{rows: [%{"value" => "cached-policy"}]}} =
              Endpoints.run_cached_query(endpoint, %{}, read_cluster: "dashboard_logs_paid")
@@ -256,7 +257,87 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryClassExecutionTest do
     TestUtils.retry_assert(fn -> assert :sys.get_state(pid).query_tasks == [] end)
   end
 
-  test "endpoint previews omit class policy while execution merges it with endpoint policy",
+  test "concurrent cross-class retries share one successful cache fill", %{backend: backend} do
+    endpoint =
+      insert(:endpoint,
+        user: Logflare.Users.get(backend.user_id),
+        backend: backend,
+        language: :ch_sql,
+        query: "SELECT toUInt64(getSetting('max_threads')) AS threads SETTINGS max_threads = 3",
+        cache_duration_seconds: 60,
+        proactive_requerying_seconds: 60
+      )
+
+    test_pid = self()
+    backend_id = backend.id
+    handler_id = make_ref()
+
+    :ok =
+      :telemetry.attach(
+        handler_id,
+        [:logflare, :clickhouse, :read_pool, :query_error],
+        fn _event, _measurements, metadata, _config ->
+          if metadata.backend_id == backend_id and metadata.error_kind == :policy_rejection do
+            send(test_pid, {:policy_rejection, self()})
+
+            receive do
+              :continue -> :ok
+            after
+              5_000 -> raise "test did not release rejected query"
+            end
+          end
+        end,
+        nil
+      )
+
+    on_exit(fn -> :telemetry.detach(handler_id) end)
+    TestUtils.attach_forwarder([:logflare, :endpoints, :query])
+
+    pid =
+      start_supervised!(
+        {Endpoints.ResultsCache, {endpoint, %{}, [read_cluster: "dashboard_logs_paid"]}}
+      )
+
+    first =
+      Task.async(fn ->
+        Endpoints.run_cached_query(endpoint, %{}, read_cluster: "dashboard_logs_paid")
+      end)
+
+    assert_receive {:policy_rejection, rejected_task}, 5_000
+
+    callers =
+      for _ <- 1..3 do
+        Task.async(fn -> Endpoints.run_cached_query(endpoint, %{}, read_cluster: "api_paid") end)
+      end
+
+    TestUtils.retry_assert(fn -> assert length(:sys.get_state(pid).waiting_callers) == 4 end)
+    send(rejected_task, :continue)
+
+    assert {:error, %QueryError{description: reason}} = Task.await(first)
+    assert reason == "ClickHouse setting max_threads requires an explicit inherited policy limit"
+
+    for caller <- callers do
+      assert {:ok, %{rows: [%{"threads" => 3}]}} = Task.await(caller)
+    end
+
+    endpoint_id = endpoint.id
+
+    assert_received {:telemetry_event, [:logflare, :endpoints, :query], _,
+                     %{"endpoint_id" => ^endpoint_id}}
+
+    refute_received {:telemetry_event, [:logflare, :endpoints, :query], _,
+                     %{"endpoint_id" => ^endpoint_id}}
+
+    assert {:ok, %{rows: [%{"threads" => 3}]}} =
+             Endpoints.run_cached_query(endpoint, %{}, read_cluster: "dashboard_logs_paid")
+
+    refute_received {:telemetry_event, [:logflare, :endpoints, :query], _,
+                     %{"endpoint_id" => ^endpoint_id}}
+
+    refute_received {:policy_rejection, _}
+  end
+
+  test "endpoint previews and execution merge class policy with endpoint policy",
        context do
     backend = context.backend
 
@@ -265,7 +346,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryClassExecutionTest do
         user: Logflare.Users.get(backend.user_id),
         backend: backend,
         language: :ch_sql,
-        query: "SELECT @value AS value",
+        query:
+          "SELECT @value AS value, toInt64(getSetting('priority')) AS priority, toInt64(getSetting('max_threads')) AS threads",
         enforced_clickhouse_settings: %{"max_threads" => 2, "max_execution_time" => 0.5}
       )
 
@@ -274,12 +356,19 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryClassExecutionTest do
                read_cluster: "api_paid"
              )
 
-    refute preview =~ "priority"
-    assert {:ok, ^preview} = Endpoints.get_transformed_query(endpoint, %{"value" => "hello"})
-    assert preview =~ "max_threads = 2"
-    assert preview =~ "max_execution_time = 0.5"
+    assert preview =~ "priority = 10"
 
-    assert {:ok, %{rows: [%{"value" => "hello"}]}} =
+    assert {:ok, default_preview} =
+             Endpoints.get_transformed_query(endpoint, %{"value" => "hello"})
+
+    assert default_preview =~ "priority = 5"
+
+    for sql <- [preview, default_preview] do
+      assert sql =~ "max_threads = 2"
+      assert sql =~ "max_execution_time = 0.5"
+    end
+
+    assert {:ok, %{rows: [%{"value" => "hello", "priority" => 10, "threads" => 2}]}} =
              Endpoints.run_query(endpoint, %{"value" => "hello"},
                read_cluster: "api_paid",
                enforced_clickhouse_settings: %{"priority" => 1}
@@ -296,6 +385,26 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryClassExecutionTest do
     assert reason =~ "priority is enforced"
   end
 
+  test "endpoint timeouts reject unrepresentable requests and reach ClickHouse at supported precision",
+       %{backend: backend} do
+    endpoint =
+      insert(:endpoint,
+        user: Logflare.Users.get(backend.user_id),
+        backend: backend,
+        language: :ch_sql,
+        query:
+          "SELECT toFloat64(getSetting('max_execution_time')) AS timeout SETTINGS max_execution_time = 0.25",
+        enforced_clickhouse_settings: %{"max_execution_time" => 2}
+      )
+
+    assert {:ok, %{rows: [%{"timeout" => 0.25}]}} = Endpoints.run_query(endpoint)
+
+    query = String.replace(endpoint.query, "0.25", "9e-7")
+
+    assert {:error, message} = Endpoints.run_query(%{endpoint | query: query})
+    assert message =~ "positive signed 64-bit microsecond duration"
+  end
+
   test "effective API settings are recorded in system.query_log.Settings", context do
     id = Ecto.UUID.generate()
 
@@ -308,15 +417,35 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryClassExecutionTest do
                headers: [{"x-clickhouse-query-id", id}]
              )
 
-    assert {:ok, _} = ClickHouseAdaptor.execute_ch_query(context.backend, "SYSTEM FLUSH LOGS")
+    settings_query =
+      "SELECT Settings['priority'] AS priority, Settings['max_threads'] AS threads " <>
+        "FROM system.query_log WHERE query_id = '#{id}' AND type = 'QueryFinish'"
+
+    stub(ClickHouseAdaptor, :execute_ch_query, fn backend, sql ->
+      Mimic.call_original(ClickHouseAdaptor, :execute_ch_query, [backend, sql])
+    end)
+
+    flush_query_log = fn backend, "SYSTEM FLUSH LOGS system.query_log" = sql ->
+      Mimic.call_original(ClickHouseAdaptor, :execute_ch_query, [backend, sql])
+    end
+
+    expect(ClickHouseAdaptor, :execute_ch_query, flush_query_log)
+
+    expect(ClickHouseAdaptor, :execute_ch_query, fn _backend, ^settings_query ->
+      {:ok, {[], 0}}
+    end)
+
+    expect(ClickHouseAdaptor, :execute_ch_query, flush_query_log)
 
     TestUtils.retry_assert(fn ->
-      assert {:ok, {[%{"priority" => "10", "threads" => "4"}], _}} =
+      assert {:ok, _} =
                ClickHouseAdaptor.execute_ch_query(
-                 context.original,
-                 "SELECT Settings['priority'] AS priority, Settings['max_threads'] AS threads " <>
-                   "FROM system.query_log WHERE query_id = '#{id}' AND type = 'QueryFinish'"
+                 context.backend,
+                 "SYSTEM FLUSH LOGS system.query_log"
                )
+
+      assert {:ok, {[%{"priority" => "10", "threads" => "4"}], _}} =
+               ClickHouseAdaptor.execute_ch_query(context.original, settings_query)
     end)
   end
 

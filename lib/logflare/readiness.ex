@@ -35,6 +35,14 @@ defmodule Logflare.Readiness do
     end
   end
 
+  @spec draining?() :: boolean()
+  def draining? do
+    case :persistent_term.get(@key, nil) do
+      nil -> false
+      state -> :atomics.get(state, @lifecycle) == @draining
+    end
+  end
+
   @spec mark_ready() :: :ok
   def mark_ready do
     case :persistent_term.get(@key, nil) do

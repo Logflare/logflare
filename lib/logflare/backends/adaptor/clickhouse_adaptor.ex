@@ -36,6 +36,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Backends.QueryError
   alias Logflare.Endpoints.ClickHouseSettings
+  alias Logflare.Endpoints.ClickHouseSqlSettings
   alias Logflare.LogEvent
   alias Logflare.LogEvent.TypeDetection
   alias Logflare.Sources.Source
@@ -795,7 +796,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   def execute_ch_query(%Backend{} = backend, statement, params, opts)
       when is_list_or_map(params) and is_list(opts) do
-    with {:ok, statement} <- prepare_query(backend, statement, opts) do
+    with {:ok, statement} <- prepare_query_result(backend, statement, opts) do
       requested = Keyword.get(opts, :read_cluster)
       label = resolve_read_cluster_label(backend, requested)
 
@@ -832,9 +833,21 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
           }
         )
 
-        {:error, %{query_error(:invalid_query, reason) | description: reason}}
+        {:error, query_policy_error(reason, Keyword.get(opts, :read_cluster))}
     end
   end
+
+  @spec query_policy_error(String.t() | ClickHouseSqlSettings.missing_baseline_error(), term()) ::
+          QueryError.t()
+  defp query_policy_error({:missing_clickhouse_sql_baseline, message}, requested_class) do
+    %{
+      query_error(:invalid_query, {:missing_clickhouse_sql_baseline, requested_class})
+      | description: message
+    }
+  end
+
+  defp query_policy_error(reason, _requested_class),
+    do: %{query_error(:invalid_query, reason) | description: reason}
 
   @doc """
   Applies policy to reads. Recognized raw maintenance statements pass through
@@ -842,7 +855,17 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   """
   @spec prepare_query(Backend.t(), iodata(), Keyword.t()) ::
           {:ok, String.t()} | {:error, String.t()}
-  def prepare_query(%Backend{config: config}, statement, opts \\ []) do
+  def prepare_query(%Backend{} = backend, statement, opts \\ []) do
+    case prepare_query_result(backend, statement, opts) do
+      {:error, {:missing_clickhouse_sql_baseline, message}} -> {:error, message}
+      result -> result
+    end
+  end
+
+  @spec prepare_query_result(Backend.t(), iodata(), keyword()) ::
+          {:ok, String.t()}
+          | {:error, String.t() | ClickHouseSqlSettings.missing_baseline_error()}
+  defp prepare_query_result(%Backend{config: config}, statement, opts) do
     statement = IO.iodata_to_binary(statement)
 
     if raw_maintenance_query?(statement, opts) do
@@ -853,7 +876,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   end
 
   @spec prepare_read_query(map(), String.t(), keyword()) ::
-          {:ok, String.t()} | {:error, String.t()}
+          {:ok, String.t()}
+          | {:error, String.t() | ClickHouseSqlSettings.missing_baseline_error()}
   defp prepare_read_query(config, statement, opts) do
     classes = Map.get(config, :query_class_settings) || %{}
     endpoint_settings = Keyword.get(opts, :enforced_clickhouse_settings, %{})
@@ -864,10 +888,18 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
              Keyword.get(opts, :read_cluster),
              endpoint_settings
            ) do
-      if Keyword.get(opts, :validated_clickhouse_sql, false) do
-        ClickHouseSettings.enforce_validated(statement, settings)
-      else
-        ClickHouseSettings.enforce(statement, settings)
+      settings = Map.merge(Keyword.get(opts, :filesystem_cache_settings, %{}), settings)
+
+      cond do
+        Keyword.get(opts, :query_type) == :endpoint and
+            Keyword.get(opts, :allow_clickhouse_sql_settings, false) ->
+          ClickHouseSqlSettings.enforce(statement, settings, opts)
+
+        Keyword.get(opts, :validated_clickhouse_sql, false) ->
+          ClickHouseSettings.enforce_validated(statement, settings)
+
+        true ->
+          ClickHouseSettings.enforce(statement, settings)
       end
     end
   end
@@ -885,7 +917,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   end
 
   @spec validate_query_class_settings(Changeset.t()) :: Changeset.t()
-  defp validate_query_class_settings(changeset) do
+  defp validate_query_class_settings(
+         %Changeset{params: %{"query_class_settings" => _}} = changeset
+       ) do
     case Changeset.get_field(changeset, :query_class_settings) do
       nil ->
         changeset
@@ -898,6 +932,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     end
   end
 
+  defp validate_query_class_settings(changeset), do: changeset
+
   @spec do_ch_query_on_label(
           Backend.t(),
           iodata(),
@@ -907,29 +943,54 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
         ) ::
           {:ok, {[map()], non_neg_integer() | :not_supported}} | {:error, term()}
   defp do_ch_query_on_label(%Backend{} = backend, statement, params, label, headers) do
-    with :ok <- ensure_query_connection_manager_started(backend, label) do
-      pool_via = connection_pool_via(backend, label)
+    pool_via = connection_pool_via(backend, label)
 
-      timeout = if Application.get_env(:logflare, :env) == :test, do: 1_000, else: 60_000
+    timeout = if Application.get_env(:logflare, :env) == :test, do: 1_000, else: 60_000
 
-      backend_id = backend.id
-      log_fun = fn entry -> handle_read_pool_log(entry, backend_id, label) end
+    backend_id = backend.id
+    log_fun = fn entry -> handle_read_pool_log(entry, backend_id, label) end
 
-      ch_opts = [decode: false, timeout: timeout, log: log_fun, headers: headers]
+    ch_opts = [decode: false, timeout: timeout, log: log_fun, headers: headers]
+    query = fn -> Ch.query(pool_via, statement, params, ch_opts) end
 
-      case Ch.query(pool_via, statement, params, ch_opts) do
-        {:ok, %Ch.Result{} = result} ->
-          rows = decode_ch_result(result)
-          bytes = parse_summary_read_bytes(result.headers)
-          {:ok, {rows, bytes}}
+    case query_pool(backend, label, query) do
+      {:ok, %Ch.Result{} = result} ->
+        rows = decode_ch_result(result)
+        bytes = parse_summary_read_bytes(result.headers)
+        {:ok, {rows, bytes}}
 
-        {:error, error} ->
-          {:error, error |> to_query_error() |> log_query_error(backend, label)}
-      end
-    else
-      {:error, reason} ->
+      {:error, error} ->
+        {:error, error |> to_query_error() |> log_query_error(backend, label)}
+
+      {:connection_error, reason} ->
         {:error, :connection_error |> query_error(reason) |> log_query_error(backend, label)}
     end
+  end
+
+  @spec query_pool(
+          Backend.t(),
+          String.t() | nil,
+          (-> {:ok, Ch.Result.t()} | {:error, Exception.t()}),
+          boolean()
+        ) :: {:ok, Ch.Result.t()} | {:error, Exception.t()} | {:connection_error, term()}
+  defp query_pool(%Backend{} = backend, label, query, retry? \\ true) do
+    case ensure_query_connection_manager_started(backend, label) do
+      :ok -> query.()
+      {:error, reason} -> {:connection_error, reason}
+    end
+  catch
+    # DBConnection exits the caller, rather than returning an error, when the
+    # pool stops mid-checkout. A refresh or idle stop exits with :normal, or
+    # :noproc if the pool is gone before checkout; both are worth one retry.
+    # Backend deletion exits with :shutdown and must not restart the pool.
+    # The shape comes from the private DBConnection.Holder, so recheck it
+    # on upgrades.
+    :exit, {reason, {DBConnection.Holder, :checkout, _args}}
+    when reason in [:normal, :noproc] and retry? ->
+      query_pool(backend, label, query, false)
+
+    :exit, {reason, {DBConnection.Holder, :checkout, _args}} ->
+      {:connection_error, reason}
   end
 
   @spec log_query_error(QueryError.t(), Backend.t(), String.t() | nil) :: QueryError.t()

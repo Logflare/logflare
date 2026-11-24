@@ -1,3 +1,30 @@
+defmodule Logflare.BigQuery.PipelineTelemetryTest do
+  use ExUnit.Case, async: true
+
+  import Mimic
+
+  alias Logflare.Backends.Backend
+  alias Logflare.Sources.Source
+  alias Logflare.Sources.Source.BigQuery.Pipeline
+  alias Logflare.TestUtils
+
+  setup :verify_on_exit!
+
+  test "configures BigQuery telemetry tags" do
+    source = %Source{id: 101}
+    backend = %Backend{id: 301, type: :bigquery}
+
+    TestUtils.assert_broadway_telemetry_tags(%{backend_type: :bigquery}, fn ->
+      Pipeline.start_link(
+        name: :bigquery_telemetry_tags_test,
+        source: source,
+        backend: backend,
+        pipeline_ref: make_ref()
+      )
+    end)
+  end
+end
+
 defmodule Logflare.BigQuery.PipelineTest do
   @moduledoc false
   use Logflare.DataCase
@@ -70,7 +97,7 @@ defmodule Logflare.BigQuery.PipelineTest do
 
       {:ok, [pointer], _tid} = IngestEventQueue.pop_pending_pointers(sid_bid_pid, 1)
 
-      assert [{^handle, count_before, _, _, _}] = :ets.lookup(:spool_ack, handle)
+      assert {:ok, %{count: count_before}} = SpoolAck.lookup(handle)
 
       ref = {sid_bid_pid, %{max_retries: 1}}
       message = Pipeline.transform(pointer, ref: ref)
@@ -80,7 +107,7 @@ defmodule Logflare.BigQuery.PipelineTest do
 
       # the old pointer's unit is acked, and the requeued replacement bumps a
       # fresh one of its own -- net count is unchanged, not leaked upward
-      assert [{^handle, count_after, _, _, _}] = :ets.lookup(:spool_ack, handle)
+      assert {:ok, %{count: count_after}} = SpoolAck.lookup(handle)
       assert count_after == count_before
     end
 
@@ -113,7 +140,10 @@ defmodule Logflare.BigQuery.PipelineTest do
         end)
 
       assert log =~ "Dropped 1 BigQuery event(s) during retry requeue"
-      assert_receive {^event, ^ref, %{count: 1}, %{source_id: sid, backend_id: nil}}
+
+      assert_receive {^event, ^ref, %{count: 1},
+                      %{source_id: sid, backend_id: nil, backend_type: :bigquery}}
+
       assert sid == source.id
 
       # nothing left to requeue — the event was already gone at lookup time
@@ -149,8 +179,8 @@ defmodule Logflare.BigQuery.PipelineTest do
 
       refute_receive {:acked, "queue-url", ^handle}
 
-      assert [{^handle, 1, QueueMod, "queue-url", _registered_at}] =
-               :ets.lookup(:spool_ack, handle)
+      assert {:ok, %{count: 1, queue_mod: QueueMod, queue_url: "queue-url"}} =
+               SpoolAck.lookup(handle)
     end
 
     test "ack will not requeue failed events that have exhausted retries", %{source: source} do
@@ -197,7 +227,7 @@ defmodule Logflare.BigQuery.PipelineTest do
       mod.ack(ref, [message], [])
 
       assert_receive {:acked, "queue-url", ^handle}
-      assert :ets.lookup(:spool_ack, handle) == []
+      assert SpoolAck.lookup(handle) == :error
     end
 
     test "ack acks the pointer's spool handle when dropped after exhausting retries", %{
@@ -225,7 +255,7 @@ defmodule Logflare.BigQuery.PipelineTest do
       capture_log(fn -> mod.ack(ref, [], [message]) end)
 
       assert_receive {:acked, "queue-url", ^handle}
-      assert :ets.lookup(:spool_ack, handle) == []
+      assert SpoolAck.lookup(handle) == :error
     end
 
     test "a nil spool handle (an event that never came from the spool) is untouched by ack", %{
