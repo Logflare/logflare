@@ -60,6 +60,32 @@ defmodule LogflareWeb.Api.TeamControllerTest do
       assert response["token"] == token
     end
 
+    test "returns the owned team given the token of one of its team users", %{
+      conn: conn,
+      user: user,
+      main_team: main_team
+    } do
+      [team_user] = Logflare.TeamUsers.list_team_users_by(team_id: main_team.id)
+
+      assert %{"token" => token} =
+               conn
+               |> add_access_token(user, "private")
+               |> get(~p"/api/teams/#{team_user.token}")
+               |> json_response(200)
+
+      assert token == main_team.token
+    end
+
+    test "returns not found given a team-user token of a team that the key's account is only a member of",
+         %{conn: conn, user: user, non_owner_team: non_owner_team} do
+      [team_user] = Logflare.TeamUsers.list_team_users_by(team_id: non_owner_team.id)
+
+      conn
+      |> add_access_token(user, "private")
+      |> get(~p"/api/teams/#{team_user.token}")
+      |> json_response(404)
+    end
+
     test "returns not found for a team that the key's account is only a member of", %{
       conn: conn,
       user: user,

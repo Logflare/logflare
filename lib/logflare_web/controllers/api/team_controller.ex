@@ -42,7 +42,7 @@ defmodule LogflareWeb.Api.TeamController do
   )
 
   def show(%{assigns: %{user: user}} = conn, %{"token" => token}) do
-    with {:ok, team} <- Teams.fetch_team_by(token: token, user_id: user.id),
+    with {:ok, team} <- Teams.fetch_owned_team_by_token(user, token),
          team <- Teams.preload_fields(team, [:user, :team_users]) do
       json(conn, team)
     end

@@ -136,6 +136,8 @@ defmodule LogflareWeb.Api.AlertController do
     end
   end
 
+  @spec fetch_alert(Logflare.User.t(), String.t()) ::
+          {:ok, Alerting.AlertQuery.t()} | {:error, :not_found}
   defp fetch_alert(user, token) do
     case Alerting.get_alert_query_by(token: token, user_id: user.id) do
       nil -> {:error, :not_found}
