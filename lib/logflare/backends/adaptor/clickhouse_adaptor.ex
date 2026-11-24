@@ -1204,20 +1204,31 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     case Ch.start_link(ch_opts) do
       {:ok, pid} ->
         try do
-          case Ch.query(pid, statement, [], decode: false, timeout: timeout) do
-            {:ok, %Ch.Result{} = result} ->
-              {:ok, decode_ch_result(result)}
-
-            {:error, error} ->
-              {:error, to_query_error(error)}
-          end
+          run_direct_query(pid, statement, timeout)
         after
-          GenServer.stop(pid)
+          stop_direct_pool(pid)
         end
 
       {:error, error} ->
         {:error, to_query_error(error)}
     end
+  end
+
+  @spec run_direct_query(pid(), String.t(), timeout()) :: {:ok, list()} | {:error, QueryError.t()}
+  defp run_direct_query(pid, statement, timeout) do
+    case Ch.query(pid, statement, [], decode: false, timeout: timeout) do
+      {:ok, %Ch.Result{} = result} -> {:ok, decode_ch_result(result)}
+      {:error, error} -> {:error, to_query_error(error)}
+    end
+  catch
+    :exit, {_reason, {DBConnection.Holder, :checkout, _args}} = reason ->
+      {:error, query_error(:connection_error, reason)}
+  end
+
+  defp stop_direct_pool(pid) do
+    GenServer.stop(pid)
+  catch
+    :exit, {:noproc, {GenServer, :stop, _args}} -> :ok
   end
 
   @doc """

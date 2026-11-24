@@ -1898,26 +1898,39 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert log =~ "ch_reader: Authentication failed"
     end
 
-    test "fails when the ingest grant check fails" do
-      {_source, backend} = setup_clickhouse_test(cleanup?: false)
-
+    test "a failing ingest grant check query" do
       grant_check_statement = QueryTemplates.grant_check_statement()
 
-      stub(Ch, :query, fn
-        _pool, ^grant_check_statement, _params, _opts ->
-          {:error, %DBConnection.ConnectionError{message: "unreachable"}}
+      for grant_check <- [
+            fn _pool, _statement, _params, _opts ->
+              {:error, %DBConnection.ConnectionError{message: "unreachable"}}
+            end,
+            fn pool, statement, params, opts ->
+              Process.unlink(pool)
+              ref = Process.monitor(pool)
+              Process.exit(pool, :kill)
+              assert_receive {:DOWN, ^ref, :process, ^pool, :killed}
+              Mimic.call_original(Ch, :query, [pool, statement, params, opts])
+            end
+          ] do
+        {_source, backend} = setup_clickhouse_test(cleanup?: false)
 
-        pool, statement, params, opts ->
-          Mimic.call_original(Ch, :query, [pool, statement, params, opts])
-      end)
+        stub(Ch, :query, fn
+          pool, ^grant_check_statement, params, opts ->
+            grant_check.(pool, grant_check_statement, params, opts)
 
-      log =
-        ExUnit.CaptureLog.capture_log(fn ->
-          assert {:error, :grant_check_unknown_failure} =
-                   ClickHouseAdaptor.test_ingest_connection(backend)
+          pool, statement, params, opts ->
+            Mimic.call_original(Ch, :query, [pool, statement, params, opts])
         end)
 
-      assert log =~ "ingest cluster"
+        log =
+          ExUnit.CaptureLog.capture_log(fn ->
+            assert {:error, :grant_check_unknown_failure} =
+                     ClickHouseAdaptor.test_ingest_connection(backend)
+          end)
+
+        assert log =~ "ingest cluster"
+      end
     end
   end
 
