@@ -267,20 +267,36 @@ Key-value enrichment runs after field copying, so copied fields can be used as l
 
 ### Enrichment Rules
 
-An enrichment rule sets fields on every event of a source that matches an LQL filter. Rules are managed in the source settings, under **Enrichment Rules**.
+An enrichment rule sets fields on every event of a source that meets its conditions. Rules are managed in the source settings, under **Enrichment Rules**.
 
 Each rule has:
 
-- an **LQL filter**, using the same syntax as [routing rules](#rules). Filters can match fields that the source schema does not have yet, such as a field added by key-value enrichment.
-- **set fields**, one `field=value` per line. Dot syntax addresses nested paths, and `m.` is shorthand for `metadata.`. `true`, `false` and numbers are stored as booleans and numbers. Anything else is a string. The `id`, `event_message` and `timestamp` fields cannot be set.
+- a **match** mode: an event must meet **all** conditions, or **any** of them.
+- **conditions**, one `field predicate value` per line. Conditions can use fields that the source schema does not have yet, such as a field added by key-value enrichment. The predicates are:
+
+  | Predicate | Value | Matches when the field |
+  |---|---|---|
+  | `equals`, `not_equals` | string, number or boolean | equals, or does not equal, the value. `not_equals` also matches a missing field. |
+  | `greater_than`, `less_than` | number | is a number above, or below, the value |
+  | `in` | comma-separated values | equals one of the values |
+  | `exists`, `not_exists` | none | is present, or missing |
+  | `is_empty`, `not_empty` | none | is an empty, or non-empty, string or list |
+
+  Comparisons are type-sensitive: the string `"200"` does not equal the number `200`.
+
+- **set fields**, one `field=value` per line. `true`, `false` and numbers are stored as booleans and numbers. Anything else is a string. The `id`, `event_message` and `timestamp` fields cannot be set.
+
+In both conditions and set fields, dot syntax addresses nested paths, and `m.` is shorthand for `metadata.`.
 
 Enrichment rules run when events are dispatched, before routing rules, so routing rules and drain rules can match the fields they set. With spooling enabled, they run on the spool consumer, not during the ingest request. When several rules match an event, they are applied in the order they were created, so a later rule wins when two set the same field. A path that crosses a non-map value is skipped. Events routed into a source by a routing rule are not enriched again.
 
-For example, combined with the key-value enrichment rule `project:debug_mode:debug_mode`, this rule flags non-error events from projects set to `errors_only`:
+For example, combined with the key-value enrichment rule `project:debug_mode:debug_mode`, this rule flags successful responses from projects set to `errors_only`:
 
 ```text
-# LQL filter
-debug_mode:errors_only -m.level:~"^(error|fatal)$"
+# Match: all conditions
+# Conditions
+debug_mode equals errors_only
+m.response.status_code less_than 400
 
 # Set fields
 excluded_by_user_config=true

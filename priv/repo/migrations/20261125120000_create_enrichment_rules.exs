@@ -5,8 +5,8 @@ defmodule Logflare.Repo.Migrations.CreateEnrichmentRules do
     create table(:enrichment_rules) do
       add :token, :uuid, null: false
       add :source_id, references(:sources, on_delete: :delete_all), null: false
-      add :lql_string, :text, null: false
-      add :lql_filters, :binary, null: false
+      add :match, :string, null: false, default: "all"
+      add :conditions, :jsonb, null: false
       add :set_fields, :map, null: false
 
       timestamps()
