@@ -42,23 +42,23 @@ defmodule Logflare.RecordUsages do
 
   @spec flush(drain: boolean()) :: :ok
   def flush(opts \\ []) do
-    snapshot = Cache.snapshot(opts)
-
-    snapshot
-    |> Enum.chunk_every(1_000)
-    |> Enum.each(fn batch -> :ok = __MODULE__.persist(batch) end)
-
-    Cache.acknowledge(snapshot)
+    opts
+    |> Cache.stream()
+    |> Stream.chunk_every(1_000)
+    |> Enum.each(fn batch ->
+      :ok = __MODULE__.persist(batch)
+      Cache.acknowledge(batch)
+    end)
   end
 
-  @spec persist(Cache.snapshot()) :: :ok
+  @spec persist(Cache.entries()) :: :ok
   def persist(entries) do
     entries
     |> Enum.group_by(fn {{resource_type, _id}, _timestamp} -> resource_type end)
     |> Enum.each(fn {resource_type, entries} -> persist_resource(resource_type, entries) end)
   end
 
-  @spec persist_resource(resource_type(), Cache.snapshot()) :: :ok
+  @spec persist_resource(resource_type(), Cache.entries()) :: :ok
   defp persist_resource(schema, entries) do
     foreign_key = foreign_key(schema)
 

@@ -74,7 +74,7 @@ defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
       user: user
     } do
       RecordUsages.Cache.record({OauthAccessToken, token.id}, 1)
-      RecordUsages.Cache.snapshot()
+      RecordUsages.Cache.stream() |> Enum.to_list()
       writer = Process.whereis(RecordUsages.Writer)
 
       on_exit(fn ->
@@ -119,14 +119,14 @@ defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
       assert backlog in 1_000..(1_000 + concurrency + 1)
 
       :sys.resume(writer)
-      snapshot = Map.new(RecordUsages.Cache.snapshot())
+      snapshot = RecordUsages.Cache.stream() |> Map.new()
       assert Map.fetch!(snapshot, {OauthAccessToken, token.id}) >= before_request
       assert Map.fetch!(snapshot, {User, user.id}) >= before_request
 
       next_timestamp = System.system_time(:second) + 1
       RecordUsages.Cache.record({OauthAccessToken, token.id}, next_timestamp)
 
-      assert Map.fetch!(Map.new(RecordUsages.Cache.snapshot()), {OauthAccessToken, token.id}) ==
+      assert RecordUsages.Cache.stream() |> Map.new() |> Map.fetch!({OauthAccessToken, token.id}) ==
                next_timestamp
     end
 
@@ -139,13 +139,13 @@ defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
       |> assert_authorized(user)
 
       first_use =
-        RecordUsages.Cache.snapshot() |> Map.new() |> Map.fetch!({OauthAccessToken, token.id})
+        RecordUsages.Cache.stream() |> Map.new() |> Map.fetch!({OauthAccessToken, token.id})
 
       assert is_integer(first_use)
       assert first_use >= before_request
 
       RecordUsages.Cache.acknowledge([{{OauthAccessToken, token.id}, first_use}])
-      assert RecordUsages.Cache.snapshot() == []
+      assert RecordUsages.Cache.stream() |> Enum.to_list() == []
 
       reject(&Auth.verify_access_token/2)
 
@@ -155,7 +155,7 @@ defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
       |> assert_authorized(user)
 
       last_use =
-        RecordUsages.Cache.snapshot() |> Map.new() |> Map.fetch!({OauthAccessToken, token.id})
+        RecordUsages.Cache.stream() |> Map.new() |> Map.fetch!({OauthAccessToken, token.id})
 
       assert is_integer(last_use)
       assert last_use >= first_use
@@ -170,7 +170,7 @@ defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
       |> VerifyApiAccess.call(%{})
       |> assert_unauthorized()
 
-      assert RecordUsages.Cache.snapshot() == []
+      assert RecordUsages.Cache.stream() |> Enum.to_list() == []
     end
 
     test "returns database outages without recording token or legacy key usage", %{
@@ -191,7 +191,7 @@ defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
         assert conn.status == 503
       end
 
-      assert RecordUsages.Cache.snapshot() == []
+      assert RecordUsages.Cache.stream() |> Enum.to_list() == []
     end
 
     test "authenticates partners without recording usage", %{conn: conn} do
@@ -204,7 +204,7 @@ defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
         |> VerifyApiAccess.call(%{scopes: ["partner"]})
 
       assert conn.assigns.partner.id == partner.id
-      assert RecordUsages.Cache.snapshot() == []
+      assert RecordUsages.Cache.stream() |> Enum.to_list() == []
     end
 
     test "records legacy key usage on cache misses and hits", %{user: user} do
@@ -221,7 +221,7 @@ defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
         |> VerifyApiAccess.call(%{})
         |> assert_authorized(user)
 
-        assert [{{User, id}, timestamp}] = RecordUsages.Cache.snapshot()
+        assert [{{User, id}, timestamp}] = RecordUsages.Cache.stream() |> Enum.to_list()
         assert id == user.id
         assert timestamp >= before_request
         assert timestamp <= System.system_time(:second)
@@ -261,7 +261,7 @@ defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
         assert Repo.preload(unused_token, :usage).usage == nil
       end
 
-      assert RecordUsages.Cache.snapshot() == []
+      assert RecordUsages.Cache.stream() |> Enum.to_list() == []
     end
   end
 

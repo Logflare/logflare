@@ -17,7 +17,7 @@ defmodule Logflare.RecordUsagesTest do
     Cache.reset()
     Cache.record({User, 1}, 101)
     Cache.record({User, 2}, 2)
-    assert Map.new(Cache.snapshot()) == %{{User, 1} => 101, {User, 2} => 2}
+    assert Cache.stream() |> Map.new() == %{{User, 1} => 101, {User, 2} => 2}
 
     queue = Process.whereis(name(Cache, :locksmith))
     writer = Process.whereis(Writer)
@@ -59,12 +59,18 @@ defmodule Logflare.RecordUsagesTest do
     assert {:ok, nil} = Cachex.get(Cache, {User, 3})
 
     :sys.resume(queue)
-    assert Map.new(Cache.snapshot()) == %{{User, 1} => 101, {User, 2} => 1_000, {User, 3} => 7}
+
+    assert Cache.stream() |> Map.new() == %{
+             {User, 1} => 101,
+             {User, 2} => 1_000,
+             {User, 3} => 7
+           }
+
     assert {:ok, statistics} = :sys.statistics(queue, :get)
     assert statistics[:messages_in] <= 3
 
     Writer.record({User, 2}, 9)
-    assert Map.fetch!(Map.new(Cache.snapshot()), {User, 2}) == 1_000
+    assert Cache.stream() |> Map.new() |> Map.fetch!({User, 2}) == 1_000
   end
 
   test "drains finish their current or pending batch without chasing later arrivals" do
@@ -98,7 +104,12 @@ defmodule Logflare.RecordUsagesTest do
     assert {:ok, nil} = Cachex.get(Cache, {User, 3})
 
     release_gate(last, queue)
-    assert Map.new(Cache.snapshot()) == %{{User, 1} => 13, {User, 2} => 47, {User, 3} => 79}
+
+    assert Cache.stream() |> Map.new() == %{
+             {User, 1} => 13,
+             {User, 2} => 47,
+             {User, 3} => 79
+           }
   end
 
   @tag capture_log: true
@@ -138,7 +149,7 @@ defmodule Logflare.RecordUsagesTest do
     assert :ok = Task.await(drain)
     assert :ok = Task.await(pending_drain)
 
-    assert Map.new(Cache.snapshot()) ==
+    assert Cache.stream() |> Map.new() ==
              %{{User, 1} => 77, submitted => 63, unsubmitted => 12, {User, 4} => 19}
 
     assert Process.whereis(Writer) == collector
@@ -148,7 +159,7 @@ defmodule Logflare.RecordUsagesTest do
   test "a writer restart stops its batch without losing completed Cachex values" do
     Cache.reset()
     Cache.record({User, 1}, 101)
-    assert Cache.snapshot() == [{{User, 1}, 101}]
+    assert Cache.stream() |> Enum.to_list() == [{{User, 1}, 101}]
     queue = Process.whereis(name(Cache, :locksmith))
 
     :ok = Supervisor.terminate_child(Logflare.ContextCache.Supervisor, Writer)
@@ -189,7 +200,7 @@ defmodule Logflare.RecordUsagesTest do
 
     :sys.resume(queue)
     Cache.record({User, 2}, 19)
-    assert Map.new(Cache.snapshot()) == %{{User, 1} => 101, {User, 2} => 19}
+    assert Cache.stream() |> Map.new() == %{{User, 1} => 101, {User, 2} => 19}
   end
 
   for finish <- [:commit, :rollback] do
@@ -246,7 +257,7 @@ defmodule Logflare.RecordUsagesTest do
           end)
 
           assert Task.await(flush) == :ok
-          assert Cache.snapshot() == []
+          assert Cache.stream() |> Enum.to_list() == []
 
           assert RecordUsages.get(User, survivor.id).last_used_at ==
                    ~U[2026-01-01 00:00:00Z]

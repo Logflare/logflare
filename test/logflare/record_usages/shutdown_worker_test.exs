@@ -41,7 +41,7 @@ defmodule Logflare.RecordUsages.ShutdownWorkerTest do
     assert Task.await(shutdown) == :ok
 
     assert Repo.get_by!(RecordUsage, oauth_access_token_id: token.id).last_used_at == timestamp
-    assert Cache.snapshot() == []
+    assert Cache.stream() |> Enum.to_list() == []
   end
 
   test "shutdown persists completed usage while the writer is unavailable" do
@@ -49,7 +49,7 @@ defmodule Logflare.RecordUsages.ShutdownWorkerTest do
     timestamp = ~U[2026-01-01 00:00:09Z]
     key = {OauthAccessToken, token.id}
     Cache.record(key, DateTime.to_unix(timestamp))
-    assert Cache.snapshot() == [{key, DateTime.to_unix(timestamp)}]
+    assert Cache.stream() |> Enum.to_list() == [{key, DateTime.to_unix(timestamp)}]
 
     on_exit(fn ->
       {:ok, _} =
@@ -65,7 +65,7 @@ defmodule Logflare.RecordUsages.ShutdownWorkerTest do
     assert :ok = Supervisor.terminate_child(Logflare.Supervisor, ShutdownWorker)
 
     assert Repo.get_by!(RecordUsage, oauth_access_token_id: token.id).last_used_at == timestamp
-    assert Cache.snapshot() == []
+    assert Cache.stream() |> Enum.to_list() == []
   end
 
   test "a stalled batch cannot extend the shutdown timeout and stops with its writer" do
@@ -111,7 +111,7 @@ defmodule Logflare.RecordUsages.ShutdownWorkerTest do
   test "a database failure during flush logs the failure without blocking shutdown" do
     token = insert(:access_token)
     RecordUsages.record(OauthAccessToken, token.id)
-    snapshot = Cache.snapshot()
+    snapshot = Cache.stream() |> Enum.to_list()
 
     Repo.query!("""
     ALTER TABLE record_usages
@@ -129,7 +129,7 @@ defmodule Logflare.RecordUsages.ShutdownWorkerTest do
     assert log =~ "reject_usage_flush"
 
     assert Repo.get_by(RecordUsage, oauth_access_token_id: token.id) == nil
-    assert Cache.snapshot() == snapshot
+    assert Cache.stream() |> Enum.to_list() == snapshot
   end
 
   @spec await_draining() :: pid()

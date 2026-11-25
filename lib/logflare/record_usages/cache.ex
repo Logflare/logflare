@@ -18,7 +18,7 @@ defmodule Logflare.RecordUsages.Cache do
   alias Logflare.RecordUsages.Writer
 
   @type key :: {module(), pos_integer()}
-  @type snapshot :: [{key(), integer()}]
+  @type entries :: [{key(), integer()}]
 
   @spec child_spec(term()) :: Supervisor.child_spec()
   def child_spec(_options) do
@@ -47,16 +47,15 @@ defmodule Logflare.RecordUsages.Cache do
       :ok
   end
 
-  @spec snapshot(drain: boolean()) :: snapshot()
-  def snapshot(opts \\ []) do
+  @spec stream(drain: boolean()) :: Enumerable.t()
+  def stream(opts \\ []) do
     if Keyword.get(opts, :drain, true), do: Writer.drain()
 
     __MODULE__
     |> Cachex.stream!(Cachex.Query.build(output: {:key, :value}))
-    |> Enum.to_list()
   end
 
-  @spec acknowledge(snapshot()) :: :ok
+  @spec acknowledge(entries()) :: :ok
   def acknowledge(entries) do
     Enum.each(entries, &acknowledge_entry/1)
   end
