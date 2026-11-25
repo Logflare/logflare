@@ -83,7 +83,7 @@ defmodule Logflare.EndpointsTest do
     setup do
       owner = insert(:user)
       admin = insert(:user, admin: true)
-      insert(:source, user: owner, name: "settings_source")
+      source = insert(:source, user: owner, name: "settings_source")
       backend = insert(:backend, user: owner, type: :clickhouse)
 
       endpoint =
@@ -95,7 +95,7 @@ defmodule Logflare.EndpointsTest do
           query: "WITH src AS (SELECT a FROM settings_source) SELECT a FROM src"
         )
 
-      [owner: owner, admin: admin, endpoint: endpoint]
+      [owner: owner, admin: admin, endpoint: endpoint, source: source]
     end
 
     test "only an administrator can configure validated limits; user updates cannot change them",
@@ -213,10 +213,97 @@ defmodule Logflare.EndpointsTest do
       assert custom_sql =~ "optimize_read_in_order = 1"
       assert custom_sql =~ "max_execution_time = 5"
 
-      assert {:error, "Restricted setting max_execution_time"} =
+      assert {:error, "ClickHouse setting max_execution_time is not supported in sandboxed SQL"} =
                Endpoints.get_transformed_query(endpoint, %{
                  "sql" => "SELECT a FROM src SETTINGS max_execution_time = 100"
                })
+    end
+
+    test "rejects saving lower-only settings alongside sandboxing", %{
+      owner: owner,
+      endpoint: endpoint
+    } do
+      requested_sql = endpoint.query <> " SETTINGS max_threads = 2"
+
+      assert {:error, changeset} =
+               Endpoints.update_query(owner, endpoint, %{query: requested_sql}, owner)
+
+      assert "ClickHouse setting max_threads is not supported in sandboxed SQL" in errors_on(
+               changeset
+             ).query
+
+      assert {:ok, endpoint} =
+               Endpoints.update_query(
+                 owner,
+                 endpoint,
+                 %{query: requested_sql, sandboxable: false},
+                 owner
+               )
+
+      assert {:error, changeset} =
+               Endpoints.update_query(owner, endpoint, %{sandboxable: true}, owner)
+
+      assert "ClickHouse setting max_threads is not supported in sandboxed SQL" in errors_on(
+               changeset
+             ).query
+
+      assert {:ok, endpoint} =
+               Endpoints.update_query(
+                 owner,
+                 endpoint,
+                 %{
+                   query:
+                     "WITH src AS (SELECT a FROM settings_source) SELECT a FROM src " <>
+                       "SETTINGS optimize_read_in_order = 1",
+                   sandboxable: true
+                 },
+                 owner
+               )
+
+      assert endpoint.sandboxable
+    end
+
+    test "saved SQL requests tighten current operator policy without changing it", %{
+      owner: owner,
+      admin: admin,
+      endpoint: endpoint,
+      source: source
+    } do
+      baseline = %{"max_execution_time" => 10, "max_threads" => 4, "priority" => 5}
+
+      assert {:ok, endpoint} =
+               Endpoints.configure_enforced_clickhouse_settings(admin, endpoint, baseline)
+
+      requested_sql =
+        endpoint.query <> " SETTINGS max_execution_time = 20, max_threads = 2, priority = 1"
+
+      assert {:ok, endpoint} =
+               Endpoints.update_query(
+                 owner,
+                 endpoint,
+                 %{query: requested_sql, sandboxable: false},
+                 owner
+               )
+
+      assert endpoint.source_mapping == %{source.name => to_string(source.token)}
+      assert endpoint.enforced_clickhouse_settings["priority"] == 5
+      assert {:ok, sql} = Endpoints.get_transformed_query(endpoint)
+      assert sql =~ "max_execution_time = 10"
+      assert sql =~ "max_threads = 2"
+      assert sql =~ "priority = 5"
+
+      assert {:ok, _updated} =
+               Endpoints.configure_enforced_clickhouse_settings(admin, endpoint, %{
+                 "max_execution_time" => 5,
+                 "max_threads" => 1,
+                 "priority" => 10
+               })
+
+      assert {:ok, sql} = Endpoints.get_transformed_query(endpoint)
+      assert sql =~ "max_execution_time = 5"
+      assert sql =~ "max_threads = 1"
+      assert sql =~ "priority = 10"
+      assert Endpoints.get_endpoint_query(endpoint.id).query == requested_sql
     end
   end
 
@@ -1357,23 +1444,57 @@ defmodule Logflare.EndpointsTest do
       assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_cached_query(endpoint)
     end
 
-    test "run_cached_query/1 with cache disabled" do
-      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 2, fn _conn, _proj_id, _opts ->
-        {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
-      end)
+    for duration <- [0, nil] do
+      @tag cache_duration_seconds: duration
+      test "run_cached_query/1 bypasses the cache with TTL #{inspect(duration)}", context do
+        expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 2, fn _conn,
+                                                                           _proj_id,
+                                                                           _opts ->
+          {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
+        end)
 
+        endpoint =
+          build(:endpoint,
+            user: insert(:user),
+            query: "select current_datetime() as testing"
+          )
+          |> change(cache_duration_seconds: context.cache_duration_seconds)
+          |> Repo.insert!()
+
+        assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_cached_query(endpoint)
+        assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_cached_query(endpoint)
+      end
+    end
+
+    test "update_query/4 invalidates the cache when a stale endpoint disables refresh" do
       user = insert(:user)
 
-      endpoint =
-        insert(:endpoint,
-          user: user,
-          query: "select current_datetime() as testing",
-          cache_duration_seconds: 0
-        )
+      stale_endpoint =
+        build(:endpoint, user: user)
+        |> change(proactive_requerying_seconds: nil)
+        |> Repo.insert!()
 
-      assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_cached_query(endpoint)
-      # 2nd query should hit local cache
-      assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_cached_query(endpoint)
+      assert {:ok, enabled} =
+               Endpoints.update_query(
+                 user,
+                 stale_endpoint,
+                 %{proactive_requerying_seconds: 60},
+                 user
+               )
+
+      cache = start_supervised!({ResultsCache, {enabled, %{}, []}})
+      monitor = Process.monitor(cache)
+      assert is_reference(:sys.get_state(cache).refresh_timer)
+
+      assert {:ok, %{proactive_requerying_seconds: nil}} =
+               Endpoints.update_query(
+                 user,
+                 stale_endpoint,
+                 %{proactive_requerying_seconds: nil},
+                 user
+               )
+
+      assert_receive {:DOWN, ^monitor, :process, ^cache, :normal}, 1_000
     end
 
     for field_changed <- [

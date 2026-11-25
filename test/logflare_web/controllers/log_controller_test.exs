@@ -8,6 +8,7 @@ defmodule LogflareWeb.LogControllerTest do
   alias Logflare.Sources
   alias Logflare.Backends
   alias Logflare.Backends.SourceSup
+  alias Logflare.IngressGate
   alias Logflare.SystemMetrics.AllLogsLogged
 
   alias Opentelemetry.Proto.Collector.Trace.V1.ExportTraceServiceRequest
@@ -138,10 +139,7 @@ defmodule LogflareWeb.LogControllerTest do
         source: source,
         user: user
       } do
-        Mimic.stub(Logflare.Backends, :ingest_logs, fn _batch,
-                                                       _source,
-                                                       _backend,
-                                                       _allow_spooling ->
+        Mimic.stub(Logflare.Backends, :ingest_client_logs, fn _batch, _source ->
           {:error, ["Type error! Field `value` has an unexpected type."]}
         end)
 
@@ -204,7 +202,7 @@ defmodule LogflareWeb.LogControllerTest do
       source: source,
       user: user
     } do
-      Mimic.stub(Logflare.Backends, :ingest_logs, fn _batch, _source, _backend, _allow_spooling ->
+      Mimic.stub(Logflare.Backends, :ingest_client_logs, fn _batch, _source ->
         {:error, ["invalid event"]}
       end)
 
@@ -221,7 +219,7 @@ defmodule LogflareWeb.LogControllerTest do
       source: source,
       user: user
     } do
-      Mimic.stub(Logflare.Backends, :ingest_logs, fn _batch, _source, _backend, _allow_spooling ->
+      Mimic.stub(Logflare.Backends, :ingest_client_logs, fn _batch, _source ->
         {:error, :spool_unavailable}
       end)
 
@@ -243,10 +241,7 @@ defmodule LogflareWeb.LogControllerTest do
         source: source,
         user: user
       } do
-        Mimic.stub(Logflare.Backends, :ingest_logs, fn _batch,
-                                                       _source,
-                                                       _backend,
-                                                       _allow_spooling ->
+        Mimic.stub(Logflare.Backends, :ingest_client_logs, fn _batch, _source ->
           {:error, :spool_unavailable}
         end)
 
@@ -278,7 +273,7 @@ defmodule LogflareWeb.LogControllerTest do
         {:error, :source_unavailable}
       end)
 
-      Mimic.reject(Logflare.Backends, :ingest_logs, 4)
+      Mimic.reject(Logflare.Backends, :ingest_client_logs, 2)
 
       conn =
         conn
@@ -300,7 +295,7 @@ defmodule LogflareWeb.LogControllerTest do
         {:error, :source_unavailable}
       end)
 
-      Mimic.reject(Logflare.Backends, :ingest_logs, 4)
+      Mimic.reject(Logflare.Backends, :ingest_client_logs, 2)
       body = TestUtilsGrpc.random_otel_logs_request() |> ExportLogsServiceRequest.encode()
 
       conn =
@@ -323,7 +318,7 @@ defmodule LogflareWeb.LogControllerTest do
         {:error, :source_not_found}
       end)
 
-      Mimic.reject(Logflare.Backends, :ingest_logs, 4)
+      Mimic.reject(Logflare.Backends, :ingest_client_logs, 2)
 
       conn =
         conn
@@ -342,7 +337,7 @@ defmodule LogflareWeb.LogControllerTest do
         {:error, :source_not_found}
       end)
 
-      Mimic.reject(Logflare.Backends, :ingest_logs, 4)
+      Mimic.reject(Logflare.Backends, :ingest_client_logs, 2)
       body = TestUtilsGrpc.random_otel_logs_request() |> ExportLogsServiceRequest.encode()
 
       conn =
@@ -992,7 +987,7 @@ defmodule LogflareWeb.LogControllerTest do
 
     test "multi-source batch with a non-object entry returns 400 without ingesting",
          %{conn: conn, source_a: source_a} do
-      Mimic.reject(Logflare.Backends, :ingest_logs, 4)
+      Mimic.reject(Logflare.Backends, :ingest_client_logs, 2)
 
       conn =
         conn
@@ -1018,7 +1013,7 @@ defmodule LogflareWeb.LogControllerTest do
         _source -> :ok
       end)
 
-      Mimic.reject(Logflare.Backends, :ingest_logs, 4)
+      Mimic.reject(Logflare.Backends, :ingest_client_logs, 2)
 
       conn =
         post(conn, Routes.log_path(conn, :create), %{
@@ -1030,6 +1025,48 @@ defmodule LogflareWeb.LogControllerTest do
 
       assert ["5"] = get_resp_header(conn, "retry-after")
       assert json_response(conn, 503)
+    end
+
+    test "a sealed gate rejects all source groups before dispatch",
+         %{conn: conn, source_a: source_a, user: user} do
+      source_b = insert(:source, user: user)
+      test_pid = self()
+
+      Mimic.stub(Backends, :start_for_ingest, fn _source ->
+        if self() == test_pid, do: IngressGate.seal()
+        :ok
+      end)
+
+      on_exit(fn -> :ets.insert(IngressGate, {:admission, :open}) end)
+      Mimic.reject(Backends, :ingest_client_logs, 2)
+
+      conn = post(conn, Routes.log_path(conn, :create), grouped_batch(source_a, source_b))
+
+      assert ["5"] = get_resp_header(conn, "retry-after")
+      assert json_response(conn, 503)
+    end
+
+    test "sealing between source handoffs does not split a multi-source batch",
+         %{conn: conn, source_a: source_a, user: user} do
+      source_b = insert(:source, user: user)
+      start_supervised!({SourceSup, source_b})
+      id = make_ref()
+      stop = [:logflare, :logs, :processor, :ingest, :store, :stop]
+
+      :ok = :telemetry.attach(id, stop, &__MODULE__.seal_after_store/4, self())
+
+      on_exit(fn ->
+        :telemetry.detach(id)
+        :ets.insert(IngressGate, {:admission, :open})
+      end)
+
+      conn = post(conn, Routes.log_path(conn, :create), grouped_batch(source_a, source_b))
+
+      assert_logged_successfully(conn)
+      assert_received {:stored, first}
+      assert_received {:stored, second}
+      assert Enum.sort([first, second]) == Enum.sort([source_a.id, source_b.id])
+      assert {:error, :source_unavailable} = IngressGate.with_write(fn -> :unexpected end)
     end
 
     test "multi-source batch returns 503 when a source is unavailable",
@@ -1078,7 +1115,7 @@ defmodule LogflareWeb.LogControllerTest do
 
     test "batch with __LF_SOURCE on first event but later events lack it returns 400 without ingesting",
          %{conn: conn, source_a: source_a} do
-      Mimic.reject(Logflare.Backends, :ingest_logs, 4)
+      Mimic.reject(Logflare.Backends, :ingest_client_logs, 2)
 
       conn =
         conn
@@ -1151,6 +1188,23 @@ defmodule LogflareWeb.LogControllerTest do
         timeout -> acc
       end
     end
+  end
+
+  def seal_after_store(_event, _measurements, %{source_id: id, success: true}, owner)
+      when owner == self() do
+    send(owner, {:stored, id})
+    IngressGate.seal()
+  end
+
+  def seal_after_store(_event, _measurements, _metadata, _owner), do: :ok
+
+  defp grouped_batch(a, b) do
+    %{
+      "batch" => [
+        %{"__LF_SOURCE" => Atom.to_string(a.token), "event_message" => "a"},
+        %{"__LF_SOURCE" => Atom.to_string(b.token), "event_message" => "b"}
+      ]
+    }
   end
 
   defp multi_source_setup(%{conn: conn}) do

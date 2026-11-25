@@ -59,11 +59,7 @@ defmodule Logflare.Logs.Processor do
       )
 
       :telemetry.span([:logflare, :logs, :processor, :ingest, :store], metadata, fn ->
-        # allow_spooling: true — this is the genuine client-submitted entry
-        # point (every log_controller.ex/gRPC ingestion action funnels
-        # through here), as opposed to SourceRouter's re-entrant calls,
-        # which never pass this and so can never be spooled.
-        result = Backends.ingest_logs(batch, source, nil, true)
+        result = Backends.ingest_client_logs(batch, source)
 
         new_meta = Map.merge(metadata, %{success: elem(result, 0) == :ok})
 

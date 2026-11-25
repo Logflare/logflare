@@ -5,6 +5,7 @@ config :logflare,
   cache_stats: true,
   sql_sandbox: true,
   static_gzip: false,
+  sigterm_shutdown_grace_period_ms: 0,
   encryption_key_default: "Q+IS7ogkzRxsj+zAIB1u6jNFquxkFzSrBZXItN27K/Q="
 
 config :logflare, LogflareWeb.Endpoint,

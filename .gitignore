@@ -71,8 +71,6 @@ gha-creds-*.json
 .*.cacert.*
 .*.cert.*
 .*.req.*
-!.*.cacert.*.enc
-!.*.cert.*.enc
 
 # DB ssl certs
 .*.*.pem

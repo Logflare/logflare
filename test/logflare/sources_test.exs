@@ -23,12 +23,32 @@ defmodule Logflare.SourcesTest do
       {:ok, user: user}
     end
 
-    test "new sources are opted out by default", %{user: user} do
-      assert {:ok, %Source{default_ingest_backend_enabled?: false}} =
-               Sources.create_source(%{name: "opted-out"}, user)
+    test "new sources are opted in by default", %{user: user} do
+      assert {:ok, %Source{default_ingest_backend_enabled?: true} = source} =
+               Sources.create_source(%{name: "opted-in"}, user)
+
+      assert Sources.get(source.id).default_ingest_backend_enabled? == true
     end
 
-    test "new sources can be created opted in", %{user: user} do
+    test "new sources can be created opted out", %{user: user} do
+      assert {:ok, %Source{default_ingest_backend_enabled?: false} = source} =
+               Sources.create_source(
+                 %{name: "opted-out", default_ingest_backend_enabled?: false},
+                 user
+               )
+
+      assert Sources.get(source.id).default_ingest_backend_enabled? == false
+    end
+
+    test "new sources can be created opted out with string keys", %{user: user} do
+      assert {:ok, %Source{default_ingest_backend_enabled?: false}} =
+               Sources.create_source(
+                 %{"name" => "opted-out", "default_ingest_backend_enabled?" => "false"},
+                 user
+               )
+    end
+
+    test "new sources opted in explicitly stay opted in", %{user: user} do
       assert {:ok, %Source{default_ingest_backend_enabled?: true}} =
                Sources.create_source(
                  %{name: "opted-in", default_ingest_backend_enabled?: true},
@@ -214,6 +234,30 @@ defmodule Logflare.SourcesTest do
 
       assert {:ok, %Source{retention_days: 10}} =
                Sources.create_source(%{name: "some name", retention_days: 10}, user)
+    end
+  end
+
+  describe "delete_source/1" do
+    setup do
+      user = insert(:user)
+      %{user: user}
+    end
+
+    test "deletes a source that has attached backends", %{user: user} do
+      backend = insert(:backend, user: user)
+      source = insert(:source, user: user, backends: [backend])
+
+      assert {:ok, %Source{}} = Sources.delete_source(source)
+      refute Sources.get(source.id)
+      # the backend itself is untouched
+      assert Backends.get_backend(backend.id)
+    end
+
+    test "deletes a source with no backends", %{user: user} do
+      source = insert(:source, user: user)
+
+      assert {:ok, %Source{}} = Sources.delete_source(source)
+      refute Sources.get(source.id)
     end
   end
 

@@ -35,6 +35,13 @@
       Days to keep data in the source backend. <%= link("Learn more", to: "https://docs.logflare.app/concepts/ingestion/#backend-time-to-live-ttl") %>
     </small>
   </div>
+  <%= if Logflare.Utils.flag("multibackend", @user) do %>
+  <div class="form-group">
+    <%= checkbox f, :default_ingest_backend_enabled? %>
+    <%= label f, :default_ingest_backend_enabled?, "Send this source's events to the account's default ingest backend" %>
+    <%= error_tag f, :default_ingest_backend_enabled? %>
+  </div>
+  <% end %>
   <%= submit "Add source", class: "btn btn-primary form-button" %>
   <% end %>
 </div>

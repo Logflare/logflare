@@ -80,8 +80,7 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Supervisor do
   # Falls back to a tmp dir so a plain boot with spool mode on doesn't
   # crash for lack of an explicit wal_dir — not durable across a real
   # restart, so anywhere the WAL is meant to survive one must set
-  # SPOOL_WAL_DIR/:wal_dir explicitly (see cloudbuild/gce-startup.sh's
-  # mount_wal_disk for how the dev/staging producer instances provide it).
+  # SPOOL_WAL_DIR/:wal_dir explicitly.
   defp wal_dir(spool_config) do
     Keyword.get_lazy(spool_config, :wal_dir, fn ->
       Path.join(System.tmp_dir!(), "logflare_spool_wal")

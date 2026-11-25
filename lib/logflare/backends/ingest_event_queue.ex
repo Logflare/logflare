@@ -531,8 +531,8 @@ defmodule Logflare.Backends.IngestEventQueue do
   end
 
   @doc """
-  Number of events queued across every queue on this node, claimed or not, i.e. not yet
-  delivered to a backend or handed to the spool.
+  Number of pending entries across every queue on this node.
+  Claimed entries are not counted, even if delivery is still in progress.
   """
   @spec total_size() :: non_neg_integer()
   def total_size do

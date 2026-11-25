@@ -1,165 +1,180 @@
 defmodule Logflare.ShutdownDrain do
   @moduledoc """
-  Drains a node before it stops, so a pod shutdown doesn't drop the events it
-  still holds or strand spool queue messages until their visibility timeout.
-
-  Spool producers stop receiving new queue messages, then the node waits for
-  queued events and pending spool acks to clear, and for events accepted into
-  the spool buffer to be uploaded. Anything still pending at the timeout is
-  nacked so another consumer can pick it up.
-
-  Keep the pod's termination grace period comfortably above the timeout.
+  Stops spool intake and drains queued events, spool commits, and acknowledgments.
+  Incomplete spool work is nacked for redelivery when the cleanup budget allows.
+  An empty ingestion queue doesn't confirm delivery of claimed direct-backend events.
+  A local WAL commit doesn't confirm upload and queue publication.
   """
 
   require Logger
 
+  alias Logflare.Backends
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.Spool.ConsumerPipeline
   alias Logflare.Backends.Spool.ConsumerPipeline.QueueProducer
+  alias Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWal
   alias Logflare.Backends.Spool.DurableBuffer.Supervisor, as: SpoolDurableBufferSup
   alias Logflare.Backends.Spool.ObjectDeleter
   alias Logflare.Backends.Spool.SpoolAck
-  alias Logflare.Utils.Tasks
+  alias Logflare.Shutdown.Budget
 
   @default_poll_interval_ms 100
-  @default_spool_sync_timeout_ms 10_000
-  @default_cleanup_timeout_ms 10_000
 
-  @type result :: :drained | :timeout
-
-  @type opts :: [
-          timeout_ms: non_neg_integer(),
-          min_wait_ms: non_neg_integer(),
-          poll_interval_ms: pos_integer(),
-          producers: [GenServer.server()],
-          spool_buffer: atom() | nil,
-          spool_sync_timeout_ms: non_neg_integer(),
-          cleanup_timeout_ms: non_neg_integer()
-        ]
+  @type result :: :drained | :timeout | :error
+  @type intake_result :: :ok | :timeout
+  @type spool_sync_result ::
+          :none | :synced | :local_wal_synced_cloud_delivery_unverified | :timeout | :error
 
   @doc """
-  Drains the node and returns `:drained` or `:timeout`.
-
-  Options:
-
-    * `:timeout_ms` - required. Maximum time to wait before nacking pending spool files.
-    * `:min_wait_ms` - minimum time to wait before checking for drain completion, so load
-      balancers stop sending traffic first. Defaults to `0`.
-    * `:poll_interval_ms` - how often to check whether the node has drained. Defaults to `100`.
-    * `:producers` - spool producers to stop receiving on. Defaults to every `ConsumerPipeline` producer.
-    * `:spool_buffer` - spool producer `DurableBuffer` to sync. Defaults to this node's, if started.
-    * `:spool_sync_timeout_ms` - how long to wait for the spool buffer to sync. Defaults to `10_000`.
-    * `:cleanup_timeout_ms` - shared budget for nacking leftover spool files and flushing acks.
-      Defaults to `10_000`.
+  Requests prefetch settlement on current producers after readiness enters draining.
+  Replacement producers start with intake closed and do not need a stop request.
   """
-  @spec run(opts()) :: result()
-  def run(opts) do
-    timeout_ms = Keyword.fetch!(opts, :timeout_ms)
-    min_wait_ms = Keyword.get(opts, :min_wait_ms, 0)
-    poll_interval_ms = Keyword.get(opts, :poll_interval_ms, @default_poll_interval_ms)
-    producers = Keyword.get_lazy(opts, :producers, &spool_producers/0)
-    spool_buffer = Keyword.get_lazy(opts, :spool_buffer, &spool_buffer/0)
-
-    spool_sync_timeout_ms =
-      Keyword.get(opts, :spool_sync_timeout_ms, @default_spool_sync_timeout_ms)
-
-    cleanup_timeout_ms = Keyword.get(opts, :cleanup_timeout_ms, @default_cleanup_timeout_ms)
-    started_at = System.monotonic_time(:millisecond)
-
-    Enum.each(producers, &stop_receiving/1)
-
+  @spec stop_receiving(integer(), [GenServer.server()]) :: intake_result()
+  def stop_receiving(deadline, producers \\ spool_producers()) do
     Logger.warning(
-      "shutdown_drain: started, stopped receiving on #{length(producers)} spool producer(s), " <>
-        "waiting at least #{min_wait_ms}ms and up to #{timeout_ms}ms for in-flight events"
+      "shutdown_drain: requesting intake stop on #{length(producers)} spool producer(s)"
     )
 
-    wait_result =
-      await_drained(
-        producers,
-        started_at + min_wait_ms,
-        started_at + timeout_ms,
-        poll_interval_ms
-      )
+    Enum.reduce(producers, :ok, fn producer, status ->
+      result =
+        producer_call(fn ->
+          QueueProducer.stop_receiving(producer, Budget.remaining(deadline))
+        end)
 
-    spool_buffer_result = sync_spool_buffer(spool_buffer, spool_sync_timeout_ms)
+      if result == :timeout, do: :timeout, else: status
+    end)
+  end
+
+  @spec configured_spool_buffer() :: atom() | nil
+  def configured_spool_buffer do
+    if Backends.spool_producer_mode?(), do: SpoolDurableBufferSup.name()
+  end
+
+  @spec run(Budget.flush() | nil, intake_result(), atom() | nil, keyword()) :: result()
+  def run(budget, intake_result, buffer, opts \\ [])
+
+  def run(nil, :ok, _buffer, _opts), do: :drained
+  def run(nil, :timeout, _buffer, _opts), do: :timeout
+
+  def run(budget, _intake_result, buffer, opts) do
+    started_at = System.monotonic_time(:millisecond)
+    queue_deadline = Budget.deadline(budget.queues)
+    poll_interval_ms = Keyword.get(opts, :poll_interval_ms, @default_poll_interval_ms)
+    producers = Keyword.get(opts, :producers, &spool_producers/0)
+
+    Logger.warning("shutdown_drain: started")
+    queues = await_drained(producers, queue_deadline, poll_interval_ms)
+    spool = sync_spool_buffer(budget.sync, buffer)
     spool_pending = SpoolAck.pending_count()
     queued_events = IngestEventQueue.total_size()
-    cleanup_deadline = System.monotonic_time(:millisecond) + cleanup_timeout_ms
-
-    if wait_result == :timeout, do: SpoolAck.nack_pending(cleanup_timeout_ms)
-
-    SpoolAck.flush(max(cleanup_deadline - System.monotonic_time(:millisecond), 0))
-
-    object_deletes =
-      ObjectDeleter.flush(max(cleanup_deadline - System.monotonic_time(:millisecond), 0))
+    {acks, object_deletes} = cleanup(queues, budget.cleanup)
 
     result =
-      if wait_result == :drained and spool_buffer_result != :timeout, do: :drained, else: :timeout
-
-    duration = System.monotonic_time(:millisecond) - started_at
+      cond do
+        spool == :error -> :error
+        :timeout in [queues, spool, acks, object_deletes] -> :timeout
+        true -> :drained
+      end
 
     Logger.warning(
       "shutdown_drain: finished result=#{result} spool_pending=#{spool_pending} " <>
-        "queued_events=#{queued_events} duration_ms=#{duration} spool_buffer=#{spool_buffer_result} " <>
-        "object_deletes=#{object_deletes}"
+        "queued_events=#{queued_events} duration_ms=#{System.monotonic_time(:millisecond) - started_at} " <>
+        "spool_buffer=#{spool} object_deletes=#{object_deletes} direct_backend_delivery=unverified"
     )
 
     result
   end
 
-  defp spool_buffer do
-    if SpoolDurableBufferSup.partitions() != [], do: SpoolDurableBufferSup.name()
+  @doc "Settles remaining spool receipts and attempts outstanding acknowledgments and deletes."
+  @spec cleanup(:drained | :timeout, Budget.limit()) :: {:ok | :timeout, :ok | :timeout}
+  def cleanup(queue_result, limit) do
+    deadline = Budget.deadline(limit)
+    if queue_result == :timeout, do: within(deadline, &SpoolAck.nack_pending/1)
+
+    acks = within(deadline, &SpoolAck.flush/1)
+    {acks, within(deadline, &ObjectDeleter.flush/1)}
   end
 
-  defp sync_spool_buffer(nil, _timeout_ms), do: :none
+  defp within(deadline, operation), do: operation.(Budget.remaining(deadline))
 
-  defp sync_spool_buffer(buffer, timeout_ms) do
-    Logger.warning("shutdown_drain: syncing the spool buffer for up to #{timeout_ms}ms")
+  @spec sync_spool_buffer(Budget.limit() | nil, atom() | nil) :: spool_sync_result()
+  def sync_spool_buffer(nil, _buffer), do: :none
+  def sync_spool_buffer(_limit, nil), do: :none
 
-    case Tasks.run_within(fn -> DurableBuffer.sync_all(buffer) end, timeout_ms) do
-      {:ok, :ok} -> :synced
-      _ -> :timeout
+  def sync_spool_buffer(limit, buffer) do
+    deadline = Budget.deadline(limit)
+
+    Logger.warning(
+      "shutdown_drain: syncing the spool buffer for up to #{Budget.remaining(deadline)}ms"
+    )
+
+    sync_buffer(buffer, deadline)
+  end
+
+  defp sync_buffer(buffer, deadline) do
+    %{backend: {backend, _}} = DurableBuffer.config(buffer)
+
+    case DurableBuffer.sync_all(buffer, Budget.remaining(deadline)) do
+      :ok when backend == RotatingWal -> :local_wal_synced_cloud_delivery_unverified
+      :ok -> :synced
+      {:error, failures} -> report_sync_failures(failures)
     end
+  rescue
+    ArgumentError ->
+      Logger.warning("shutdown_drain: spool buffer unavailable during sync")
+      :error
+  end
+
+  defp report_sync_failures(failures) do
+    {timed_out, failed} = Enum.split_with(failures, fn {_index, reason} -> reason == :timeout end)
+
+    Logger.warning(
+      "shutdown_drain: spool sync incomplete failed_partitions=#{inspect(Enum.map(failed, &elem(&1, 0)))} " <>
+        "timed_out_partitions=#{inspect(Enum.map(timed_out, &elem(&1, 0)))}"
+    )
+
+    if failed == [], do: :timeout, else: :error
   end
 
   defp spool_producers do
-    if Process.whereis(ConsumerPipeline),
-      do: Broadway.producer_names(ConsumerPipeline),
-      else: []
+    if Process.whereis(ConsumerPipeline) do
+      for name <- Broadway.producer_names(ConsumerPipeline),
+          pid = GenServer.whereis(name),
+          do: pid
+    else
+      []
+    end
+  catch
+    :exit, {:noproc, {Broadway.Topology, :config, _}} -> []
   end
 
-  defp await_drained(producers, earliest, deadline, poll_interval_ms) do
-    now = System.monotonic_time(:millisecond)
-
+  defp await_drained(producers, deadline, poll_interval_ms) do
     cond do
-      now >= earliest and drained?(producers) ->
+      drained?(producers.(), deadline) ->
         :drained
 
-      now >= deadline ->
+      Budget.remaining(deadline) == 0 ->
         :timeout
 
       true ->
-        Process.sleep(poll_interval_ms)
-        await_drained(producers, earliest, deadline, poll_interval_ms)
+        Process.sleep(min(poll_interval_ms, Budget.remaining(deadline)))
+        await_drained(producers, deadline, poll_interval_ms)
     end
   end
 
-  defp drained?(producers) do
-    Enum.all?(producers, &producer_drained?/1) and SpoolAck.pending_count() == 0 and
-      IngestEventQueue.total_size() == 0
+  defp drained?(producers, deadline) do
+    Enum.all?(producers, fn producer ->
+      producer_call(fn -> QueueProducer.drained?(producer, Budget.remaining(deadline)) end) in [
+        true,
+        :gone
+      ]
+    end) and SpoolAck.pending_count() == 0 and IngestEventQueue.total_size() == 0
   end
 
-  # A producer that has already exited settles its own prefetch (see
-  # QueueProducer's deliver_or_settle/5), so there is nothing to stop.
-  defp stop_receiving(producer) do
-    QueueProducer.stop_receiving(producer)
+  defp producer_call(fun) do
+    fun.()
   catch
-    :exit, _reason -> :ok
-  end
-
-  defp producer_drained?(producer) do
-    QueueProducer.drained?(producer)
-  catch
-    :exit, _reason -> true
+    :exit, {:noproc, _call} -> :gone
+    :exit, _reason -> :timeout
   end
 end

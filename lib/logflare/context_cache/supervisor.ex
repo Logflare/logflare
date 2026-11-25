@@ -18,6 +18,7 @@ defmodule Logflare.ContextCache.Supervisor do
   alias Logflare.KeyValues
   alias Logflare.Partners
   alias Logflare.QueryContext
+  alias Logflare.RecordUsages
   alias Logflare.Repo
   alias Logflare.Repo.ConnectionOptions
   alias Logflare.Rules
@@ -59,6 +60,7 @@ defmodule Logflare.ContextCache.Supervisor do
       end
 
     caches ++
+      [RecordUsages.Cache, RecordUsages.Writer] ++
       List.wrap(maybe_transaction_broadcaster) ++
       List.wrap(maybe_cainophile) ++
       List.wrap(maybe_busters)
