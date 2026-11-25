@@ -45,5 +45,11 @@
   },
   "engines": {
     "node": ">=16.14"
+  },
+  "overrides": {
+    "tinypool": "^2.2.0",
+    "serialize-javascript": "^7.1.4",
+    "uuid": "^14.0.3",
+    "qs": "^6.17.1"
   }
 }
