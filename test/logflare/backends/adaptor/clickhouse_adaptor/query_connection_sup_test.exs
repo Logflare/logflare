@@ -93,7 +93,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSupTest do
       assert {backend.id, "api", api_pool, 4} in pools
     end
 
-    test "drops pools once they are stopped", %{backend: backend} do
+    test "pool draining after a refresh", %{backend: backend} do
       {:ok, _} =
         QueryConnectionSup.start_connection_manager(ConnectionManager.child_spec(backend, "api"))
 
@@ -178,9 +178,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSupTest do
   end
 
   describe "refresh_backend_local/1" do
-    test "returns ok with no manager, then stops the backend's active pool", %{backend: backend} do
+    test "no manager running", %{backend: backend} do
       assert :ok == QueryConnectionSup.refresh_backend_local(backend.id)
+    end
 
+    test "backend saved with a new read pool size", %{backend: backend} do
       {:ok, _manager_pid} =
         QueryConnectionSup.start_connection_manager(ConnectionManager.child_spec(backend))
 
@@ -224,7 +226,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSupTest do
   end
 
   describe "refresh_backend/1" do
-    test "stops the backend's pool across the cluster", %{backend: backend} do
+    test "backend saved with a new read pool size", %{backend: backend} do
       {:ok, _manager_pid} =
         QueryConnectionSup.start_connection_manager(ConnectionManager.child_spec(backend))
 
@@ -334,7 +336,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSupTest do
       end)
     end
 
-    test "refresh_backend_local stops the active pool for every label", %{backend: backend} do
+    test "refresh_backend_local with a new labeled read pool size", %{backend: backend} do
       {:ok, _} =
         QueryConnectionSup.start_connection_manager(ConnectionManager.child_spec(backend, "api"))
 
