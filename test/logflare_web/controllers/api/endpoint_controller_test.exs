@@ -73,6 +73,49 @@ defmodule LogflareWeb.Api.EndpointControllerTest do
 
       assert %{name: "own updated"} = Endpoints.get_endpoint_query(own_endpoint.id)
     end
+
+    test "a key cannot create an endpoint with a backend of a team its account is a member of",
+         %{conn: conn} do
+      member = insert(:user, endpoints_beta: true)
+      team_user = insert(:team_user, email: member.email)
+      team_backend = insert(:backend, user: team_user.team.user)
+
+      assert conn
+             |> add_access_token(member, "private")
+             |> post(~p"/api/endpoints", %{
+               name: "linked",
+               language: "bq_sql",
+               query: "select a from logs",
+               backend_id: team_backend.id
+             })
+             |> response(404)
+
+      assert Endpoints.list_endpoints_by(user_id: member.id) == []
+    end
+
+    test "a key can update an endpoint that already links to another account's backend",
+         %{conn: conn} do
+      member = insert(:user, endpoints_beta: true)
+      team_user = insert(:team_user, email: member.email)
+      team_backend = insert(:backend, user: team_user.team.user)
+      endpoint = insert(:endpoint, user: member, backend: team_backend, name: "linked")
+      conn = add_access_token(conn, member, "private")
+
+      assert %{"backend_id" => backend_id} =
+               conn
+               |> get(~p"/api/endpoints/#{endpoint.token}")
+               |> json_response(200)
+
+      assert conn
+             |> patch(~p"/api/endpoints/#{endpoint.token}", %{
+               name: "renamed",
+               backend_id: backend_id
+             })
+             |> text_response(204) == ""
+
+      assert %{name: "renamed", backend_id: linked_id} = Endpoints.get_endpoint_query(endpoint.id)
+      assert linked_id == team_backend.id
+    end
   end
 
   describe "show/2" do

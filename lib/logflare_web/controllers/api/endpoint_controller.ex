@@ -55,15 +55,12 @@ defmodule LogflareWeb.Api.EndpointController do
   )
 
   def create(%{assigns: %{user: user}} = conn, params) do
-    with :ok <- authorize_backend_id(user, params),
+    with :ok <- authorize_backend_id(user, params, nil),
          origin <- conn.assigns[:access_token] || user,
          {:ok, query} <- Endpoints.create_query(user, params, origin) do
       conn
       |> put_status(201)
       |> json(query)
-    else
-      nil -> {:error, :not_found}
-      err -> err
     end
   end
 
@@ -91,9 +88,9 @@ defmodule LogflareWeb.Api.EndpointController do
   )
 
   def update(%{assigns: %{user: user}} = conn, %{"token" => token} = params) do
-    with :ok <- authorize_backend_id(user, params),
+    with query when not is_nil(query) <- Endpoints.get_by(token: token, user_id: user.id),
+         :ok <- authorize_backend_id(user, params, query.backend_id),
          origin <- conn.assigns[:access_token] || user,
-         query when not is_nil(query) <- Endpoints.get_by(token: token, user_id: user.id),
          {:ok, query} <- Endpoints.update_query(user, query, params, origin) do
       conn
       |> case do
@@ -150,14 +147,25 @@ defmodule LogflareWeb.Api.EndpointController do
     end
   end
 
-  defp authorize_backend_id(user, params) do
+  @spec authorize_backend_id(Logflare.User.t(), map(), integer() | nil) ::
+          :ok | {:error, :not_found}
+  defp authorize_backend_id(user, params, linked_backend_id) do
     case params["backend_id"] do
-      v when v in [nil, ""] ->
-        :ok
-
-      backend_id ->
-        with {:ok, _backend} <- Backends.fetch_backend_by(id: backend_id, user_id: user.id),
-             do: :ok
+      v when v in [nil, ""] -> :ok
+      backend_id -> authorize_new_backend_id(user, backend_id, linked_backend_id)
     end
+  end
+
+  @spec authorize_new_backend_id(Logflare.User.t(), integer() | String.t(), integer() | nil) ::
+          :ok | {:error, :not_found}
+  defp authorize_new_backend_id(user, backend_id, nil) do
+    with {:ok, _backend} <- Backends.fetch_backend_by(id: backend_id, user_id: user.id),
+         do: :ok
+  end
+
+  defp authorize_new_backend_id(user, backend_id, linked_backend_id) do
+    if to_string(backend_id) == to_string(linked_backend_id),
+      do: :ok,
+      else: authorize_new_backend_id(user, backend_id, nil)
   end
 end

@@ -197,14 +197,4 @@ defmodule Logflare.Teams do
         t.id == ^team_id or tu.id == ^team_user_id or u.email == ^email or tu.email == ^email,
       distinct: true
   end
-
-  @doc "Fetches a single team with the given token from the list of teams he's part of. Returns {:ok, team} if found, {:error, :not_found} if not found"
-  @spec fetch_team_by_user_access(User.t(), binary()) :: {:ok, Team.t()} | {:error, :not_found}
-  def fetch_team_by_user_access(user, token) do
-    if team = get_team_by_user_access(user, token) do
-      {:ok, team}
-    else
-      {:error, :not_found}
-    end
-  end
 end

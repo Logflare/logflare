@@ -380,6 +380,54 @@ defmodule LogflareWeb.Api.AlertControllerTest do
       assert backend_id == own_backend.id
     end
 
+    test "a key cannot create an alert with a backend of a team its account is a member of", %{
+      conn: conn
+    } do
+      member = insert(:user)
+      team_user = insert(:team_user, email: member.email)
+      team_backend = insert(:backend, user: team_user.team.user)
+
+      assert %{"error" => "Not Found"} =
+               conn
+               |> add_access_token(member, "private")
+               |> post(~p"/api/alerts", %{
+                 name: "my alert",
+                 query: "select current_date() as date",
+                 cron: "0 0 1 * *",
+                 backend_ids: [team_backend.id]
+               })
+               |> json_response(404)
+
+      assert Alerting.list_alert_queries(member) == []
+    end
+
+    test "a key can update an alert that already links to another account's backend", %{
+      conn: conn
+    } do
+      member = insert(:user)
+      team_user = insert(:team_user, email: member.email)
+      team_backend = insert(:backend, user: team_user.team.user)
+      own_backend = insert(:backend, user: member)
+      alert = insert(:alert, user: member, backends: [team_backend])
+      conn = add_access_token(conn, member, "private")
+
+      assert %{"backends" => [%{"id" => linked_id}]} =
+               conn
+               |> get(~p"/api/alerts/#{alert.token}")
+               |> json_response(200)
+
+      assert %{"name" => "renamed", "backends" => backends} =
+               conn
+               |> put(~p"/api/alerts/#{alert.token}", %{
+                 name: "renamed",
+                 backend_ids: [linked_id, own_backend.id]
+               })
+               |> json_response(200)
+
+      assert backends |> Enum.map(& &1["id"]) |> Enum.sort() ==
+               Enum.sort([team_backend.id, own_backend.id])
+    end
+
     test "show alert with bad user", %{conn: conn, user: user} do
       alert = insert(:alert, user: user)
 
