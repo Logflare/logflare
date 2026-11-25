@@ -269,10 +269,13 @@ defmodule LogflareWeb.Api.AlertControllerTest do
                |> json_response(400)
     end
 
-    test "rejects non-positive and non-integer backend IDs", %{conn: conn, user: user} do
+    test "rejects non-positive, non-integer and out-of-range backend IDs", %{
+      conn: conn,
+      user: user
+    } do
       alert = insert(:alert, user: user)
 
-      for invalid_id <- [0, -1, 1.5, "1", %{}] do
+      for invalid_id <- [0, -1, 1.5, "1", %{}, 9_223_372_036_854_775_808] do
         assert %{"error" => "backend_ids must contain positive integers"} =
                  conn
                  |> put(~p"/api/alerts/#{alert.token}", %{backend_ids: [invalid_id]})

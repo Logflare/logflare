@@ -18,7 +18,7 @@ Access tokens can be scoped to specific functionality.
 
 `ingest` and `query` scopes can be scoped to specific sources and endpoints. It is recommended to use the least privileged token for the given task, especially for public ingestion.
 
-An access token belongs to the account that created it. The management API only returns and changes that account's sources, endpoints, alerts, backends and team. When the account is a member of another account's team, the token cannot reach that team's resources. Create a token in the other account to manage them.
+An access token belongs to the account under which it was issued. The management API only returns and changes that account's sources, endpoints, alerts, backends and team. When the account is a member of another account's team, the token cannot reach that team's resources. To manage them, switch to that team in the dashboard and create a token there.
 
 ## Discovering ingest sources
 

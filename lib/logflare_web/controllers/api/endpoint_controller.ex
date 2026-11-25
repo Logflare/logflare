@@ -2,6 +2,8 @@ defmodule LogflareWeb.Api.EndpointController do
   use LogflareWeb, :controller
   use OpenApiSpex.ControllerSpecs
 
+  import Logflare.Utils.Guards
+
   alias Logflare.Backends
   alias Logflare.Endpoints
 
@@ -157,9 +159,9 @@ defmodule LogflareWeb.Api.EndpointController do
 
   @spec authorize_cast_backend_id({:ok, integer()} | :error, Logflare.User.t()) ::
           :ok | {:error, :not_found}
-  defp authorize_cast_backend_id({:ok, id}, user) do
+  defp authorize_cast_backend_id({:ok, id}, user) when is_db_id(id) do
     with {:ok, _backend} <- Backends.fetch_backend_by(id: id, user_id: user.id), do: :ok
   end
 
-  defp authorize_cast_backend_id(:error, _user), do: {:error, :not_found}
+  defp authorize_cast_backend_id(_cast, _user), do: {:error, :not_found}
 end

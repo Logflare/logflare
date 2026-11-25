@@ -113,10 +113,27 @@ defmodule LogflareWeb.Api.EndpointControllerTest do
 
     test "returns not found for a backend_id that is not an id", %{conn: conn, user: user} do
       endpoint = insert(:endpoint, user: user, name: "plain")
+      conn = add_access_token(conn, user, "private")
+
+      for invalid_id <- [
+            %{"a" => 1},
+            0,
+            -1,
+            9_223_372_036_854_775_808,
+            "9223372036854775808"
+          ] do
+        assert conn
+               |> patch(~p"/api/endpoints/#{endpoint.token}", %{backend_id: invalid_id})
+               |> response(404)
+      end
 
       assert conn
-             |> add_access_token(user, "private")
-             |> patch(~p"/api/endpoints/#{endpoint.token}", %{backend_id: %{"a" => 1}})
+             |> post(~p"/api/endpoints", %{
+               name: "big",
+               language: "bq_sql",
+               query: "select a from logs",
+               backend_id: 9_223_372_036_854_775_808
+             })
              |> response(404)
 
       assert %{name: "plain", backend_id: nil} = Endpoints.get_endpoint_query(endpoint.id)

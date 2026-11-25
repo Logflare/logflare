@@ -2,6 +2,8 @@ defmodule LogflareWeb.Api.AlertController do
   use LogflareWeb, :controller
   use OpenApiSpex.ControllerSpecs
 
+  import Logflare.Utils.Guards
+
   alias Logflare.Alerting
   alias Logflare.Backends
   alias LogflareWeb.OpenApi.Accepted
@@ -123,7 +125,7 @@ defmodule LogflareWeb.Api.AlertController do
   defp verify_backends_owner(params, _user), do: {:ok, params}
 
   defp validate_backend_ids(ids) do
-    if Enum.all?(ids, &(is_integer(&1) and &1 > 0)),
+    if Enum.all?(ids, &is_db_id/1),
       do: :ok,
       else: {:error, "backend_ids must contain positive integers"}
   end
