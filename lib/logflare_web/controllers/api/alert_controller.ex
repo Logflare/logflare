@@ -59,7 +59,7 @@ defmodule LogflareWeb.Api.AlertController do
   )
 
   def create(%{assigns: %{user: user}} = conn, params) do
-    with {:ok, attrs} <- verify_backends_owner(params, user, []),
+    with {:ok, attrs} <- verify_backends_owner(params, user),
          {:ok, alert} <- Alerting.create_alert_query(user, attrs) do
       conn
       |> put_status(201)
@@ -82,7 +82,7 @@ defmodule LogflareWeb.Api.AlertController do
 
   def update(%{assigns: %{user: user}} = conn, %{"token" => token} = params) do
     with {:ok, alert} <- fetch_alert(user, token),
-         {:ok, attrs} <- verify_backends_owner(params, user, linked_backend_ids(alert)),
+         {:ok, attrs} <- verify_backends_owner(params, user),
          {:ok, updated} <- Alerting.update_alert_query(alert, attrs) do
       conn
       |> case do
@@ -98,25 +98,19 @@ defmodule LogflareWeb.Api.AlertController do
     end
   end
 
-  @spec linked_backend_ids(Alerting.AlertQuery.t()) :: [integer()]
-  defp linked_backend_ids(alert) do
-    alert
-    |> Alerting.preload_alert_query()
-    |> Map.fetch!(:backends)
-    |> Enum.map(& &1.id)
-  end
-
-  defp verify_backends_owner(%{"backends" => _}, _user, _linked_ids) do
+  @spec verify_backends_owner(map(), Logflare.User.t()) ::
+          {:ok, map()} | {:error, String.t() | :not_found}
+  defp verify_backends_owner(%{"backends" => _}, _user) do
     {:error, "backends is read-only; use backend_ids"}
   end
 
-  defp verify_backends_owner(%{"backend_ids" => ids}, _user, _linked_ids) when not is_list(ids) do
+  defp verify_backends_owner(%{"backend_ids" => ids}, _user) when not is_list(ids) do
     {:error, "backend_ids must be an array"}
   end
 
-  defp verify_backends_owner(%{"backend_ids" => ids} = params, user, linked_ids) do
+  defp verify_backends_owner(%{"backend_ids" => ids} = params, user) do
     with :ok <- validate_backend_ids(ids),
-         {:ok, backends} <- fetch_backends(Enum.uniq(ids), user, linked_ids, []) do
+         {:ok, backends} <- fetch_backends(Enum.uniq(ids), user) do
       attrs =
         params
         |> Map.delete("backend_ids")
@@ -126,7 +120,7 @@ defmodule LogflareWeb.Api.AlertController do
     end
   end
 
-  defp verify_backends_owner(params, _user, _linked_ids), do: {:ok, params}
+  defp verify_backends_owner(params, _user), do: {:ok, params}
 
   defp validate_backend_ids(ids) do
     if Enum.all?(ids, &(is_integer(&1) and &1 > 0)),
@@ -134,20 +128,16 @@ defmodule LogflareWeb.Api.AlertController do
       else: {:error, "backend_ids must contain positive integers"}
   end
 
-  defp fetch_backends([], _user, _linked_ids, acc), do: {:ok, Enum.reverse(acc)}
+  @spec fetch_backends([integer()], Logflare.User.t(), [Backends.Backend.t()]) ::
+          {:ok, [Backends.Backend.t()]} | {:error, :not_found}
+  defp fetch_backends(ids, user, acc \\ [])
 
-  defp fetch_backends([id | ids], user, linked_ids, acc) do
-    with {:ok, backend} <- fetch_backend(id, user, linked_ids) do
-      fetch_backends(ids, user, linked_ids, [backend | acc])
+  defp fetch_backends([], _user, acc), do: {:ok, Enum.reverse(acc)}
+
+  defp fetch_backends([id | ids], user, acc) do
+    with {:ok, backend} <- Backends.fetch_backend_by(id: id, user_id: user.id) do
+      fetch_backends(ids, user, [backend | acc])
     end
-  end
-
-  @spec fetch_backend(integer(), Logflare.User.t(), [integer()]) ::
-          {:ok, Backends.Backend.t()} | {:error, :not_found}
-  defp fetch_backend(id, user, linked_ids) do
-    if id in linked_ids,
-      do: Backends.fetch_backend_by(id: id),
-      else: Backends.fetch_backend_by(id: id, user_id: user.id)
   end
 
   @spec fetch_alert(Logflare.User.t(), String.t()) ::

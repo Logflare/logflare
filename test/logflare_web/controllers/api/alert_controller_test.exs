@@ -401,31 +401,23 @@ defmodule LogflareWeb.Api.AlertControllerTest do
       assert Alerting.list_alert_queries(member) == []
     end
 
-    test "a key can update an alert that already links to another account's backend", %{
-      conn: conn
-    } do
+    test "a key cannot send another account's backend on update, even when the alert already links to it",
+         %{conn: conn} do
       member = insert(:user)
       team_user = insert(:team_user, email: member.email)
       team_backend = insert(:backend, user: team_user.team.user)
-      own_backend = insert(:backend, user: member)
-      alert = insert(:alert, user: member, backends: [team_backend])
+      alert = insert(:alert, user: member, backends: [team_backend], name: "linked")
       conn = add_access_token(conn, member, "private")
 
-      assert %{"backends" => [%{"id" => linked_id}]} =
-               conn
-               |> get(~p"/api/alerts/#{alert.token}")
-               |> json_response(200)
-
-      assert %{"name" => "renamed", "backends" => backends} =
+      assert %{"error" => "Not Found"} =
                conn
                |> put(~p"/api/alerts/#{alert.token}", %{
                  name: "renamed",
-                 backend_ids: [linked_id, own_backend.id]
+                 backend_ids: [team_backend.id]
                })
-               |> json_response(200)
+               |> json_response(404)
 
-      assert backends |> Enum.map(& &1["id"]) |> Enum.sort() ==
-               Enum.sort([team_backend.id, own_backend.id])
+      assert %{name: "linked"} = Alerting.get_alert_query_by(id: alert.id)
     end
 
     test "show alert with bad user", %{conn: conn, user: user} do

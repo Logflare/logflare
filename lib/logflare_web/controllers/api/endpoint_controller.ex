@@ -55,7 +55,7 @@ defmodule LogflareWeb.Api.EndpointController do
   )
 
   def create(%{assigns: %{user: user}} = conn, params) do
-    with :ok <- authorize_backend_id(user, params, nil),
+    with :ok <- authorize_backend_id(user, params),
          origin <- conn.assigns[:access_token] || user,
          {:ok, query} <- Endpoints.create_query(user, params, origin) do
       conn
@@ -89,7 +89,7 @@ defmodule LogflareWeb.Api.EndpointController do
 
   def update(%{assigns: %{user: user}} = conn, %{"token" => token} = params) do
     with query when not is_nil(query) <- Endpoints.get_by(token: token, user_id: user.id),
-         :ok <- authorize_backend_id(user, params, query.backend_id),
+         :ok <- authorize_backend_id(user, params),
          origin <- conn.assigns[:access_token] || user,
          {:ok, query} <- Endpoints.update_query(user, query, params, origin) do
       conn
@@ -147,25 +147,19 @@ defmodule LogflareWeb.Api.EndpointController do
     end
   end
 
-  @spec authorize_backend_id(Logflare.User.t(), map(), integer() | nil) ::
-          :ok | {:error, :not_found}
-  defp authorize_backend_id(user, params, linked_backend_id) do
+  @spec authorize_backend_id(Logflare.User.t(), map()) :: :ok | {:error, :not_found}
+  defp authorize_backend_id(user, params) do
     case params["backend_id"] do
       v when v in [nil, ""] -> :ok
-      backend_id -> authorize_new_backend_id(user, backend_id, linked_backend_id)
+      backend_id -> authorize_cast_backend_id(Ecto.Type.cast(:id, backend_id), user)
     end
   end
 
-  @spec authorize_new_backend_id(Logflare.User.t(), integer() | String.t(), integer() | nil) ::
+  @spec authorize_cast_backend_id({:ok, integer()} | :error, Logflare.User.t()) ::
           :ok | {:error, :not_found}
-  defp authorize_new_backend_id(user, backend_id, nil) do
-    with {:ok, _backend} <- Backends.fetch_backend_by(id: backend_id, user_id: user.id),
-         do: :ok
+  defp authorize_cast_backend_id({:ok, id}, user) do
+    with {:ok, _backend} <- Backends.fetch_backend_by(id: id, user_id: user.id), do: :ok
   end
 
-  defp authorize_new_backend_id(user, backend_id, linked_backend_id) do
-    if to_string(backend_id) == to_string(linked_backend_id),
-      do: :ok,
-      else: authorize_new_backend_id(user, backend_id, nil)
-  end
+  defp authorize_cast_backend_id(:error, _user), do: {:error, :not_found}
 end

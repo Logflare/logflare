@@ -93,7 +93,7 @@ defmodule LogflareWeb.Api.EndpointControllerTest do
       assert Endpoints.list_endpoints_by(user_id: member.id) == []
     end
 
-    test "a key can update an endpoint that already links to another account's backend",
+    test "a key cannot send another account's backend on update, even when the endpoint already links to it",
          %{conn: conn} do
       member = insert(:user, endpoints_beta: true)
       team_user = insert(:team_user, email: member.email)
@@ -101,20 +101,25 @@ defmodule LogflareWeb.Api.EndpointControllerTest do
       endpoint = insert(:endpoint, user: member, backend: team_backend, name: "linked")
       conn = add_access_token(conn, member, "private")
 
-      assert %{"backend_id" => backend_id} =
-               conn
-               |> get(~p"/api/endpoints/#{endpoint.token}")
-               |> json_response(200)
-
       assert conn
              |> patch(~p"/api/endpoints/#{endpoint.token}", %{
                name: "renamed",
-               backend_id: backend_id
+               backend_id: team_backend.id
              })
-             |> text_response(204) == ""
+             |> response(404)
 
-      assert %{name: "renamed", backend_id: linked_id} = Endpoints.get_endpoint_query(endpoint.id)
-      assert linked_id == team_backend.id
+      assert %{name: "linked"} = Endpoints.get_endpoint_query(endpoint.id)
+    end
+
+    test "returns not found for a backend_id that is not an id", %{conn: conn, user: user} do
+      endpoint = insert(:endpoint, user: user, name: "plain")
+
+      assert conn
+             |> add_access_token(user, "private")
+             |> patch(~p"/api/endpoints/#{endpoint.token}", %{backend_id: %{"a" => 1}})
+             |> response(404)
+
+      assert %{name: "plain", backend_id: nil} = Endpoints.get_endpoint_query(endpoint.id)
     end
   end
 
