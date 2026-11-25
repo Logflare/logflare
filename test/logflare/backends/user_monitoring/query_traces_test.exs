@@ -1,21 +1,26 @@
 defmodule Logflare.Backends.UserMonitoring.QueryTracesTest do
   use LogflareWeb.ConnCase, async: false
+  use Oban.Testing, repo: Logflare.Repo
 
   import ExUnit.CaptureLog
 
   alias GoogleApi.BigQuery.V2.Api.Jobs
   alias GoogleApi.BigQuery.V2.Api.Tabledata
   alias GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse
+  alias Logflare.Alerting
+  alias Logflare.Alerting.AlertWorker
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Backends.QueryError
   alias Logflare.Backends.SourceSup
   alias Logflare.Backends.UserMonitoring.QueryTraces
   alias Logflare.Endpoints
+  alias Logflare.Logs.LogEvents
   alias Logflare.Logs.Search
   alias Logflare.Logs.SearchOperation, as: SO
   alias Logflare.Lql.Rules.ChartRule
   alias Logflare.Lql.Rules.FilterRule
+  alias Logflare.Repo
   alias Logflare.Sources.Source.BigQuery.SchemaBuilder
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.Users
@@ -205,6 +210,94 @@ defmodule Logflare.Backends.UserMonitoring.QueryTracesTest do
 
       assert_receive {:insert_all, rows}, 5_000
       assert [%{"lql" => "m.level:marker"}] = rows
+    end
+  end
+
+  describe "alert queries" do
+    setup :start_traces_source
+
+    setup %{user: user} do
+      stub(Jobs, :bigquery_jobs_query, fn _conn, _project, _opts ->
+        {:ok, TestUtils.gen_bq_response([])}
+      end)
+
+      %{alert: :alert |> insert(user: user) |> Repo.preload(:user)}
+    end
+
+    test "trace scheduled and manual alert queries", %{alert: alert} do
+      assert {:ok, _result} = Alerting.execute_alert_query(alert)
+      assert_receive {:insert_all, [scheduled]}, 5_000
+
+      assert {:ok, _result} = Alerting.execute_alert_query(alert, trigger: :manual)
+      assert_receive {:insert_all, [manual]}, 5_000
+
+      alert_id = alert.id
+      alert_name = alert.name
+
+      assert %{
+               "event_message" => "query.alert",
+               "alert_id" => ^alert_id,
+               "alert_name" => ^alert_name,
+               "alert_language" => "bq_sql",
+               "alert_trigger" => "scheduled",
+               "backend_type" => "bigquery",
+               "status" => "ok",
+               "total_bytes_processed" => 0,
+               "query" => query
+             } = scheduled
+
+      assert query =~ "current_date"
+      assert %{"alert_trigger" => "manual"} = manual
+    end
+
+    test "trace an alert triggered now as manual", %{alert: alert} do
+      alert_id = alert.id
+
+      assert {:ok, %Oban.Job{args: %{trigger: "manual"} = args}} =
+               Alerting.trigger_alert_now(alert)
+
+      assert :ok = perform_job(AlertWorker, args)
+
+      assert_receive {:insert_all, [%{"alert_id" => ^alert_id, "alert_trigger" => "manual"}]},
+                     5_000
+    end
+  end
+
+  describe "single event fetches" do
+    setup :start_traces_source
+
+    test "trace a single event fetch", %{user: user} do
+      event_id = Ecto.UUID.generate()
+
+      stub(Jobs, :bigquery_jobs_query, fn _conn, _project, _opts ->
+        {:ok, TestUtils.gen_bq_response([%{"id" => event_id, "event_message" => "hello"}])}
+      end)
+
+      schema = TestUtils.build_bq_schema(%{"metadata" => %{"level" => "error"}})
+      source = insert(:source, user: user)
+      insert(:source_schema, source: source, bigquery_schema: schema)
+      now = DateTime.to_string(DateTime.utc_now())
+
+      assert %{"event_message" => "hello"} =
+               LogEvents.fetch_event_by_id(source.token, event_id,
+                 partitions_range: [now, now],
+                 lql: "m.level:error"
+               )
+
+      assert_receive {:insert_all, [trace]}, 5_000
+      source_id = source.id
+
+      assert %{
+               "event_message" => "query.event",
+               "event_id" => ^event_id,
+               "lql" => "m.level:error",
+               "source_id" => ^source_id,
+               "backend_type" => "bigquery",
+               "status" => "ok",
+               "query" => query
+             } = trace
+
+      assert query =~ ".id ="
     end
   end
 

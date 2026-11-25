@@ -45,10 +45,12 @@ Contains one event per query that Logflare executes on your behalf. Tracing is b
 
 - **Endpoint queries** (`query.endpoint`), including background refreshes of cached results. Requests served from the results cache are not traced.
 - **Log search queries** (`query.search`): the events query, the chart query, and the query behind the event context view. A live tail re-runs its queries every second; only the first query of a tail is traced.
+- **Alert queries** (`query.alert`): scheduled runs, runs started with "Trigger now", and queries run from the alert editor.
+- **Single event fetches** (`query.event`): the query that loads one event, for example when opening an event from search.
 
 Each event includes:
 
-- **`event_message`** - Query kind, `query.endpoint` or `query.search`
+- **`event_message`** - Query kind: `query.endpoint`, `query.search`, `query.alert`, or `query.event`
 - **`query`** - The SQL sent to the backend adaptor. For endpoints, the adaptor may still rewrite parameter placeholders before running it
 - **`backend_type`** - The backend that ran the query
 - **`total_bytes_processed`** - Bytes scanned, for backends that report it (BigQuery, ClickHouse)
@@ -68,6 +70,17 @@ Log search events also include:
 - **`search_kind`** - `events`, `aggregates` (the chart), or `context` (the event context view)
 - **`lql`** - The LQL query as typed in the search bar
 - **`source_id`**, **`source_token`**, and **`source_name`** - The source that was searched
+
+Alert query events also include:
+
+- **`alert_id`** and **`alert_name`** - The alert that ran the query. A query run from the editor before the alert is saved has no `alert_id`
+- **`alert_language`** - Language the alert is written in
+- **`alert_trigger`** - `scheduled` for runs on the alert schedule, `manual` for runs started by a user
+
+Single event fetch events also include:
+
+- **`event_id`** - The ID of the fetched event
+- **`lql`**, **`source_id`**, **`source_token`**, and **`source_name`** - As for log search events
 
 To find the traces of one tenant, filter on a parameter value. For example, on BigQuery:
 

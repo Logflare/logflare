@@ -142,12 +142,10 @@ defmodule Logflare.Logs.SearchOperations do
 
   @spec search_trace_attrs(SO.t()) :: QueryTraces.attrs()
   defp search_trace_attrs(%SO{backend_type: backend_type, source: source} = so) do
-    query = query_for_execution(so)
-
     %{
       query_type: :search,
       search_kind: so.type || :context,
-      query: fn -> query_sql(backend_type, query) end,
+      query: {backend_type, query_for_execution(so)},
       lql: so.querystring,
       backend_type: backend_type,
       source_id: source.id,
@@ -155,16 +153,6 @@ defmodule Logflare.Logs.SearchOperations do
       source_name: source.name
     }
   end
-
-  @spec query_sql(:bigquery | :postgres, Ecto.Query.t()) :: String.t() | nil
-  defp query_sql(:postgres, query), do: query |> PostgresAdaptor.ecto_to_sql([]) |> sql_string()
-
-  defp query_sql(_backend_type, query),
-    do: query |> BigQueryAdaptor.ecto_to_sql([]) |> sql_string()
-
-  @spec sql_string({:ok, {String.t(), list()}} | {:error, term()}) :: String.t() | nil
-  defp sql_string({:ok, {sql, _params}}), do: sql
-  defp sql_string({:error, _reason}), do: nil
 
   @spec execute_backend_query(SO.t()) :: {:ok, map()} | {:error, term()}
   defp execute_backend_query(%SO{backend_type: :postgres} = so) do

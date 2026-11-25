@@ -23,6 +23,8 @@ defmodule Logflare.Backends.UserMonitoring.QueryTraces do
 
   import Logflare.Utils.Guards
 
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor
+  alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.Backends.QueryError
   alias Logflare.Logs.Processor
   alias Logflare.Logs.Raw
@@ -36,9 +38,14 @@ defmodule Logflare.Backends.UserMonitoring.QueryTraces do
 
   @type attrs :: %{
           required(:query_type) => atom(),
-          required(:query) => String.t() | (-> String.t() | nil),
+          required(:query) => String.t() | {:bigquery | :postgres, Ecto.Query.t()},
           optional(:endpoint_language) => atom(),
           optional(:search_kind) => atom(),
+          optional(:alert_id) => pos_integer() | nil,
+          optional(:alert_name) => String.t(),
+          optional(:alert_language) => atom(),
+          optional(:alert_trigger) => :scheduled | :manual,
+          optional(:event_id) => String.t(),
           optional(:lql) => String.t() | nil,
           optional(:source_id) => pos_integer(),
           optional(:source_token) => atom(),
@@ -80,8 +87,8 @@ defmodule Logflare.Backends.UserMonitoring.QueryTraces do
   Builds the `system.traces` event body.
 
   `params` and `labels` become lists of `%{"name" => name, "value" => value}` records, so the
-  source schema does not grow with each new parameter or label name. A `query` function is
-  called here, so the caller does not pay for building the query text.
+  source schema does not grow with each new parameter or label name. A `query` given as
+  `{backend_type, ecto_query}` is converted to SQL here, so the caller does not pay for it.
   """
   @spec build_event(map()) :: map()
   def build_event(attrs) do
@@ -171,7 +178,9 @@ defmodule Logflare.Backends.UserMonitoring.QueryTraces do
 
   @spec event_value(atom(), term()) :: term()
   defp event_value(_key, nil), do: nil
-  defp event_value(:query, fun) when is_function(fun, 0), do: fun.()
+
+  defp event_value(:query, {backend_type, %Ecto.Query{} = query}),
+    do: query_sql(backend_type, query)
 
   defp event_value(key, map) when key in [:params, :labels] and is_map(map) do
     for {name, value} <- Enum.sort(map), not is_nil(value) do
@@ -186,4 +195,12 @@ defmodule Logflare.Backends.UserMonitoring.QueryTraces do
   defp stringify(value) when is_binary(value), do: value
   defp stringify(value) when is_number(value) or is_atom(value), do: to_string(value)
   defp stringify(value), do: Jason.encode!(value)
+
+  @spec query_sql(:bigquery | :postgres, Ecto.Query.t()) :: String.t() | nil
+  defp query_sql(:postgres, query), do: query |> PostgresAdaptor.ecto_to_sql([]) |> sql_string()
+  defp query_sql(:bigquery, query), do: query |> BigQueryAdaptor.ecto_to_sql([]) |> sql_string()
+
+  @spec sql_string({:ok, {String.t(), list()}} | {:error, term()}) :: String.t() | nil
+  defp sql_string({:ok, {sql, _params}}), do: sql
+  defp sql_string({:error, _reason}), do: nil
 end
