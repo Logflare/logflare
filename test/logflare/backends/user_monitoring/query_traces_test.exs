@@ -10,6 +10,7 @@ defmodule Logflare.Backends.UserMonitoring.QueryTracesTest do
   alias Logflare.Alerting
   alias Logflare.Alerting.AlertWorker
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
+  alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Backends.QueryError
   alias Logflare.Backends.SourceSup
@@ -334,6 +335,61 @@ defmodule Logflare.Backends.UserMonitoring.QueryTracesTest do
     end
   end
 
+  describe "Postgres provisioning" do
+    setup :start_traces_source
+
+    setup %{user: user} do
+      repo = Application.get_env(:logflare, Repo)
+
+      url =
+        "postgresql://#{repo[:username]}:#{repo[:password]}@#{repo[:hostname]}/#{repo[:database]}"
+
+      config = %{url: url, schema: nil}
+
+      source = insert(:source, user: user)
+      backend = insert(:backend, type: :postgres, user: user, sources: [source], config: config)
+      on_exit(fn -> PostgresAdaptor.destroy_instance({source, backend}) end)
+
+      %{source: source, backend: backend}
+    end
+
+    test "trace each provisioning statement of a source once", %{
+      user: user,
+      source: source,
+      backend: backend
+    } do
+      assert :ok = PostgresAdaptor.create_events_table({source, backend})
+
+      traces = receive_traces(2)
+      backend_id = backend.id
+      source_id = source.id
+
+      for trace <- traces do
+        assert %{
+                 "event_message" => "query.provision",
+                 "backend_type" => "postgres",
+                 "backend_id" => ^backend_id,
+                 "source_id" => ^source_id,
+                 "status" => "ok"
+               } = trace
+      end
+
+      assert traces |> Enum.map(& &1["query"]) |> Enum.any?(&(&1 =~ "CREATE TABLE IF NOT EXISTS"))
+      assert traces |> Enum.map(& &1["query"]) |> Enum.any?(&(&1 =~ "CREATE INDEX IF NOT EXISTS"))
+
+      assert :ok = PostgresAdaptor.create_events_table({source, backend})
+      assert_next_trace_is_marker(user)
+    end
+
+    test "skip provisioning of system sources", %{user: user, backend: backend} do
+      system_source = insert(:source, user: user, system_source: true, system_source_type: :logs)
+      on_exit(fn -> PostgresAdaptor.destroy_instance({system_source, backend}) end)
+
+      assert :ok = PostgresAdaptor.create_events_table({system_source, backend})
+      assert_next_trace_is_marker(user)
+    end
+  end
+
   describe "measure_once/4" do
     setup :start_traces_source
 
@@ -486,6 +542,15 @@ defmodule Logflare.Backends.UserMonitoring.QueryTracesTest do
     QueryTraces.measure_once(user.id, key, %{query_type: :provision, query: query}, fn ->
       result
     end)
+  end
+
+  @spec receive_traces(pos_integer(), [map()]) :: [map()]
+  defp receive_traces(count, traces \\ [])
+  defp receive_traces(count, traces) when length(traces) >= count, do: traces
+
+  defp receive_traces(count, traces) do
+    assert_receive {:insert_all, rows}, 5_000
+    receive_traces(count, traces ++ rows)
   end
 
   @spec assert_next_trace_is_marker(Logflare.User.t()) :: term()

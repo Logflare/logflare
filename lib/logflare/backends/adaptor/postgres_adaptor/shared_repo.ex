@@ -98,9 +98,9 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.SharedRepo do
   >
   > This is desctructive operation. Be cautious when you call it.
   """
-  @spec migrate!(Source.t()) :: :ok | {:error, term()}
-  def migrate!(%Source{} = source) do
-    Migrations.migrate(source)
+  @spec migrate!(Source.t(), Backend.t()) :: :ok | {:error, term()}
+  def migrate!(%Source{} = source, %Backend{} = backend) do
+    Migrations.migrate(source, backend)
   rescue
     DBConnection.ConnectionError ->
       {:error, :cannot_connect}

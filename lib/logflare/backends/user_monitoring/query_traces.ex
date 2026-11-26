@@ -215,6 +215,7 @@ defmodule Logflare.Backends.UserMonitoring.QueryTraces do
 
   defp error_message(%QueryError{kind: kind}), do: Atom.to_string(kind)
   defp error_message(error) when is_binary(error), do: error
+  defp error_message(error) when is_exception(error), do: Exception.message(error)
   defp error_message(error), do: inspect(error)
 
   @spec event_value(atom(), term()) :: term()

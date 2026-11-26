@@ -47,7 +47,7 @@ Contains one event per query that Logflare executes on your behalf. Tracing is b
 - **Log search queries** (`query.search`): the events query, the chart query, and the query behind the event context view. A live tail re-runs its queries every second; only the first query of a tail is traced.
 - **Alert queries** (`query.alert`): scheduled runs, runs started with "Trigger now", and queries run from the alert editor.
 - **Single event fetches** (`query.event`): the query that loads one event, for example when opening an event from search.
-- **Provisioning queries** (`query.provision`): the statements that create a ClickHouse backend's tables. They run each time the backend starts; each statement is traced once per Logflare server after it succeeds, and every failed run is traced.
+- **Provisioning queries** (`query.provision`): the statements that create a ClickHouse backend's tables, and a Postgres backend's table and index for each source. They run each time the backend or source starts; each statement is traced once per Logflare server after it succeeds, and every failed run is traced. Provisioning of system sources is not traced.
 
 Each event includes:
 
@@ -77,6 +77,10 @@ Alert query events also include:
 - **`alert_id`** and **`alert_name`** - The alert that ran the query. A query run from the editor before the alert is saved has no `alert_id`
 - **`alert_language`** - Language the alert is written in
 - **`alert_trigger`** - `scheduled` for runs on the alert schedule, `manual` for runs started by a user
+
+Postgres provisioning events also include:
+
+- **`source_id`**, **`source_token`**, and **`source_name`** - The source whose table was provisioned
 
 Single event fetch events also include:
 
