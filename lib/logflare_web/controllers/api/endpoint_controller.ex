@@ -2,6 +2,8 @@ defmodule LogflareWeb.Api.EndpointController do
   use LogflareWeb, :controller
   use OpenApiSpex.ControllerSpecs
 
+  import Logflare.Utils.Guards
+
   alias Logflare.Backends
   alias Logflare.Endpoints
 
@@ -24,7 +26,7 @@ defmodule LogflareWeb.Api.EndpointController do
   )
 
   def index(%{assigns: %{user: user}} = conn, _) do
-    json(conn, Endpoints.list_endpoints_by_user_access(user))
+    json(conn, Endpoints.list_endpoints_by(user_id: user.id))
   end
 
   operation(:show,
@@ -37,8 +39,7 @@ defmodule LogflareWeb.Api.EndpointController do
   )
 
   def show(%{assigns: %{user: user}} = conn, %{"token" => token}) do
-    with query when not is_nil(query) <-
-           Endpoints.get_endpoint_query_by_user_access(user, token: token) do
+    with query when not is_nil(query) <- Endpoints.get_by(token: token, user_id: user.id) do
       json(conn, query)
     else
       nil -> {:error, :not_found}
@@ -62,9 +63,6 @@ defmodule LogflareWeb.Api.EndpointController do
       conn
       |> put_status(201)
       |> json(query)
-    else
-      nil -> {:error, :not_found}
-      err -> err
     end
   end
 
@@ -92,10 +90,9 @@ defmodule LogflareWeb.Api.EndpointController do
   )
 
   def update(%{assigns: %{user: user}} = conn, %{"token" => token} = params) do
-    with :ok <- authorize_backend_id(user, params),
+    with query when not is_nil(query) <- Endpoints.get_by(token: token, user_id: user.id),
+         :ok <- authorize_backend_id(user, params),
          origin <- conn.assigns[:access_token] || user,
-         query when not is_nil(query) <-
-           Endpoints.get_endpoint_query_by_user_access(user, token: token),
          {:ok, query} <- Endpoints.update_query(user, query, params, origin) do
       conn
       |> case do
@@ -141,8 +138,7 @@ defmodule LogflareWeb.Api.EndpointController do
   def delete(%{assigns: %{user: user}} = conn, %{"token" => token}) do
     origin = conn.assigns[:access_token] || user
 
-    with query when not is_nil(query) <-
-           Endpoints.get_endpoint_query_by_user_access(user, token: token),
+    with query when not is_nil(query) <- Endpoints.get_by(token: token, user_id: user.id),
          {:ok, _} <- Endpoints.delete_query(query, origin) do
       conn
       |> put_status(204)
@@ -153,15 +149,19 @@ defmodule LogflareWeb.Api.EndpointController do
     end
   end
 
+  @spec authorize_backend_id(Logflare.User.t(), map()) :: :ok | {:error, :not_found}
   defp authorize_backend_id(user, params) do
     case params["backend_id"] do
-      v when v in [nil, ""] ->
-        :ok
-
-      backend_id ->
-        if Backends.get_backend_by_user_access(user, backend_id),
-          do: :ok,
-          else: {:error, :not_found}
+      v when v in [nil, ""] -> :ok
+      backend_id -> authorize_cast_backend_id(Ecto.Type.cast(:id, backend_id), user)
     end
   end
+
+  @spec authorize_cast_backend_id({:ok, integer()} | :error, Logflare.User.t()) ::
+          :ok | {:error, :not_found}
+  defp authorize_cast_backend_id({:ok, id}, user) when is_db_id(id) do
+    with {:ok, _backend} <- Backends.fetch_backend_by(id: id, user_id: user.id), do: :ok
+  end
+
+  defp authorize_cast_backend_id(_cast, _user), do: {:error, :not_found}
 end

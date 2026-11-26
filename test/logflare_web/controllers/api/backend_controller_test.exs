@@ -21,29 +21,23 @@ defmodule LogflareWeb.Api.BackendControllerTest do
                |> json_response(200)
     end
 
-    test "includes team-owned backends", %{conn: conn} do
+    test "leaves out the backends of a team its account is a member of", %{conn: conn} do
       member = insert(:user)
       team_user = insert(:team_user, email: member.email)
-      backend = insert(:backend, user: team_user.team.user)
-      unrelated_backend = insert(:backend)
+      own_backend = insert(:backend, user: member)
+      team_backend = insert(:backend, user: team_user.team.user)
+      conn = add_access_token(conn, member, "private")
 
-      response =
-        conn
-        |> add_access_token(member, "private")
-        |> get(~p"/api/backends")
-        |> json_response(200)
-
-      backend_ids = MapSet.new(Enum.map(response, & &1["id"]))
-      assert backend.id in backend_ids
-      refute unrelated_backend.id in backend_ids
-
-      assert %{"id" => backend_id} =
+      assert [%{"id" => backend_id}] =
                conn
-               |> add_access_token(member, "private")
-               |> get(~p"/api/backends/#{backend.token}")
+               |> get(~p"/api/backends")
                |> json_response(200)
 
-      assert backend_id == backend.id
+      assert backend_id == own_backend.id
+
+      assert conn
+             |> get(~p"/api/backends/#{team_backend.token}")
+             |> json_response(404)
     end
 
     test "can filter on metadata column", %{conn: conn, user: user} do

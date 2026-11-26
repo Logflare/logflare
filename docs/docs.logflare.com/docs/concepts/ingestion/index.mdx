@@ -27,6 +27,8 @@ Before you can ingest logs, you need to create a source:
 
 After creating a source, click the **Setup** button to retrieve your **Source ID** (UUID), and navigate to **access tokens** to generate an ingestion key - you'll need these credentials to send log events.
 
+Logflare generates the source UUID. It cannot be set when creating a source or changed afterward. Recreating a deleted source with the same name gives it a new UUID.
+
 ### Important: Configure Key Settings After Creation
 
 When you first create a source, it uses default settings that **may not be suitable for all use cases**. We strongly recommend reviewing these settings immediately:

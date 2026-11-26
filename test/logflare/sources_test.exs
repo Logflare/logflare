@@ -168,6 +168,19 @@ defmodule Logflare.SourcesTest do
       assert changes == %{labels: "test=some_label"}
     end
 
+    test "source updates cannot change the source token" do
+      source = insert(:source, user: insert(:user))
+      attrs = %{description: "updated description", token: Ecto.UUID.generate()}
+
+      for changeset <- [
+            Source.changeset(source, attrs),
+            Source.update_by_user_changeset(source, attrs)
+          ] do
+        assert Ecto.Changeset.get_change(changeset, :description) == "updated description"
+        assert Ecto.Changeset.get_field(changeset, :token) == source.token
+      end
+    end
+
     test "bug: update_by_user_changeset  empty string should clear labels" do
       source = insert(:source, user: insert(:user), labels: "status=m.level")
 
@@ -893,6 +906,15 @@ defmodule Logflare.SourcesTest do
         assert source.user_id == user.id
         assert String.starts_with?(source.name, "system.")
       end
+    end
+
+    test "loads a traces system source without creating one", %{user: user} do
+      traces = insert(:source, user: user, system_source: true, system_source_type: :traces)
+
+      sources = Sources.create_user_system_sources(user.id)
+
+      assert Sources.get(traces.id).system_source_type == :traces
+      assert Enum.count(sources, &(&1.system_source_type == :traces)) == 1
     end
   end
 

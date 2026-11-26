@@ -99,6 +99,7 @@ defmodule Logflare.Application do
   defp get_children(_) do
     topologies = Application.get_env(:libcluster, :topologies, [])
     grpc_port = Application.get_env(:grpc, :port)
+    grpc_max_body_size = Application.get_env(:logflare, :grpc_max_body_size)
     ssl = Application.get_env(:logflare, :ssl)
     grpc_creds = if ssl, do: GRPC.Credential.new(ssl: ssl)
     pool_size = Application.get_env(:logflare, Logflare.PubSub)[:pool_size]
@@ -139,6 +140,7 @@ defmodule Logflare.Application do
          endpoint: LogflareGrpc.Endpoint,
          port: grpc_port,
          start_server: true,
+         max_body_size: grpc_max_body_size,
          adapter_opts: [cred: grpc_creds] ++ LogflareGrpc.Shutdown.protocol_options(),
          exception_log_filter: {LogflareGrpc.ExceptionLogFilter, :emit_log?}},
         # Monitor system level metrics

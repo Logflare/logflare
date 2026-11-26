@@ -43,7 +43,7 @@ defmodule Logflare.Networking.GrpcPool do
     )
   end
 
-  @spec get_channel(module()) :: {:ok, GRPC.Channel.t()} | {:error, :not_connected}
+  @spec get_channel(module()) :: {:ok, %GRPC.Channel{}} | {:error, :not_connected}
   def get_channel(name) do
     ref = :persistent_term.get({name, :counter}, nil)
 

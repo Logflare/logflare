@@ -18,6 +18,8 @@ Access tokens can be scoped to specific functionality.
 
 `ingest` and `query` scopes can be scoped to specific sources and endpoints. It is recommended to use the least privileged token for the given task, especially for public ingestion.
 
+An access token belongs to the account under which it was issued. The management API only returns and changes that account's sources, endpoints, alerts, backends and team. When the account is a member of another account's team, the token cannot reach that team's resources. To manage them, switch to that team in the dashboard and create a token there.
+
 ## Discovering ingest sources
 
 Use `GET /api/ingest-sources` to discover the sources available to an ingest access token. The JSON response contains only each source's `token` and `name`; send `Accept: text/csv` for RFC 4180 CSV with a `token,name` header. The endpoint accepts account-wide `ingest` and private tokens, as well as source-scoped `ingest:source:<source-id>` tokens. Deprecated `ingest:collection:<source-id>` scopes remain supported. Responses are not cached.

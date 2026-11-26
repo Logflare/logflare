@@ -52,6 +52,19 @@ defmodule Logflare.Utils.GuardsTest do
     end
   end
 
+  describe "is_db_id/1" do
+    test "passes for positive integers up to the bigint maximum" do
+      assert match?(x when is_db_id(x), 1)
+      assert match?(x when is_db_id(x), 9_223_372_036_854_775_807)
+    end
+
+    test "fails above the bigint maximum, for zero, negative integers and floats" do
+      for value <- [9_223_372_036_854_775_808, 0, -1, 1.0] do
+        refute match?(x when is_db_id(x), value)
+      end
+    end
+  end
+
   describe "is_pos_integer/1" do
     test "passes for positive integers" do
       assert match?(x when is_pos_integer(x), 1)

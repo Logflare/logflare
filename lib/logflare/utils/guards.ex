@@ -21,6 +21,11 @@ defmodule Logflare.Utils.Guards do
   defguard is_pos_integer(num) when is_integer(num) and num > 0
 
   @doc """
+  Guard that indicates if the value provided is a positive integer that fits a Postgres `bigint` id.
+  """
+  defguard is_db_id(num) when is_pos_integer(num) and num <= 9_223_372_036_854_775_807
+
+  @doc """
   Guard that indicates if the value provided is a binary and not equal to `""`.
   """
   defguard is_non_empty_binary(value) when is_binary(value) and value != ""

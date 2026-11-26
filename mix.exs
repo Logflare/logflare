@@ -95,7 +95,7 @@ defmodule Logflare.Mixfile do
       {:phoenix_ecto, "~> 4.4"},
       {:phoenix_live_reload, "~> 1.4", only: :dev},
       {:bandit, "~> 1.8"},
-      {:plug_crypto, "~> 1.2.2"},
+      {:plug_crypto, "~> 2.2"},
       {:cors_plug, "~> 2.0"},
       {:plug_caisson, "~> 0.2.1"},
 
@@ -241,8 +241,9 @@ defmodule Logflare.Mixfile do
       {:open_api_spex, "~> 3.22"},
       # required for yaml open api generation
       {:ymlr, "~> 5.1"},
-      {:grpc, "~> 0.11.0"},
-      {:protobuf, "~> 0.15.0", override: true},
+      {:grpc, "~> 1.1"},
+      {:grpc_server, "~> 1.1"},
+      {:protobuf, "~> 0.17.1", override: true},
       {:gun, "~> 2.0", override: true},
       {:cowlib, ">=2.12.0", override: true},
       {:phoenix_live_dashboard, "~> 0.8"},

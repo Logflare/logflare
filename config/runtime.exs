@@ -165,7 +165,8 @@ config :logflare,
          metadata: logflare_metadata,
          health: logflare_health,
          http_connection_pools: http_connection_pools,
-         bq_write_api_pool_size: Env.get_integer("LOGFLARE_BQ_WRITE_API_POOL_SIZE", 10)
+         bq_write_api_pool_size: Env.get_integer("LOGFLARE_BQ_WRITE_API_POOL_SIZE", 10),
+         grpc_max_body_size: Env.get_integer("LOGFLARE_GRPC_MAX_BODY_SIZE", 12_000_000)
        ]
        |> filter_nil_kv_pairs.()
 
