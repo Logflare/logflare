@@ -9,9 +9,12 @@
     <h2>
       {@alert.name}
     </h2>
-    <span class={if @alert.enabled, do: "badge badge-success", else: "badge badge-secondary"}>
-      {if @alert.enabled, do: "Enabled", else: "Disabled"}
-    </span>
+    <div class="custom-control custom-switch tw-ml-2">
+      <input type="checkbox" class="custom-control-input" id="alert-enabled-toggle" checked={@alert.enabled} phx-click="toggle-enabled" />
+      <label class="custom-control-label" for="alert-enabled-toggle">
+        {if @alert.enabled, do: "Enabled", else: "Disabled"}
+      </label>
+    </div>
   </div>
   <div>
     id: {@alert.token}
