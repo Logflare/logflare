@@ -409,6 +409,25 @@ defmodule LogflareWeb.QueryLiveTest do
       refute html =~ "bytes processed"
     end
 
+    test "pages postgres results", %{conn: conn} do
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/query")
+
+      render_hook(view, "parse-query", %{
+        value:
+          "with recursive s(n) as (select 1 union all select n + 1 from s where n < 101) select 'row-' || n as label from s order by n"
+      })
+
+      html = submit_query_form(view, conn)
+      assert html =~ "row-100"
+      refute html =~ "row-101"
+
+      view |> element(~s(button[phx-click="next-page"])) |> render_click()
+      html = render_async(view, 5_000)
+      assert html =~ "row-101"
+      refute html =~ "row-100"
+      assert has_element?(view, ~s(button[phx-click="next-page"][disabled]))
+    end
+
     test "shows postgres as the default backend when backend selection is available", %{
       conn: conn,
       user: user
