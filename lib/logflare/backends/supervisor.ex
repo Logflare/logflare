@@ -65,7 +65,8 @@ defmodule Logflare.Backends.Supervisor do
           start: {Cachex, :start_link, [Backends.SourceSupStarts, []]}
         },
         {PartitionSupervisor, child_spec: DynamicSupervisor, name: Backends.SourcesSup},
-        Backends.UserMonitoring.SystemSourceStarter
+        Backends.UserMonitoring.SystemSourceStarter,
+        Backends.UserMonitoring.QueryTraces
       ] ++
         spool_goth_children ++
         spool_memory_monitor_children ++ producer_children ++ consumer_children

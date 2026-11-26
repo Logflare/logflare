@@ -4,6 +4,7 @@ defmodule Logflare.Endpoints.QueryLookupCacheTest do
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Backends.Adaptor.QueryResult
+  alias Logflare.Backends.UserMonitoring.QueryTraces
   alias Logflare.Endpoints
   alias Logflare.QueryContext
   alias Logflare.Sql
@@ -43,6 +44,7 @@ defmodule Logflare.Endpoints.QueryLookupCacheTest do
       Cachex.put!(Backends.Cache, {:list_backends, [[user_id: context.user.id]]}, {:cached, []})
 
       assert {:ok, %{rows: [%{"n" => 1}]}} = Endpoints.run_query(endpoint)
+      await_query_traces()
 
       reject(Backends, :get_backend, 1)
       reject(Backends, :list_backends, 1)
@@ -104,5 +106,11 @@ defmodule Logflare.Endpoints.QueryLookupCacheTest do
 
     assert {:error, :database_unavailable} =
              Endpoints.run_query(%{context.endpoint | backend_id: nil})
+  end
+
+  @spec await_query_traces() :: :ok
+  defp await_query_traces do
+    _state = :sys.get_state(QueryTraces)
+    :ok
   end
 end
