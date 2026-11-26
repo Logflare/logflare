@@ -33,6 +33,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   alias Logflare.Backends.DynamicPipeline
   alias Logflare.Backends.Ecto.SqlUtils
   alias Logflare.Backends.IngestEventQueue
+  alias Logflare.Backends.Adaptor.PageToken
   alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Backends.QueryError
   alias Logflare.Endpoints.ClickHouseSettings
@@ -1740,13 +1741,33 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     ch_params = Map.take(input_params, declared_params)
     query_opts = put_replica_tag_header(opts, backend, input_params)
 
-    case execute_ch_query(backend, converted_query, ch_params, query_opts) do
-      {:ok, {rows, bytes}} ->
-        rows = if is_pos_integer(max_rows), do: Enum.take(rows, max_rows), else: rows
-        {:ok, QueryResult.new(rows, %{total_bytes_processed: bytes})}
+    with {:ok, page} <- offset_page(backend, opts),
+         {:ok, {paged_query, page}} <- page_query(converted_query, page),
+         {:ok, {rows, bytes}} <- execute_ch_query(backend, paged_query, ch_params, query_opts) do
+      rows = if is_pos_integer(max_rows), do: Enum.take(rows, max_rows), else: rows
+      {rows, next_page_token} = PageToken.split_offset_page(rows, page, backend.user_id)
 
-      error ->
-        error
+      {:ok,
+       QueryResult.new(rows, %{total_bytes_processed: bytes, next_page_token: next_page_token})}
+    end
+  end
+
+  @spec offset_page(Backend.t(), Keyword.t()) ::
+          {:ok, PageToken.offset_page()} | {:error, QueryError.t()}
+  defp offset_page(%Backend{user_id: user_id}, opts) do
+    with {:error, :invalid_page_token} <- PageToken.offset_page(user_id, opts) do
+      {:error, PageToken.invalid_token_error(__MODULE__)}
+    end
+  end
+
+  @spec page_query(String.t(), PageToken.offset_page()) ::
+          {:ok, {String.t(), PageToken.offset_page()}}
+  defp page_query(query, nil), do: {:ok, {query, nil}}
+
+  defp page_query(query, {page_size, offset} = page) do
+    case ClickHouseSqlTransformer.apply_page(query, page_size + 1, offset) do
+      {:ok, paged_query} -> {:ok, {paged_query, page}}
+      {:error, _reason} -> {:ok, {query, nil}}
     end
   end
 
