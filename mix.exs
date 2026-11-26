@@ -95,7 +95,7 @@ defmodule Logflare.Mixfile do
       {:phoenix_ecto, "~> 4.4"},
       {:phoenix_live_reload, "~> 1.4", only: :dev},
       {:bandit, "~> 1.8"},
-      {:plug_crypto, "~> 1.2.2"},
+      {:plug_crypto, "~> 2.2"},
       {:cors_plug, "~> 2.0"},
       {:plug_caisson, "~> 0.2.1"},
 
