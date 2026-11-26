@@ -6,6 +6,7 @@ defmodule LogflareWeb.HealthCheckControllerTest do
 
   alias Logflare.Backends.Spool.Health
   alias Logflare.Readiness
+  alias Logflare.RecordUsages.Cache
   alias Logflare.Repo
   alias Logflare.SingleTenant
   alias Logflare.Sources.Source
@@ -150,6 +151,18 @@ defmodule LogflareWeb.HealthCheckControllerTest do
                "Elixir.Logflare.Auth.Cache" => "ok"
              }
            } = json_response(conn, 503)
+  end
+
+  test "a usage buffer outage does not remove a healthy node from rotation", %{conn: conn} do
+    start_supervised!(Source.Supervisor)
+    assert :ok = Supervisor.terminate_child(Logflare.ContextCache.Supervisor, Cache)
+
+    on_exit(fn ->
+      {:ok, _} = Supervisor.restart_child(Logflare.ContextCache.Supervisor, Cache)
+    end)
+
+    assert %{"status" => "ok"} = conn |> get("/health") |> json_response(200)
+    assert %{"status" => "ok"} = conn |> get("/ready") |> json_response(200)
   end
 
   test "readiness check", %{conn: conn} do

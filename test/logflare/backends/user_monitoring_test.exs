@@ -1,3 +1,20 @@
+defmodule Logflare.Backends.UserMonitoringPipelineTelemetryTest do
+  use ExUnit.Case, async: true
+
+  import Mimic
+
+  alias Logflare.Backends.UserMonitoring.IngestPipeline
+  alias Logflare.TestUtils
+
+  setup :verify_on_exit!
+
+  test "configures user-monitoring telemetry tags" do
+    TestUtils.assert_broadway_telemetry_tags(%{pipeline: :user_monitoring}, fn ->
+      IngestPipeline.start_link(metric_store_name: :user_monitoring_telemetry_tags_test)
+    end)
+  end
+end
+
 defmodule Logflare.Backends.UserMonitoringTest do
   use Logflare.DataCase, async: false
 
@@ -216,7 +233,7 @@ defmodule Logflare.Backends.UserMonitoringTest do
       calls = :counters.new(1, [])
       user_id = user.id
 
-      stub(Backends, :ingest_logs, fn _batch, _source, _backend, _allow_spooling ->
+      stub(Backends, :ingest_client_logs, fn _batch, _source ->
         :counters.add(calls, 1, 1)
 
         if :counters.get(calls, 1) < 10 do
@@ -235,7 +252,7 @@ defmodule Logflare.Backends.UserMonitoringTest do
       :ok = Backends.ensure_source_sup_started(system_source)
       test_pid = self()
 
-      stub(Backends, :ingest_logs, fn _batch, _source, _backend, _allow_spooling ->
+      stub(Backends, :ingest_client_logs, fn _batch, _source ->
         send(test_pid, :ingested)
         :ok
       end)

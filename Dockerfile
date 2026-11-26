@@ -1,6 +1,6 @@
-ARG ELIXIR_VERSION=1.19.5
-ARG OTP_VERSION=27.3.4.6
-ARG DEBIAN_VERSION=trixie-20260112-slim
+ARG ELIXIR_VERSION=1.19.7
+ARG OTP_VERSION=27.3.4.20
+ARG DEBIAN_VERSION=trixie-20261123-slim
 
 ARG RUST_VERSION=1.96.0
 ARG BUILDER_IMAGE="hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-debian-${DEBIAN_VERSION}"
@@ -16,7 +16,7 @@ WORKDIR /app
 # install build dependencies
 RUN apt-get update -y && apt-get install -y curl bash build-essential git gcc make && \
     # install nodejs
-    curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
+    curl -fsSL https://deb.nodesource.com/setup_26.x | bash - && \
     apt-get install -y nodejs && \
     # install rust
     curl https://sh.rustup.rs -sSf | bash -s -- -y --default-toolchain ${RUST_VERSION} && \

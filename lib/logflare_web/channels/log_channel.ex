@@ -3,6 +3,7 @@ defmodule LogflareWeb.LogChannel do
   use LogflareWeb, :channel
 
   alias Logflare.Backends
+  alias Logflare.IngressGate
   alias Logflare.Sources
   alias Logflare.Sources.Source
   alias LogflareWeb.Endpoint
@@ -65,15 +66,18 @@ defmodule LogflareWeb.LogChannel do
   end
 
   def handle_in("batch", %{"batch" => batch}, socket) when is_list(batch) do
-    source = socket.assigns.source |> Sources.refresh_source_metrics_for_ingest()
+    IngressGate.with_request(
+      fn ->
+        source = socket.assigns.source |> Sources.refresh_source_metrics_for_ingest()
 
-    # allow_spooling: true — a genuine client-submitted entry point, same as
-    # the HTTP/gRPC controllers routed through Logflare.Logs.Processor.
-    with :ok <- Backends.start_for_ingest(source) do
-      ingest_batch(batch, source, socket)
-    else
-      {:error, reason} -> reply_start_error(socket, reason)
-    end
+        with :ok <- Backends.start_for_ingest(source) do
+          ingest_batch(batch, source, socket)
+        else
+          {:error, reason} -> reply_start_error(socket, reason)
+        end
+      end,
+      fn -> reply_start_error(socket, :source_unavailable) end
+    )
   end
 
   def handle_in("ping", _payload, socket) do
@@ -100,7 +104,7 @@ defmodule LogflareWeb.LogChannel do
   end
 
   defp ingest_batch(batch, source, socket) do
-    case Backends.ingest_logs(batch, source, nil, true) do
+    case Backends.ingest_client_logs(batch, source) do
       {:ok, _count} ->
         push(socket, "batch", %{message: "Handled batch"})
         {:noreply, socket}

@@ -2,6 +2,9 @@ defmodule LogflareWeb.LogSocketTest do
   use LogflareWeb.ChannelCase
 
   alias Logflare.Backends
+  alias Logflare.OauthAccessTokens.OauthAccessToken
+  alias Logflare.RecordUsages.Cache
+  alias Logflare.User
   alias LogflareWeb.LogChannel
   alias LogflareWeb.LogSocket
 
@@ -10,19 +13,43 @@ defmodule LogflareWeb.LogSocketTest do
     :ok
   end
 
+  test "usage buffer outages do not change socket authentication" do
+    user = insert(:user)
+    token = insert(:access_token, resource_owner: user)
+    assert :ok = Supervisor.terminate_child(Logflare.ContextCache.Supervisor, Cache)
+
+    on_exit(fn ->
+      {:ok, _} = Supervisor.restart_child(Logflare.ContextCache.Supervisor, Cache)
+    end)
+
+    for params <- [%{"access_token" => token.token}, %{"api_key" => user.api_key}] do
+      assert {:ok, socket} = Phoenix.ChannelTest.connect(LogSocket, params)
+      assert socket.assigns.user.id == user.id
+    end
+
+    assert :error = Phoenix.ChannelTest.connect(LogSocket, %{"access_token" => "invalid"})
+    assert :error = Phoenix.ChannelTest.connect(LogSocket, %{"api_key" => "invalid"})
+  end
+
   describe "access token authentication" do
     test "access token owner can connect and ingest into their own source" do
       user = insert(:user)
       source = insert(:source, user: user)
       token = insert(:access_token, resource_owner: user)
+      before_connect = System.system_time(:second)
 
       {:ok, socket} = Phoenix.ChannelTest.connect(LogSocket, %{"access_token" => token.token})
+
+      timestamp = Cache.snapshot() |> Map.new() |> Map.fetch!({OauthAccessToken, token.id})
+      assert timestamp >= before_connect
+      assert timestamp <= System.system_time(:second)
+
       {:ok, _, socket} = subscribe_and_join(socket, LogChannel, "logs:#{source.token}")
 
       stub(Backends, :start_for_ingest, fn _source -> :ok end)
 
       Backends
-      |> expect(:ingest_logs, fn batch, ingest_source, _backend, _allow_spooling ->
+      |> expect(:ingest_client_logs, fn batch, ingest_source ->
         assert [%{"message" => "access-token-log"}] = batch
         assert ingest_source.id == source.id
         {:ok, 1}
@@ -44,7 +71,7 @@ defmodule LogflareWeb.LogSocketTest do
       {:ok, _, socket} = subscribe_and_join(socket, LogChannel, "logs:#{source.token}")
 
       stub(Backends, :start_for_ingest, fn _source -> {:error, :source_unavailable} end)
-      reject(Backends, :ingest_logs, 4)
+      reject(Backends, :ingest_client_logs, 2)
 
       Phoenix.ChannelTest.push(socket, "batch", %{"batch" => [%{"message" => "early-log"}]})
 
@@ -66,7 +93,7 @@ defmodule LogflareWeb.LogSocketTest do
       {:ok, _, socket} = subscribe_and_join(socket, LogChannel, "logs:#{source.token}")
 
       stub(Backends, :start_for_ingest, fn _source -> {:error, :source_not_found} end)
-      reject(Backends, :ingest_logs, 4)
+      reject(Backends, :ingest_client_logs, 2)
 
       Phoenix.ChannelTest.push(socket, "batch", %{"batch" => [%{"message" => "late-log"}]})
 
@@ -93,7 +120,7 @@ defmodule LogflareWeb.LogSocketTest do
       {:ok, socket} = Phoenix.ChannelTest.connect(LogSocket, %{"access_token" => token.token})
 
       Backends
-      |> reject(:ingest_logs, 4)
+      |> reject(:ingest_client_logs, 2)
 
       assert {:error, %{reason: "Not authorized!"}} =
                subscribe_and_join(socket, LogChannel, "logs:#{victim_source.token}")
@@ -104,14 +131,20 @@ defmodule LogflareWeb.LogSocketTest do
     test "owner can ingest into their own source using legacy api key" do
       user = insert(:user)
       source = insert(:source, user: user)
+      before_connect = System.system_time(:second)
 
       {:ok, socket} = Phoenix.ChannelTest.connect(LogSocket, %{"api_key" => user.api_key})
+
+      timestamp = Cache.snapshot() |> Map.new() |> Map.fetch!({User, user.id})
+      assert timestamp >= before_connect
+      assert timestamp <= System.system_time(:second)
+
       {:ok, _, socket} = subscribe_and_join(socket, LogChannel, "logs:#{source.token}")
 
       stub(Backends, :start_for_ingest, fn _source -> :ok end)
 
       Backends
-      |> expect(:ingest_logs, fn batch, ingest_source, _backend, _allow_spooling ->
+      |> expect(:ingest_client_logs, fn batch, ingest_source ->
         assert [%{"message" => "owned-log"}] = batch
         assert ingest_source.id == source.id
         {:ok, 1}
@@ -123,6 +156,12 @@ defmodule LogflareWeb.LogSocketTest do
       leave(socket)
     end
 
+    test "invalid legacy API keys do not record usage" do
+      snapshot = Cache.snapshot()
+      assert :error = Phoenix.ChannelTest.connect(LogSocket, %{"api_key" => "invalid-key"})
+      assert Cache.snapshot() == snapshot
+    end
+
     test "legacy log socket api key cannot ingest into another user's source" do
       victim = insert(:user)
       attacker = insert(:user)
@@ -132,7 +171,7 @@ defmodule LogflareWeb.LogSocketTest do
         Phoenix.ChannelTest.connect(LogSocket, %{"api_key" => attacker.api_key})
 
       Backends
-      |> reject(:ingest_logs, 4)
+      |> reject(:ingest_client_logs, 2)
 
       assert {:error, %{reason: "Not authorized!"}} =
                subscribe_and_join(socket, LogChannel, "logs:#{victim_source.token}")
@@ -146,7 +185,7 @@ defmodule LogflareWeb.LogSocketTest do
       {:ok, socket} = Phoenix.ChannelTest.connect(LogSocket, %{"api_key" => admin.api_key})
 
       Backends
-      |> reject(:ingest_logs, 4)
+      |> reject(:ingest_client_logs, 2)
 
       assert {:error, %{reason: "Not authorized!"}} =
                subscribe_and_join(socket, LogChannel, "logs:#{other_source.token}")

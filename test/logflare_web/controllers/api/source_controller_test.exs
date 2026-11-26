@@ -120,7 +120,7 @@ defmodule LogflareWeb.Api.SourceControllerTest do
       assert response["default_ingest_backend_enabled?"] == true
     end
 
-    test "creates a source without `default_ingest_backend_enabled?` field (defaults to false)",
+    test "creates a source without `default_ingest_backend_enabled?` field (defaults to true)",
          %{
            conn: conn,
            user: user
@@ -131,6 +131,22 @@ defmodule LogflareWeb.Api.SourceControllerTest do
         conn
         |> add_access_token(user, "private")
         |> post("/api/sources", %{name: name})
+        |> json_response(201)
+
+      assert response["name"] == name
+      assert response["default_ingest_backend_enabled?"] == true
+    end
+
+    test "creates a source with `default_ingest_backend_enabled?` false", %{
+      conn: conn,
+      user: user
+    } do
+      name = TestUtils.random_string()
+
+      response =
+        conn
+        |> add_access_token(user, "private")
+        |> post("/api/sources", %{name: name, default_ingest_backend_enabled?: false})
         |> json_response(201)
 
       assert response["name"] == name

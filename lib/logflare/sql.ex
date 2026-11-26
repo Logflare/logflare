@@ -12,6 +12,7 @@ defmodule Logflare.Sql do
   alias Logflare.Alerting.AlertQuery
   alias Logflare.Cache.CachexOps
   alias Logflare.Endpoints
+  alias Logflare.Endpoints.ClickHouseSqlSettings
   alias Logflare.QueryContext
   alias Logflare.Repo
   alias Logflare.SingleTenant
@@ -208,12 +209,11 @@ defmodule Logflare.Sql do
       when language in @valid_query_languages and is_non_empty_binary(input) and is_list(queries) do
     with parser_dialect <- to_dialect(language),
          {:ok, statements} <- Parser.parse(parser_dialect, input),
-         eligible_queries <- Enum.filter(queries, &(&1.language == language)) do
+         eligible_queries = Enum.filter(queries, &(&1.language == language)),
+         {:ok, subqueries} <-
+           parse_referenced_subqueries(statements, eligible_queries, parser_dialect) do
       statements
-      |> replace_names_with_subqueries(%{
-        language: language,
-        queries: eligible_queries
-      })
+      |> AstUtils.transform_recursive(subqueries, &replace_subquery_reference/2)
       |> Parser.to_string()
     end
   end
@@ -272,7 +272,7 @@ defmodule Logflare.Sql do
           language :: query_language(),
           query :: input(),
           user_or_user_id :: User.t() | pos_integer() | nil,
-          opts :: [consistency: :fresh | :cached]
+          opts :: [consistency: :fresh | :cached, allow_clickhouse_sql_settings: boolean()]
         ) ::
           {:ok, String.t()} | {:error, String.t() | :database_unavailable}
   def transform(lang, input, user_or_user_id, opts \\ [])
@@ -286,7 +286,7 @@ defmodule Logflare.Sql do
   end
 
   # clickhouse with sandboxed query support
-  def transform(:ch_sql = language, input, %User{} = user, _opts) do
+  def transform(:ch_sql = language, input, %User{} = user, opts) do
     {query, sandboxed_query} =
       case input do
         q when is_non_empty_binary(q) -> {q, nil}
@@ -307,10 +307,12 @@ defmodule Logflare.Sql do
            sandboxed_query: sandboxed_query,
            sandboxed_query_ast: sandboxed_query_ast,
            ast: statements,
-           dialect: sql_dialect
+           dialect: sql_dialect,
+           allow_clickhouse_sql_settings: Keyword.get(opts, :allow_clickhouse_sql_settings, false)
          },
          data = DialectTransformer.ClickHouse.build_transformation_data(user, base_data),
          :ok <- validate_query(statements, data),
+         :ok <- ClickHouseSqlSettings.validate_sandboxed(statements, sandboxed_query_ast),
          :ok <- maybe_validate_sandboxed_query_ast({statements, sandboxed_query_ast}, data) do
       data = %{data | sandboxed_query_ast: sandboxed_query_ast}
 
@@ -606,42 +608,56 @@ defmodule Logflare.Sql do
     Enum.find(mapping, fn {_name, token} -> not MapSet.member?(tokens, token) end)
   end
 
-  defp replace_names_with_subqueries(ast, data) do
-    AstUtils.transform_recursive(ast, data, &do_replace_names_with_subqueries/2)
+  @spec parse_referenced_subqueries(
+          [map()],
+          [AlertQuery.t() | Endpoints.EndpointQuery.t()],
+          String.t()
+        ) ::
+          {:ok, map()} | {:error, String.t()}
+  defp parse_referenced_subqueries(ast, queries, dialect) do
+    ast
+    |> AstUtils.collect_from_ast(&collect_subquery_reference/1)
+    |> Enum.uniq()
+    |> Stream.map(fn name -> Enum.find(queries, &(&1.name == name)) end)
+    |> Enum.reduce_while({:ok, %{}}, fn
+      nil, acc ->
+        {:cont, acc}
+
+      query, {:ok, bodies} ->
+        case Parser.parse(dialect, query.query) do
+          {:ok, [%{"Query" => body}]} -> {:cont, {:ok, Map.put(bodies, query.name, body)}}
+          {:ok, _} -> {:halt, {:error, "Only SELECT queries can be used as subqueries"}}
+          {:error, _} = error -> {:halt, error}
+        end
+    end)
   end
 
-  defp do_replace_names_with_subqueries(
-         {"relation" = k,
-          %{"Table" => %{"alias" => table_alias, "name" => table_name_values}} = v},
-         data
-       )
-       when is_list(table_name_values) and is_map(data) do
-    table_name =
-      case table_name_values do
-        [_ | _] -> table_name_values |> AstUtils.object_name_values() |> Enum.join(".")
-        _ -> raise "Invalid table name"
-      end
+  @spec collect_subquery_reference(term()) :: {:collect, String.t()} | :skip
+  defp collect_subquery_reference({"relation", %{"Table" => %{"name" => [_ | _] = parts}}}),
+    do: {:collect, subquery_reference_name(parts)}
 
-    query = Enum.find(data.queries, &(&1.name == table_name))
+  defp collect_subquery_reference(_node), do: :skip
 
-    if query do
-      parser_dialect = to_dialect(data.language)
-      {:ok, [%{"Query" => body}]} = Parser.parse(parser_dialect, query.query)
+  @spec subquery_reference_name([map()]) :: String.t()
+  defp subquery_reference_name(parts),
+    do: parts |> AstUtils.object_name_values() |> Enum.join(".")
 
-      {k,
-       %{
-         "Derived" => %{
-           "alias" => table_alias,
-           "lateral" => false,
-           "subquery" => body
-         }
-       }}
-    else
-      {k, v}
+  @spec replace_subquery_reference(term(), map()) :: term()
+  defp replace_subquery_reference(
+         {"relation", %{"Table" => %{"alias" => table_alias, "name" => [_ | _] = parts}}} = node,
+         subqueries
+       ) do
+    case Map.fetch(subqueries, subquery_reference_name(parts)) do
+      {:ok, body} ->
+        {"relation",
+         %{"Derived" => %{"alias" => table_alias, "lateral" => false, "subquery" => body}}}
+
+      :error ->
+        node
     end
   end
 
-  defp do_replace_names_with_subqueries(ast_node, _data), do: {:recurse, ast_node}
+  defp replace_subquery_reference(node, _subqueries), do: {:recurse, node}
 
   defp sandboxed_ast(query, dialect) when is_non_empty_binary(query),
     do: Parser.parse(dialect, query)
@@ -653,7 +669,7 @@ defmodule Logflare.Sql do
     with :ok <- check_single_query_only(ast),
          :ok <- check_select_statement_only(ast, dialect),
          :ok <- maybe_check_restricted_functions(ast, dialect, data),
-         :ok <- maybe_check_restricted_settings(ast, dialect),
+         :ok <- maybe_check_restricted_settings(ast, dialect, data),
          :ok <- has_wildcard_in_select(ast),
          :ok <- check_all_sources_allowed(ast, data) do
       :ok
@@ -666,9 +682,13 @@ defmodule Logflare.Sql do
 
   defp maybe_check_restricted_functions(_ast, _dialect, _data), do: :ok
 
-  defp maybe_check_restricted_settings(ast, "clickhouse"), do: has_restricted_settings(ast)
+  defp maybe_check_restricted_settings(ast, "clickhouse", %{allow_clickhouse_sql_settings: true}) do
+    with {:ok, stripped, _requests} <- ClickHouseSqlSettings.split_requests(ast),
+         do: has_restricted_settings(stripped)
+  end
 
-  defp maybe_check_restricted_settings(_ast, _dialect), do: :ok
+  defp maybe_check_restricted_settings(ast, "clickhouse", _data), do: has_restricted_settings(ast)
+  defp maybe_check_restricted_settings(_ast, _dialect, _data), do: :ok
 
   # applies only to the sandboed query
   defp maybe_validate_sandboxed_query_ast({cte_ast, ast}, data) when is_list(ast) do

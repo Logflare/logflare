@@ -7,6 +7,8 @@ defmodule LogflareWeb.EndpointsLiveTest do
   import Logflare.DataCase, only: [setup_clickhouse_test: 1]
 
   alias Logflare.Backends.Adaptor.QueryResult
+  alias Logflare.Endpoints
+  alias Logflare.Repo
 
   setup %{conn: conn} do
     insert(:plan)
@@ -122,6 +124,8 @@ defmodule LogflareWeb.EndpointsLiveTest do
                      settings
                    )
 
+          request_timeout? = not sandbox? and settings != %{}
+
           expect(ClickHouseAdaptor, :execute_query, fn backend, {sql, _, _, query}, opts ->
             assert query.enforced_clickhouse_settings == current.enforced_clickhouse_settings
             assert {:ok, sql} = ClickHouseAdaptor.prepare_query(backend, sql, opts)
@@ -129,7 +133,8 @@ defmodule LogflareWeb.EndpointsLiveTest do
             if settings == %{} do
               refute sql =~ "max_execution_time"
             else
-              assert sql =~ "max_execution_time = #{settings["max_execution_time"]}"
+              timeout = if request_timeout?, do: 2, else: settings["max_execution_time"]
+              assert sql =~ "max_execution_time = #{timeout}"
             end
 
             assert sql =~ if(sandbox?, do: "SELECT n FROM data", else: "SELECT 2 AS n")
@@ -138,9 +143,16 @@ defmodule LogflareWeb.EndpointsLiveTest do
           end)
 
           payload =
-            if sandbox?,
-              do: %{params: %{}, sandbox_query: "SELECT n FROM data", query_mode: "sql"},
-              else: %{params: %{}, query: "SELECT 2 AS n"}
+            cond do
+              sandbox? ->
+                %{params: %{}, sandbox_query: "SELECT n FROM data", query_mode: "sql"}
+
+              request_timeout? ->
+                %{params: %{}, query: "SELECT 2 AS n SETTINGS max_execution_time = 2"}
+
+              true ->
+                %{params: %{}, query: "SELECT 2 AS n"}
+            end
 
           view |> element("#endpoint-test-form") |> render_submit(%{run: payload})
 
@@ -372,6 +384,21 @@ defmodule LogflareWeb.EndpointsLiveTest do
       assert_patched(view, "/endpoints/#{endpoint.id}/edit?t=#{team.id}")
     end
 
+    test "shows a negative refresh interval as disabled while caching stays enabled", %{
+      conn: conn,
+      endpoint: endpoint
+    } do
+      endpoint
+      |> Ecto.Changeset.change(cache_duration_seconds: 60, proactive_requerying_seconds: -1)
+      |> Repo.update!()
+
+      {:ok, _view, html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}")
+      text = html |> Floki.parse_document!() |> Floki.text()
+
+      assert text =~ ~r/Caching:\s*60 seconds/
+      assert text =~ ~r/Cache warming:\s*disabled/
+    end
+
     test "includes enabled endpoint headers in UUID and name curl examples", %{
       conn: conn,
       user: user
@@ -480,6 +507,40 @@ defmodule LogflareWeb.EndpointsLiveTest do
       {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}")
       assert has_element?(view, "*", "Endpoint Not Found")
     end
+  end
+
+  test "editing an endpoint preserves unset cache settings unless values are entered", %{
+    conn: conn,
+    user: user
+  } do
+    endpoint =
+      build(:endpoint, user: user)
+      |> Ecto.Changeset.change(cache_duration_seconds: nil, proactive_requerying_seconds: nil)
+      |> Repo.insert!()
+
+    edit_path = "/endpoints/#{endpoint.id}/edit"
+    {:ok, view, _html} = live_with_redirect(conn, edit_path)
+
+    view
+    |> form("#endpoint", endpoint: %{name: "Renamed endpoint"})
+    |> render_submit()
+
+    updated = Endpoints.get_endpoint_query(endpoint.id)
+    assert updated.name == "Renamed endpoint"
+    assert is_nil(updated.cache_duration_seconds)
+    assert is_nil(updated.proactive_requerying_seconds)
+
+    {:ok, view, _html} = live_with_redirect(conn, edit_path)
+
+    view
+    |> form("#endpoint",
+      endpoint: %{cache_duration_seconds: "60", proactive_requerying_seconds: "0"}
+    )
+    |> render_submit()
+
+    updated = Endpoints.get_endpoint_query(endpoint.id)
+    assert updated.cache_duration_seconds == 60
+    assert updated.proactive_requerying_seconds == 0
   end
 
   describe "endpoint versions" do

@@ -3,6 +3,8 @@ defmodule LogflareWeb.Endpoints.Components do
   use LogflareWeb, :routes
   use Phoenix.Component
 
+  import Logflare.Utils.Guards, only: [is_pos_integer: 1]
+
   alias Logflare.Endpoints.FilesystemCachePolicy
   alias Logflare.Sql
   alias LogflareWeb.Endpoints.RunQuery
@@ -158,7 +160,7 @@ defmodule LogflareWeb.Endpoints.Components do
         <.setting_row label={:enable_auth} value={format_toggle(@endpoint.enable_auth)} />
         <.setting_row label={:max_limit} value={to_string(@endpoint.max_limit)} />
         <.setting_row label={:cache_duration_seconds} value={format_cache_duration(@endpoint.cache_duration_seconds)} />
-        <.setting_row :if={(@endpoint.cache_duration_seconds || 0) > 0} label={:proactive_requerying_seconds} value={format_cache_duration(@endpoint.proactive_requerying_seconds)} />
+        <.setting_row :if={is_pos_integer(@endpoint.cache_duration_seconds)} label={:proactive_requerying_seconds} value={format_cache_duration(@endpoint.proactive_requerying_seconds)} />
         <.setting_row label={:sandboxable} value={format_toggle(@endpoint.sandboxable)} />
         <.setting_row label={:redact_pii} value={format_toggle(@endpoint.redact_pii)} />
         <.setting_row label={:enable_dynamic_reservation} value={format_toggle(@endpoint.enable_dynamic_reservation)} />
@@ -195,7 +197,7 @@ defmodule LogflareWeb.Endpoints.Components do
       <.property_row label={:enable_auth} value={format_toggle(@endpoint.enable_auth)} />
       <.property_row label={:max_limit} value={to_string(@endpoint.max_limit)} />
       <.property_row label={:cache_duration_seconds} value={format_cache_duration(@endpoint.cache_duration_seconds)} />
-      <.property_row :if={(@endpoint.cache_duration_seconds || 0) > 0} label={:proactive_requerying_seconds} value={format_cache_duration(@endpoint.proactive_requerying_seconds)} />
+      <.property_row :if={is_pos_integer(@endpoint.cache_duration_seconds)} label={:proactive_requerying_seconds} value={format_cache_duration(@endpoint.proactive_requerying_seconds)} />
       <.property_row label={:sandboxable} value={format_toggle(@endpoint.sandboxable)} />
       <.property_row label={:redact_pii} value={format_toggle(@endpoint.redact_pii)} />
       <.property_row label={:enable_dynamic_reservation} value={format_toggle(@endpoint.enable_dynamic_reservation)} />
@@ -340,8 +342,8 @@ defmodule LogflareWeb.Endpoints.Components do
   defp format_language(:lql), do: "Logflare Query Language"
   defp format_language(language), do: language |> to_string() |> Phoenix.Naming.humanize()
 
-  defp format_cache_duration(n) when n in [0, nil], do: "disabled"
-  defp format_cache_duration(value), do: to_string(value) <> " seconds"
+  defp format_cache_duration(seconds) when is_pos_integer(seconds), do: "#{seconds} seconds"
+  defp format_cache_duration(_seconds), do: "disabled"
 
   defp format_toggle(true), do: "enabled"
   defp format_toggle(value) when value in [false, nil], do: "disabled"

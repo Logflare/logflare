@@ -42,17 +42,22 @@ defmodule Logflare.Utils.Tasks do
     )
   end
 
+  @doc "Starts a supervised task without linking it to the caller."
+  @spec async_nolink((-> any())) :: Task.t()
+  def async_nolink(func) do
+    Task.Supervisor.async_nolink(
+      {:via, PartitionSupervisor, {Logflare.TaskSupervisors, self()}},
+      func
+    )
+  end
+
   @doc """
   Not linked to caller. Returns `{:ok, result}`, `:timeout` if `func` is still running
   after `timeout_ms` (it is killed), or `:error` if it crashed.
   """
   @spec run_within((-> any()), timeout()) :: {:ok, any()} | :timeout | :error
   def run_within(func, timeout_ms) do
-    task =
-      Task.Supervisor.async_nolink(
-        {:via, PartitionSupervisor, {Logflare.TaskSupervisors, self()}},
-        func
-      )
+    task = async_nolink(func)
 
     case Task.yield(task, timeout_ms) || Task.shutdown(task, :brutal_kill) do
       {:ok, result} -> {:ok, result}

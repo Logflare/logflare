@@ -181,7 +181,9 @@ remains best effort and does not provide an immediate cluster-wide barrier.
 
 All endpoint queries by default are set to cache results for 3,600 seconds. The first API request that hits Logflare will create and set the results of the cache for the configured cache duration. Caching is recommended to keep querying costs down while ensuring the fastest possible return of results to the end user.
 
-To disable the cache, set the cached duration to `0`. However, it is not recommended to do so unless you absolutely need up-to-date results. To prevent stale data while keeping the cache warm, use the cache proactive requerying feature.
+To disable the cache, set the cache duration to `0`. The management API also accepts an explicit `null` for `cache_duration_seconds` to disable caching. To prevent stale data while keeping the cache warm, use proactive requerying.
+
+If an existing endpoint has a `null` cache duration or refresh interval, leaving that field blank in the dashboard preserves the setting. Blank fields on a new endpoint still use the defaults.
 
 Caching is performed on a query parameter basis. As such, if there are three API requests sent to an endpoint, `?path=123`, `?path=223`, and `?other=value`, this will result in 3 different caches being created.
 
@@ -195,7 +197,7 @@ Queries that do not reference another endpoint or alert skip loading those full 
 
 Logflare endpoints can be proactively requeried to ensure that the cache does not become stale throughout the cache lifetime.
 
-When configured, the cache will be automatically updated at the set interval, performing only one query to update the cached data.
+When configured with a positive interval in seconds, the cache will be automatically updated at that interval, performing only one query to update the cached data. Set Proactive Re-querying to `0` to disable cache warming. The management API also accepts an explicit `null` for `proactive_requerying_seconds`. With a non-positive or `null` interval, no background queries are scheduled; cached results are reused until the cache expires, and the next request runs the query again.
 
 ## Query Tagging with Labels
 

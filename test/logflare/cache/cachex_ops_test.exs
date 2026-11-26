@@ -354,9 +354,10 @@ defmodule Logflare.Cache.CachexOpsTest do
     end
 
     test "nil for an expired entry that wasn't purged yet" do
-      CachexOps.put_entries(@cache, [{:key, :value, 1}])
-      Process.sleep(5)
+      CachexOps.put_entries(@cache, [{:key, :value, 50}])
+      Process.sleep(60)
 
+      assert {_remaining, _total} = CachexOps.expiry(@cache, :key)
       assert nil == CachexOps.entry(@cache, :key)
     end
 
@@ -389,10 +390,11 @@ defmodule Logflare.Cache.CachexOpsTest do
     end
 
     test "zero remaining for an expired entry that wasn't purged yet" do
-      CachexOps.put_entries(@cache, [{:key, :value, 1}])
-      Process.sleep(5)
+      CachexOps.put_entries(@cache, [{:key, :value, 50}])
+      Process.sleep(60)
 
-      assert {0, 1} = CachexOps.expiry(@cache, :key)
+      assert {0, total} = CachexOps.expiry(@cache, :key)
+      assert total in 45..50
     end
 
     test "nil when not cached" do

@@ -76,18 +76,20 @@ defmodule LogflareWeb.Router do
     plug(LogflareWeb.Plugs.SetHeaders)
   end
 
+  # BERT is only accepted on :ingest_api, behind VerifyApiAccess. No route on
+  # this pipeline takes it, so unauthenticated requests never reach the decoder.
   pipeline :api do
     plug(Plug.RequestId)
     plug(LogflareWeb.Plugs.MaybeContentTypeToJson)
 
     plug(Plug.Parsers,
-      parsers: [JsonParser, BertParser, SyslogParser, NdjsonParser],
+      parsers: [JsonParser, SyslogParser, NdjsonParser],
       json_decoder: Jason,
       body_reader: {PlugCaisson, :read_body, []},
       length: 12_000_000
     )
 
-    plug(:accepts, ["json", "bert"])
+    plug(:accepts, ["json"])
     plug(LogflareWeb.Plugs.SetHeaders)
     plug(OpenApiSpex.Plug.PutApiSpec, module: LogflareWeb.ApiSpec)
   end
