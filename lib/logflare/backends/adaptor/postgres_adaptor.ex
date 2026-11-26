@@ -23,11 +23,13 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   alias Logflare.Backends.Adaptor.PostgresAdaptor.SharedRepo
   alias Logflare.Backends.Backend
   alias Logflare.Backends.Ecto.SqlUtils
+  alias Logflare.Backends.Adaptor.PageToken
   alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Backends.QueryError
   alias Logflare.SingleTenant
   alias Logflare.Sources.Source
   alias Logflare.Sql
+  alias Logflare.Sql.Parser
 
   require Logger
 
@@ -112,11 +114,13 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
     execute_query(backend, {query_string, []}, opts)
   end
 
-  def execute_query(%Backend{} = backend, {query_string, params}, _opts)
-      when is_non_empty_binary(query_string) and is_list(params) do
-    with {:ok, result} <-
+  def execute_query(%Backend{} = backend, {query_string, params}, opts)
+      when is_non_empty_binary(query_string) and is_list(params) and is_list(opts) do
+    with {:ok, page} <- offset_page(backend, opts),
+         {paged_query, page} = page_query(query_string, page),
+         {:ok, result} <-
            SharedRepo.with_repo(backend, fn ->
-             SharedRepo.query(query_string, params)
+             SharedRepo.query(paged_query, params)
            end) do
       rows =
         for row <- result.rows do
@@ -126,8 +130,13 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
           |> nested_map_update()
         end
 
-      {:ok, QueryResult.new(rows, pg_meta(rows))}
+      {rows, next_page_token} = PageToken.split_offset_page(rows, page, backend.user_id)
+
+      {:ok, QueryResult.new(rows, Map.put(pg_meta(rows), :next_page_token, next_page_token))}
     else
+      {:error, %QueryError{} = error} ->
+        {:error, error}
+
       {:error, error} ->
         {:error, error |> to_query_error() |> log_query_error(backend)}
     end
@@ -365,6 +374,27 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   end
 
   @spec pg_meta(list()) :: map()
+  @spec offset_page(Backend.t(), Keyword.t()) ::
+          {:ok, PageToken.offset_page()} | {:error, QueryError.t()}
+  defp offset_page(%Backend{user_id: user_id}, opts) do
+    with {:error, :invalid_page_token} <- PageToken.offset_page(user_id, opts) do
+      {:error, PageToken.invalid_token_error(__MODULE__)}
+    end
+  end
+
+  @spec page_query(String.t(), PageToken.offset_page()) :: {String.t(), PageToken.offset_page()}
+  defp page_query(query_string, nil), do: {query_string, nil}
+
+  defp page_query(query_string, {page_size, offset} = page) do
+    with {:ok, [%{"Query" => _query} = statement]} <- Parser.parse("postgres", query_string),
+         {:ok, inner_query} <- Parser.to_string(statement) do
+      {"SELECT * FROM (#{inner_query}) AS logflare_page LIMIT #{page_size + 1} OFFSET #{offset}",
+       page}
+    else
+      _not_pageable -> {query_string, nil}
+    end
+  end
+
   defp pg_meta(rows) when is_list(rows) do
     %{total_rows: length(rows)}
   end

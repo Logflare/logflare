@@ -35,6 +35,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
   alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.Backends.Adaptor.PostgresAdaptor.SharedRepo
   alias Logflare.Backends.AdaptorSupervisor
+  alias Logflare.Backends.Adaptor.PageToken
   alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Backends.QueryError
   alias Logflare.Endpoints
@@ -247,6 +248,46 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
 
         assert Exception.message(error.raw_error) =~ "notthere"
       end)
+    end
+
+    test "execute_query/3 pages results with a next_page_token", %{
+      backend: backend,
+      source: source
+    } do
+      backend = %{backend | user_id: source.user_id}
+      query = {"SELECT n FROM generate_series(1, $1) AS n ORDER BY n;", [5]}
+
+      assert {:ok, %QueryResult{rows: [%{"n" => 1}, %{"n" => 2}], next_page_token: token}} =
+               PostgresAdaptor.execute_query(backend, query, page_size: 2)
+
+      assert {:ok, %QueryResult{rows: [%{"n" => 3}, %{"n" => 4}], next_page_token: token}} =
+               PostgresAdaptor.execute_query(backend, query, page_size: 2, page_token: token)
+
+      assert {:ok, %QueryResult{rows: [%{"n" => 5}], next_page_token: nil}} =
+               PostgresAdaptor.execute_query(backend, query, page_size: 2, page_token: token)
+    end
+
+    test "execute_query/3 returns all rows without page_size", %{backend: backend} do
+      assert {:ok, %QueryResult{rows: rows, next_page_token: nil}} =
+               PostgresAdaptor.execute_query(backend, "SELECT generate_series(1, 5) AS n", [])
+
+      assert length(rows) == 5
+    end
+
+    test "execute_query/3 does not page EXPLAIN statements", %{backend: backend} do
+      assert {:ok, %QueryResult{rows: [_ | _], next_page_token: nil}} =
+               PostgresAdaptor.execute_query(backend, "EXPLAIN SELECT 1", page_size: 1)
+    end
+
+    test "execute_query/3 rejects a page_token issued to another user", %{
+      backend: backend,
+      source: source
+    } do
+      backend = %{backend | user_id: source.user_id}
+      token = PageToken.encode(backend.user_id + 1, %{"offset" => 2})
+
+      assert {:error, %QueryError{kind: :invalid_query}} =
+               PostgresAdaptor.execute_query(backend, "SELECT 1", page_size: 2, page_token: token)
     end
 
     test "execute_query/3 normalizes raw SQL syntax errors", %{backend: backend} do
