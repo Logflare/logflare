@@ -26,6 +26,7 @@ defmodule Logflare.Backends.UserMonitoring.QueryTraces do
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.Backends.QueryError
+  alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Logs.Processor
   alias Logflare.Logs.Raw
   alias Logflare.Sources
@@ -39,7 +40,8 @@ defmodule Logflare.Backends.UserMonitoring.QueryTraces do
 
   @type attrs :: %{
           required(:query_type) => atom(),
-          required(:query) => String.t() | {:bigquery | :postgres, Ecto.Query.t()},
+          optional(:query) => String.t() | {:bigquery | :postgres, Ecto.Query.t()},
+          optional(:operation) => String.t(),
           optional(:endpoint_language) => atom(),
           optional(:search_kind) => atom(),
           optional(:alert_id) => pos_integer() | nil,
@@ -66,7 +68,9 @@ defmodule Logflare.Backends.UserMonitoring.QueryTraces do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   end
 
-  @spec measure(pos_integer(), attrs(), (-> result)) :: result when result: query_result()
+  @spec measure(pos_integer() | nil, attrs(), (-> result)) :: result when result: query_result()
+  def measure(nil, _attrs, fun) when is_function(fun, 0), do: fun.()
+
   def measure(user_id, attrs, fun) when is_pos_integer(user_id) and is_function(fun, 0) do
     timestamp = System.system_time(:microsecond)
     started_at = System.monotonic_time()
@@ -215,6 +219,11 @@ defmodule Logflare.Backends.UserMonitoring.QueryTraces do
 
   defp error_message(%QueryError{kind: kind}), do: Atom.to_string(kind)
   defp error_message(error) when is_binary(error), do: error
+
+  defp error_message(%Tesla.Env{body: body, status: status} = env) when is_binary(body),
+    do: GenUtils.get_tesla_error_message(env) || "HTTP #{status}"
+
+  defp error_message(%Tesla.Env{status: status}), do: "HTTP #{status}"
   defp error_message(error) when is_exception(error), do: Exception.message(error)
   defp error_message(error), do: inspect(error)
 

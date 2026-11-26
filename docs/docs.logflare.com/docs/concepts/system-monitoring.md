@@ -47,12 +47,12 @@ Contains one event per query that Logflare executes on your behalf. Tracing is b
 - **Log search queries** (`query.search`): the events query, the chart query, and the query behind the event context view. A live tail re-runs its queries every second; only the first query of a tail is traced.
 - **Alert queries** (`query.alert`): scheduled runs, runs started with "Trigger now", and queries run from the alert editor.
 - **Single event fetches** (`query.event`): the query that loads one event, for example when opening an event from search.
-- **Provisioning queries** (`query.provision`): the statements that create a ClickHouse backend's tables, and a Postgres backend's table and index for each source. They run each time the backend or source starts; each statement is traced once per Logflare server after it succeeds, and every failed run is traced. Provisioning of system sources is not traced.
+- **Provisioning queries** (`query.provision`): the statements that create a ClickHouse backend's tables, a Postgres backend's table and index for each source, and BigQuery API calls that create, change, or delete a source's table or create your dataset. Create steps run each time a backend or source starts; each is traced once per Logflare server after it succeeds (for BigQuery, "already exists" counts as success), and every failed run is traced. BigQuery table changes and deletions are traced every time. Provisioning of system sources is not traced. BigQuery schema updates made while ingesting new fields are not traced.
 
 Each event includes:
 
 - **`event_message`** - Query kind: `query.endpoint`, `query.search`, `query.alert`, `query.event`, or `query.provision`
-- **`query`** - The SQL sent to the backend adaptor. For endpoints, the adaptor may still rewrite parameter placeholders before running it
+- **`query`** - The SQL sent to the backend adaptor. For endpoints, the adaptor may still rewrite parameter placeholders before running it. Absent for BigQuery provisioning, which uses API calls instead of SQL
 - **`backend_type`** - The backend that ran the query
 - **`backend_id`** - The backend that ran the query, for endpoint and provisioning queries
 - **`total_bytes_processed`** - Bytes scanned, for backends that report it (BigQuery, ClickHouse)
@@ -78,9 +78,10 @@ Alert query events also include:
 - **`alert_language`** - Language the alert is written in
 - **`alert_trigger`** - `scheduled` for runs on the alert schedule, `manual` for runs started by a user
 
-Postgres provisioning events also include:
+Provisioning events also include:
 
-- **`source_id`**, **`source_token`**, and **`source_name`** - The source whose table was provisioned
+- **`operation`** - For BigQuery, the API call: `datasets.insert`, `tables.insert`, `tables.patch`, or `tables.delete`
+- **`source_id`**, **`source_token`**, and **`source_name`** - For Postgres and BigQuery table steps, the source whose table was provisioned
 
 Single event fetch events also include:
 

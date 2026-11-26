@@ -4,8 +4,11 @@ defmodule Logflare.Backends.UserMonitoring.QueryTracesTest do
 
   import ExUnit.CaptureLog
 
+  alias GoogleApi.BigQuery.V2.Api.Datasets
   alias GoogleApi.BigQuery.V2.Api.Jobs
   alias GoogleApi.BigQuery.V2.Api.Tabledata
+  alias GoogleApi.BigQuery.V2.Api.Tables
+  alias GoogleApi.BigQuery.V2.Model.Table
   alias GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse
   alias Logflare.Alerting
   alias Logflare.Alerting.AlertWorker
@@ -16,6 +19,7 @@ defmodule Logflare.Backends.UserMonitoring.QueryTracesTest do
   alias Logflare.Backends.SourceSup
   alias Logflare.Backends.UserMonitoring.QueryTraces
   alias Logflare.Endpoints
+  alias Logflare.Google.BigQuery
   alias Logflare.Logs.LogEvents
   alias Logflare.Logs.Search
   alias Logflare.Logs.SearchOperation, as: SO
@@ -386,6 +390,88 @@ defmodule Logflare.Backends.UserMonitoring.QueryTracesTest do
       on_exit(fn -> PostgresAdaptor.destroy_instance({system_source, backend}) end)
 
       assert :ok = PostgresAdaptor.create_events_table({system_source, backend})
+      assert_next_trace_is_marker(user)
+    end
+  end
+
+  describe "BigQuery provisioning" do
+    setup :start_traces_source
+
+    setup %{user: user} do
+      %{source: insert(:source, user: user)}
+    end
+
+    test "trace dataset and table creation once, with already existing as success", %{
+      user: user,
+      source: source
+    } do
+      dataset_id = "dataset_#{System.unique_integer([:positive])}"
+
+      stub(Datasets, :bigquery_datasets_insert, fn _conn, _project, _opts ->
+        {:error, %Tesla.Env{status: 409, body: ~s({"error":{"message":"Already Exists"}})}}
+      end)
+
+      stub(Tables, :bigquery_tables_insert, fn _conn, _project, _dataset, _opts ->
+        {:ok, %Table{}}
+      end)
+
+      assert {:ok, %Table{}} =
+               BigQuery.init_table!(user.id, source.token, "project", 1_000, "US", dataset_id)
+
+      traces = receive_traces(2)
+      source_id = source.id
+
+      assert %{"status" => "ok", "backend_type" => "bigquery"} =
+               Enum.find(traces, &(&1["operation"] == "datasets.insert"))
+
+      assert %{"status" => "ok", "source_id" => ^source_id, "event_message" => "query.provision"} =
+               Enum.find(traces, &(&1["operation"] == "tables.insert"))
+
+      assert {:ok, %Table{}} =
+               BigQuery.init_table!(user.id, source.token, "project", 1_000, "US", dataset_id)
+
+      assert_next_trace_is_marker(user)
+    end
+
+    test "trace a failed table patch with the API error message", %{source: source} do
+      stub(Tables, :bigquery_tables_patch, fn _conn, _project, _dataset, _table, _opts ->
+        {:error, %Tesla.Env{status: 400, body: ~s({"error":{"message":"Invalid clustering"}})}}
+      end)
+
+      assert {:error, %Tesla.Env{status: 400}} =
+               BigQuery.patch_table_clustering(source.token, ["a"], "dataset", "project")
+
+      assert_receive {:insert_all, [trace]}, 5_000
+
+      assert %{
+               "operation" => "tables.patch",
+               "status" => "error",
+               "error" => "Invalid clustering"
+             } = trace
+
+      refute Map.has_key?(trace, "query")
+    end
+
+    test "trace a table deletion", %{source: source} do
+      stub(Tables, :bigquery_tables_delete, fn _conn, _project, _dataset, _table ->
+        {:ok, nil}
+      end)
+
+      assert {:ok, nil} = BigQuery.delete_table(source.token)
+
+      assert_receive {:insert_all, [%{"operation" => "tables.delete", "status" => "ok"}]}, 5_000
+    end
+
+    test "skip operations on system sources", %{user: user} do
+      system_source = insert(:source, user: user, system_source: true, system_source_type: :logs)
+
+      stub(Tables, :bigquery_tables_patch, fn _conn, _project, _dataset, _table, _opts ->
+        {:ok, %Table{}}
+      end)
+
+      assert {:ok, %Table{}} =
+               BigQuery.patch_table_clustering(system_source.token, ["a"], "dataset", "project")
+
       assert_next_trace_is_marker(user)
     end
   end
