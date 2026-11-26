@@ -18,6 +18,8 @@ defmodule LogflareWeb.QueryLive do
   alias LogflareWeb.QueryErrorHelpers
   alias Phoenix.HTML.Form
 
+  @page_size 100
+
   def render(assigns) do
     ~H"""
     <.subheader>
@@ -166,6 +168,15 @@ defmodule LogflareWeb.QueryLive do
           </tbody>
         </table>
       </div>
+      <div :if={length(@pages) > 1 or @next_page_token} id="query-pagination" class="tw-flex tw-items-center tw-justify-end tw-gap-2 tw-mb-4">
+        <.button variant="secondary" type="button" phx-click="prev-page" disabled={@page_index == 0 or @query_running?}>
+          Previous
+        </.button>
+        <span>Page {@page_index + 1}</span>
+        <.button variant="secondary" type="button" phx-click="next-page" disabled={not next_page?(assigns) or @query_running?}>
+          Next
+        </.button>
+      </div>
     </section>
     """
   end
@@ -180,6 +191,10 @@ defmodule LogflareWeb.QueryLive do
       socket
       |> assign(:user_id, user.id)
       |> assign(:query_result_rows, nil)
+      |> assign(:pages, [])
+      |> assign(:page_index, 0)
+      |> assign(:next_page_token, nil)
+      |> assign(:paged_query, nil)
       |> assign(:total_bytes_processed, nil)
       |> assign(:parse_error_message, nil)
       |> assign(:run_error_message, nil)
@@ -317,15 +332,48 @@ defmodule LogflareWeb.QueryLive do
     backend = get_selected_backend(socket)
     language = EndpointQuery.map_backend_to_language(backend, false)
     backend_id = backend && backend.id
+    paged_query = {language, query_string, backend_id}
 
     socket =
       socket
       |> assign(:user_id, user.id)
       |> assign(:query_running?, true)
-      |> start_async(:run_query, fn -> run_query(user, language, query_string, backend_id) end)
+      |> assign(:paged_query, paged_query)
+      |> start_async(:run_query, fn -> run_query(user, paged_query, nil) end)
       |> push_patch(to: ~p"/query?#{patch_params}")
 
     {:noreply, socket}
+  end
+
+  def handle_event("prev-page", _params, %{assigns: %{page_index: page_index}} = socket)
+      when page_index > 0 do
+    {:noreply, show_page(socket, page_index - 1)}
+  end
+
+  def handle_event("prev-page", _params, socket), do: {:noreply, socket}
+
+  def handle_event("next-page", _params, %{assigns: %{query_running?: true}} = socket) do
+    {:noreply, socket}
+  end
+
+  def handle_event("next-page", _params, %{assigns: assigns} = socket) do
+    next_index = assigns.page_index + 1
+
+    cond do
+      next_index < length(assigns.pages) ->
+        {:noreply, show_page(socket, next_index)}
+
+      is_binary(assigns.next_page_token) ->
+        %{user: user, paged_query: paged_query, next_page_token: page_token} = assigns
+
+        {:noreply,
+         socket
+         |> assign(:query_running?, true)
+         |> start_async(:fetch_page, fn -> run_query(user, paged_query, page_token) end)}
+
+      true ->
+        {:noreply, socket}
+    end
   end
 
   def handle_event(
@@ -361,6 +409,9 @@ defmodule LogflareWeb.QueryLive do
       socket
       |> put_flash(:info, "Ran query successfully")
       |> assign(:query_result_rows, rows)
+      |> assign(:pages, [rows])
+      |> assign(:page_index, 0)
+      |> assign(:next_page_token, Map.get(result, :next_page_token))
       |> assign(:total_bytes_processed, total_bytes_processed)
       |> assign(:parse_error_message, nil)
       |> assign(:run_error_message, nil)
@@ -368,6 +419,20 @@ defmodule LogflareWeb.QueryLive do
 
     {:noreply, socket}
   end
+
+  def handle_async(:fetch_page, {:ok, {:ok, %{rows: rows} = result}}, socket) do
+    socket =
+      socket
+      |> assign(:pages, socket.assigns.pages ++ [rows])
+      |> assign(:next_page_token, Map.get(result, :next_page_token))
+      |> assign(:run_error_message, nil)
+      |> assign(:query_running?, false)
+      |> show_page(length(socket.assigns.pages))
+
+    {:noreply, socket}
+  end
+
+  def handle_async(:fetch_page, result, socket), do: handle_async(:run_query, result, socket)
 
   def handle_async(:run_query, {:ok, {:error, error}}, socket) do
     message = if is_binary(error), do: error, else: QueryErrorHelpers.query_error_message(error)
@@ -386,14 +451,31 @@ defmodule LogflareWeb.QueryLive do
     )
   end
 
-  @spec run_query(User.t(), :bq_sql | :ch_sql | :pg_sql, String.t(), integer() | nil) ::
-          {:ok, map()} | {:error, String.t() | QueryError.t()}
-  defp run_query(user, language, query_string, backend_id) do
+  @spec run_query(
+          User.t(),
+          {:bq_sql | :ch_sql | :pg_sql, String.t(), integer() | nil},
+          String.t() | nil
+        ) :: {:ok, map()} | {:error, String.t() | QueryError.t()}
+  defp run_query(user, {language, query_string, backend_id}, page_token) do
     Endpoints.run_query_string(user, {language, query_string},
       params: %{},
       use_query_cache: false,
-      backend_id: backend_id
+      backend_id: backend_id,
+      page_size: @page_size,
+      page_token: page_token
     )
+  end
+
+  @spec show_page(Phoenix.LiveView.Socket.t(), non_neg_integer()) :: Phoenix.LiveView.Socket.t()
+  defp show_page(socket, page_index) do
+    socket
+    |> assign(:page_index, page_index)
+    |> assign(:query_result_rows, Enum.at(socket.assigns.pages, page_index))
+  end
+
+  @spec next_page?(map()) :: boolean()
+  defp next_page?(%{page_index: page_index, pages: pages, next_page_token: next_page_token}) do
+    page_index + 1 < length(pages) or is_binary(next_page_token)
   end
 
   defp format_query_error(error) do

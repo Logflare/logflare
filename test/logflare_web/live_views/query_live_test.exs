@@ -2,6 +2,7 @@ defmodule LogflareWeb.QueryLiveTest do
   @moduledoc false
   use LogflareWeb.ConnCase
 
+  alias GoogleApi.BigQuery.V2.Model.GetQueryResultsResponse
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.Adaptor.QueryResult
 
@@ -504,6 +505,54 @@ defmodule LogflareWeb.QueryLiveTest do
 
       assert html =~ "Ran query successfully"
       assert render(view) =~ "bq-data"
+    end
+  end
+
+  describe "pagination" do
+    test "pages through BigQuery results with next and previous", %{conn: conn} do
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, opts ->
+        assert opts[:body].maxResults == 100
+        {:ok, %{TestUtils.gen_bq_response([%{"ts" => "first-page"}]) | pageToken: "bq-token"}}
+      end)
+      |> expect(:bigquery_jobs_get_query_results, 1, fn _conn, _proj_id, _job_id, params ->
+        assert params[:pageToken] == "bq-token"
+        response = TestUtils.gen_bq_response([%{"ts" => "second-page"}])
+        {:ok, struct(GetQueryResultsResponse, Map.from_struct(response))}
+      end)
+
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/query")
+      render_hook(view, "parse-query", %{value: "select current_timestamp() as ts"})
+
+      assert submit_query_form(view, conn) =~ "first-page"
+      assert has_element?(view, "#query-pagination", "Page 1")
+      assert has_element?(view, ~s(button[phx-click="prev-page"][disabled]))
+
+      view |> element(~s(button[phx-click="next-page"])) |> render_click()
+      html = render_async(view)
+      assert html =~ "second-page"
+      refute html =~ "first-page"
+      assert has_element?(view, "#query-pagination", "Page 2")
+      assert has_element?(view, ~s(button[phx-click="next-page"][disabled]))
+
+      html = view |> element(~s(button[phx-click="prev-page"])) |> render_click()
+      assert html =~ "first-page"
+
+      html = view |> element(~s(button[phx-click="next-page"])) |> render_click()
+      assert html =~ "second-page"
+    end
+
+    test "hides pagination for a single page of results", %{conn: conn} do
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+        {:ok, TestUtils.gen_bq_response([%{"ts" => "only-page"}])}
+      end)
+
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/query")
+      render_hook(view, "parse-query", %{value: "select current_timestamp() as ts"})
+
+      assert submit_query_form(view, conn) =~ "only-page"
+      refute has_element?(view, "#query-pagination")
     end
   end
 
