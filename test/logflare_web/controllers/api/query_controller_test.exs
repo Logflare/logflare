@@ -249,6 +249,44 @@ defmodule LogflareWeb.Api.QueryControllerTest do
       assert %{"result" => [%{"my_time" => 0}]} = response
     end
 
+    test "ad hoc ClickHouse execution and parsing reject endpoint-only settings", %{
+      conn: conn,
+      user: user
+    } do
+      {_source, backend} =
+        DataCase.setup_clickhouse_test(
+          user: user,
+          config: %{query_class_settings: %{"default" => %{"priority" => 5}}}
+        )
+
+      start_supervised!({ClickHouseAdaptor, backend})
+
+      params = [
+        backend_id: backend.id,
+        sql: "SELECT toInt64(getSetting('priority')) AS priority SETTINGS priority = 10"
+      ]
+
+      for route <- [~p"/api/query?#{params}", ~p"/api/query/parse?#{params}"] do
+        response =
+          conn
+          |> add_access_token(user, ~w(private))
+          |> get(route)
+          |> json_response(400)
+
+        assert %{"error" => "Restricted setting priority"} = response
+      end
+
+      params = Keyword.update!(params, :sql, &String.replace(&1, " SETTINGS priority = 10", ""))
+
+      response =
+        conn
+        |> add_access_token(user, ~w(private))
+        |> get(~p"/api/query?#{params}")
+        |> json_response(200)
+
+      assert %{"result" => [%{"priority" => 5}]} = response
+    end
+
     test "?ch_sql= without backend_id uses ClickHouse backend", %{
       conn: conn,
       user: user

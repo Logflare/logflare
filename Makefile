@@ -7,7 +7,6 @@ ERL_COOKIE ?= monster
 ENV ?= dev
 SHA_IMAGE_TAG ?= dev-$(shell git rev-parse --short=7 HEAD)
 VERSION ?= $(shell cat ./VERSION)
-NORMALIZED_VERSION ?= $(shell cat ./VERSION | tr '.' '-')
 
 LOGFLARE_SUPABASE_MODE ?= false
 
@@ -200,10 +199,10 @@ stripe:
 # Encryption and decryption of secrets
 # Usage:
 #
-#     make decrypt.{dev,staging,prod} # Decrypt secrets for given environment
-#     make encrypt.{dev,staging,prod} # Encrypt secrets for given environment
+#     make decrypt.dev # Decrypt local dev secrets
+#     make encrypt.dev # Encrypt local dev secrets
 
-%: cloudbuild/%.enc
+.dev.env: cloudbuild/.dev.env.enc
 	@gcloud kms decrypt --ciphertext-file=$< --plaintext-file=$@ \
 		--location=${GCLOUD_LOCATION} \
 		--keyring=${GCLOUD_KEYRING} \
@@ -211,48 +210,17 @@ stripe:
 		--project=${GCLOUD_PROJECT}
 	@echo "$@ has been decrypted"
 
-%.enc:
-	@gcloud kms encrypt --ciphertext-file=cloudbuild/$@ --plaintext-file=$(@:.enc=) \
+decrypt.dev: .dev.env
+
+encrypt.dev:
+	@gcloud kms encrypt --ciphertext-file=cloudbuild/.dev.env.enc --plaintext-file=.dev.env \
 		--location=${GCLOUD_LOCATION} \
 		--keyring=${GCLOUD_KEYRING} \
 		--key=${GCLOUD_KEY} \
 		--project=${GCLOUD_PROJECT}
-	@echo "$@ has been encrypted"
-
-.PRECIOUS: %.enc
-
-decrypt.dev: .dev.env
-encrypt.dev: .dev.env.enc
+	@echo "cloudbuild/.dev.env.enc has been encrypted"
 
 .PHONY: decrypt.dev encrypt.dev
-
-envs = staging prod
-
-%crypt.prod: GCLOUD_KEYRING = logflare-prod-keyring-us-central1
-%crypt.prod: GCLOUD_KEY = logflare-prod-secrets-key
-%crypt.prod: GCLOUD_PROJECT = logflare-232118
-
-.SECONDEXPANSION:
-$(addprefix decrypt.,${envs}): decrypt.%: \
-	.$$*.gcloud.json \
- 	.$$*.env \
- 	.$$*.cert.key \
- 	.$$*.cert.pem \
- 	.$$*.db-client-cert.pem \
- 	.$$*.db-client-key.pem \
- 	.$$*.db-server-ca.pem
-
-$(addprefix encrypt.,${envs}): encrypt.%: \
-	.$$*.gcloud.json.enc \
-	.$$*.env.enc \
-	.$$*.cert.key.enc \
-	.$$*.cert.pem.enc \
- 	.$$*.db-client-cert.pem.enc \
- 	.$$*.db-client-key.pem.enc \
- 	.$$*.db-server-ca.pem.enc
-
-.PHONY: $(addprefix encrypt.,${envs})
-.PHONY: $(addprefix decrypt.,${envs})
 
 # OpenTelemetry Protobufs
 
@@ -281,145 +249,6 @@ grpc.protoc.bq:
 	git clone https://github.com/googleapis/googleapis.git --depth=1 $$dir; \
 	protoc -I=$$dir --elixir_out=plugins=grpc:$(PWD)/lib/logflare_grpc $$(find $$dir -path "*/cloud/bigquery/storage/v1/*" -iname '*.proto')
 
-# manual deployment scripts
-
-deploy.staging.main:
-	@gcloud config set project logflare-staging
-	gcloud builds submit . \
-		--config=cloudbuild/staging/build-image.yaml \
-		--substitutions=_IMAGE_TAG=$(SHA_IMAGE_TAG),_TAG_LATEST=true \
-		--region=europe-west1 \
-		--gcs-log-dir="gs://logflare-staging_cloudbuild-logs/logs"
-
-	gcloud builds submit . \
-		--config=./cloudbuild/staging/deploy.yaml \
-		--substitutions=_IMAGE_TAG=$(SHA_IMAGE_TAG),_INSTANCE_TYPE=c2d-standard-16 \
-		--region=us-central1 \
-		--gcs-log-dir="gs://logflare-staging_cloudbuild-logs/logs"
-
-	gcloud builds submit . \
-		--config=./cloudbuild/staging/deploy.yaml \
-		--substitutions=_IMAGE_TAG=$(SHA_IMAGE_TAG),_INSTANCE_GROUP=instance-group-staging-main-saturated,_INSTANCE_TYPE=c2d-highcpu-16,_SPOOL_CLUSTER=main-saturated \
-		--region=us-central1 \
-		--gcs-log-dir="gs://logflare-staging_cloudbuild-logs/logs"
-
-deploy.staging.versioned:
-	@gcloud config set project logflare-staging
-	gcloud builds submit . \
-		--config=cloudbuild/staging/build-image.yaml \
-		--substitutions=_IMAGE_TAG=$(VERSION),_TAG_LATEST=true \
-		--region=europe-west1 \
-		--gcs-log-dir="gs://logflare-staging_cloudbuild-logs/logs"
-
-	gcloud builds submit . \
-		--config=./cloudbuild/staging/deploy.yaml \
-		--substitutions=_IMAGE_TAG=$(VERSION),_NORMALIZED_IMAGE_TAG=$(NORMALIZED_VERSION),_CLUSTER=versioned \
-		--region=us-west1 \
-		--gcs-log-dir="gs://logflare-staging_cloudbuild-logs/logs"
-
-# Deploys the currently checked-out branch's HEAD to two dedicated staging
-# instance groups (instance-group-staging-dev-<DEV_NUMBER>-producer/-consumer)
-# for testing the spool feature, reusing the staging DB/secrets already baked
-# into the staging image. See cloudbuild/staging/deploy-dev.yaml and
-# .github/workflows/deploy-pr-to-dev.yml (manual GitHub Actions trigger).
-# Requires the two instance groups to already exist (one-time bootstrap, not
-# automated here since nothing in this pipeline creates a MIG). Override
-# DEV_NUMBER to target a different dev-N pair, e.g.
-# `make deploy.staging.dev DEV_NUMBER=2`.
-DEV_NUMBER ?= 1
-
-deploy.staging.dev: deploy.staging.dev-image deploy.staging.dev-producer deploy.staging.dev-consumer
-
-deploy.staging.dev-image:
-	@gcloud config set project logflare-staging
-	gcloud builds submit . \
-		--config=cloudbuild/staging/build-image.yaml \
-		--substitutions=_IMAGE_TAG=$(SHA_IMAGE_TAG) \
-		--region=europe-west1 \
-		--gcs-log-dir="gs://logflare-staging_cloudbuild-logs/logs"
-
-deploy.staging.dev-producer:
-	gcloud builds submit . \
-		--config=./cloudbuild/staging/deploy-dev.yaml \
-		--substitutions=_IMAGE_TAG=$(SHA_IMAGE_TAG),_DEV_NUMBER=$(DEV_NUMBER),_ROLE=producer,_INSTANCE_TYPE=c2d-standard-16 \
-		--region=us-central1 \
-		--gcs-log-dir="gs://logflare-staging_cloudbuild-logs/logs"
-
-deploy.staging.dev-consumer:
-	gcloud builds submit . \
-		--config=./cloudbuild/staging/deploy-dev.yaml \
-		--substitutions=_IMAGE_TAG=$(SHA_IMAGE_TAG),_DEV_NUMBER=$(DEV_NUMBER),_ROLE=consumer,_INSTANCE_TYPE=c2d-standard-16 \
-		--region=us-central1 \
-		--gcs-log-dir="gs://logflare-staging_cloudbuild-logs/logs"
-
-.PHONY: deploy.staging.dev deploy.staging.dev-image deploy.staging.dev-producer deploy.staging.dev-consumer
-
-deploy.prod.versioned:
-	@gcloud config set project logflare-232118
-	@echo "Creating staging instance template and deploying..."
-	gcloud builds submit . \
-		--config=./cloudbuild/prod/build-image.yaml \
-		--substitutions=_IMAGE_TAG=$(VERSION) \
-		--region=europe-west3 \
-		--gcs-log-dir="gs://logflare-prod_cloudbuild-logs/logs"
-
-	@echo "Creating canary instance template..."
-	gcloud builds submit . \
-		--config=./cloudbuild/prod/pre-deploy.yaml \
-		--substitutions=_IMAGE_TAG=$(VERSION),_NORMALIZED_IMAGE_TAG=$(NORMALIZED_VERSION) \
-		--region=europe-west3 \
-		--gcs-log-dir="gs://logflare-prod_cloudbuild-logs/logs"
-
-	@echo "Deploying to canary instances"
-	gcloud builds submit . \
-		--config=./cloudbuild/prod/deploy.yaml \
-		--substitutions=_IMAGE_TAG=$(VERSION),_NORMALIZED_IMAGE_TAG=$(NORMALIZED_VERSION) \
-		--region=europe-west3 \
-		--gcs-log-dir="gs://logflare-prod_cloudbuild-logs/logs"
-
-
-	@echo "Creating prod instance templates..."
-	gcloud builds submit . \
-		--config=./cloudbuild/prod/pre-deploy.yaml \
-		--substitutions=_IMAGE_TAG=$(VERSION),_NORMALIZED_IMAGE_TAG=$(NORMALIZED_VERSION),_CLUSTER=prod-a,_LOGFLARE_ALERTS_ENABLED=true,_SPOOL_MODE=disable \
-		--region=europe-west3 \
-		--gcs-log-dir="gs://logflare-prod_cloudbuild-logs/logs"
-	gcloud builds submit . \
-		--config=./cloudbuild/prod/pre-deploy.yaml \
-		--substitutions=_IMAGE_TAG=$(VERSION),_NORMALIZED_IMAGE_TAG=$(NORMALIZED_VERSION),_CLUSTER=prod-b,_LOGFLARE_ALERTS_ENABLED=false \
-		--region=europe-west3 \
-		--gcs-log-dir="gs://logflare-prod_cloudbuild-logs/logs"
-	gcloud builds submit . \
-		--config=./cloudbuild/prod/pre-deploy.yaml \
-		--substitutions=_IMAGE_TAG=$(VERSION),_NORMALIZED_IMAGE_TAG=$(NORMALIZED_VERSION),_CLUSTER=prod-c,_LOGFLARE_ALERTS_ENABLED=false \
-		--region=europe-west3 \
-		--gcs-log-dir="gs://logflare-prod_cloudbuild-logs/logs"
-	gcloud builds submit . \
-		--config=./cloudbuild/prod/pre-deploy.yaml \
-		--substitutions=_IMAGE_TAG=$(VERSION),_NORMALIZED_IMAGE_TAG=$(NORMALIZED_VERSION),_CLUSTER=prod-d,_LOGFLARE_ALERTS_ENABLED=false \
-		--region=europe-west3 \
-		--gcs-log-dir="gs://logflare-prod_cloudbuild-logs/logs"
-	gcloud builds submit . \
-		--config=./cloudbuild/prod/pre-deploy.yaml \
-		--substitutions=_IMAGE_TAG=$(VERSION),_NORMALIZED_IMAGE_TAG=$(NORMALIZED_VERSION),_CLUSTER=prod-e,_LOGFLARE_ALERTS_ENABLED=false \
-		--region=europe-west3 \
-		--gcs-log-dir="gs://logflare-prod_cloudbuild-logs/logs"
-	gcloud builds submit . \
-		--config=./cloudbuild/prod/pre-deploy.yaml \
-		--substitutions=_IMAGE_TAG=$(VERSION),_NORMALIZED_IMAGE_TAG=$(NORMALIZED_VERSION),_CLUSTER=prod-f,_LOGFLARE_ALERTS_ENABLED=false \
-		--region=europe-west3 \
-		--gcs-log-dir="gs://logflare-prod_cloudbuild-logs/logs"
-
-	gcloud builds submit . \
-		--config=./cloudbuild/prod/pre-deploy.yaml \
-		--substitutions=_IMAGE_TAG=$(VERSION),_NORMALIZED_IMAGE_TAG=$(NORMALIZED_VERSION),_CLUSTER=prod-g \
-		--region=europe-west3 \
-		--gcs-log-dir="gs://logflare-prod_cloudbuild-logs/logs"
-
-
-	@echo "Instance template has been created successfully. Complete the deployment by navigating to https://console.cloud.google.com/compute/instanceGroups/list?hl=en&project=logflare-232118"
-.PHONY: deploy.staging.main
-
 tag-versioned:
 
 	@echo "Checking dockerhub registry for dev image supabase/logflare:$(SHA_IMAGE_TAG) ..."
@@ -436,14 +265,6 @@ tag-versioned:
 
 .PHONY: tag-versioned
 
-
-ssl.prod: CERT_DOMAIN = logflare.app
-ssl.staging: CERT_DOMAIN = logflarestaging.com
-
-$(addprefix ssl.,${envs}): ssl.%:
-	@echo "Generating self-signed certificate..."
-	@openssl req -x509 -newkey rsa:2048 -keyout .$*.cert.key -out .$*.cert.pem -days 3650 \
-		-nodes -subj "/C=US/ST=DE/O=Supabase/OU=Logflare/CN=$(CERT_DOMAIN)"
 
 TELEGRAF_KEYS_DIR := priv/telegraf
 TELEGRAF_KEYS_SENTINEL := $(TELEGRAF_KEYS_DIR)/client.crt
@@ -490,13 +311,4 @@ $(TELEGRAF_KEYS_SENTINEL):
 docker.multi-step:
 	docker-compose build base runner
 
-ops.sign-export:
-	@if [ -z "$(PROJECT)" ]; then \
-		echo "Error: PROJECT env variable must be set. Usage: make ops.sign-export PROJECT=your_project"; \
-		exit 1; \
-	fi
-	@CLOUDSDK_PYTHON=python3 CLOUDSDK_PYTHON_SITEPACKAGES=1 gcloud storage sign-url 'gs://supabase-log-exports-prod/$(PROJECT)-*.json.gz' \
-		--private-key-file=.log-export.gcloud.json  \
-		--duration=5d > export-dl-$(PROJECT).txt
-
-.PHONY: $(addprefix ssl.,${envs}) ssl.telegraf docker.build.multistep ops.sign-export
+.PHONY: ssl.telegraf docker.build.multistep

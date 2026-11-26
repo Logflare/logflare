@@ -9,4 +9,5 @@
 
 <section class="mx-auto container">
   <.backend_form {assigns} />
+  <.live_component :if={@backend.type == :clickhouse} module={LogflareWeb.Backends.QueryClassSettingsComponent} id={"backend-query-class-settings-#{@backend.id}"} backend={@backend} actor={@team_user || @user} />
 </section>

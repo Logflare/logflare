@@ -1,9 +1,13 @@
 defmodule LogflareWeb.BertParser do
   @moduledoc """
-  Parses BERT (http://bert-rpc.org) request body
+  Parses BERT (http://bert-rpc.org) request body.
+
+  Terms containing functions or structs are rejected with a 400.
   """
 
   @behaviour Plug.Parsers
+
+  @struct_error_message "structs are not allowed in BERT payloads"
 
   def init(opts) do
     {body_reader, opts} = Keyword.pop(opts, :body_reader, {Plug.Conn, :read_body, []})
@@ -31,7 +35,13 @@ defmodule LogflareWeb.BertParser do
   end
 
   def decode({:ok, body, conn}) do
-    {:ok, Bertex.safe_decode(body), conn}
+    term = Plug.Crypto.non_executable_binary_to_term(body, [:safe])
+    if struct_term?(term), do: raise(ArgumentError, @struct_error_message)
+
+    decoded = Bertex.Bert.decode(term)
+    if struct_term?(decoded), do: raise(ArgumentError, @struct_error_message)
+
+    {:ok, decoded, conn}
   rescue
     e ->
       reraise Plug.Parsers.ParseError, [exception: e], __STACKTRACE__
@@ -55,4 +65,19 @@ defmodule LogflareWeb.BertParser do
     # as coming from the binary
     [:bert, :dict]
   end
+
+  @spec struct_term?(term()) :: boolean()
+  defp struct_term?(%{__struct__: _term}), do: true
+
+  defp struct_term?(term) when is_map(term) do
+    Enum.any?(term, fn {key, value} -> struct_term?(key) or struct_term?(value) end)
+  end
+
+  defp struct_term?([head | tail]), do: struct_term?(head) or struct_term?(tail)
+
+  defp struct_term?(term) when is_tuple(term) do
+    term |> Tuple.to_list() |> struct_term?()
+  end
+
+  defp struct_term?(_term), do: false
 end
