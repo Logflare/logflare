@@ -33,6 +33,29 @@ defmodule Logflare.Sql.DialectTransformer.ClickHouse do
     end
   end
 
+  @doc """
+  Wraps the top-level result in an outer `LIMIT ... OFFSET ...` to select one page,
+  keeping SETTINGS and FORMAT outermost.
+  """
+  @spec apply_page(String.t(), pos_integer(), non_neg_integer()) ::
+          {:ok, String.t()} | {:error, :not_pageable | String.t()}
+  def apply_page(query, limit, offset)
+      when is_non_empty_binary(query) and is_pos_integer(limit) and is_integer(offset) and
+             offset >= 0 do
+    case Parser.parse(dialect(), query) do
+      {:ok, [%{"Query" => query_ast} = statement]} ->
+        statement
+        |> put_in(["Query"], set_operation_query(query_ast) || query_ast)
+        |> wrap_with_limit("#{limit} OFFSET #{offset}")
+
+      {:ok, _statements} ->
+        {:error, :not_pageable}
+
+      {:error, _reason} = error ->
+        error
+    end
+  end
+
   defp apply_limit_to_statements(
          [%{"Query" => query_ast} = statement],
          _query,
@@ -148,7 +171,7 @@ defmodule Logflare.Sql.DialectTransformer.ClickHouse do
 
   defp requires_outer_limit_offset?(_limit_offset), do: true
 
-  defp wrap_with_limit(%{"Query" => query_ast} = statement, max_rows) do
+  defp wrap_with_limit(%{"Query" => query_ast} = statement, limit) do
     terminal_modifiers = Map.take(query_ast, @terminal_modifiers)
 
     statement =
@@ -158,7 +181,7 @@ defmodule Logflare.Sql.DialectTransformer.ClickHouse do
 
     with {:ok, inner_query} <- Parser.to_string(statement),
          {:ok, [%{"Query" => outer_query} = outer_statement]} <-
-           Parser.parse(dialect(), "SELECT * FROM (#{inner_query}) LIMIT #{max_rows}") do
+           Parser.parse(dialect(), "SELECT * FROM (#{inner_query}) LIMIT #{limit}") do
       outer_statement
       |> put_in(["Query"], Map.merge(outer_query, terminal_modifiers))
       |> Parser.to_string()

@@ -14,6 +14,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
   alias Logflare.Backends.Backend
   alias Logflare.Backends.DynamicPipeline
   alias Logflare.Backends.Ecto.SqlUtils
+  alias Logflare.Backends.Adaptor.PageToken
   alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Backends.QueryError
   alias Logflare.Endpoints.EndpointQuery
@@ -84,6 +85,53 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
       assert {:ok, {[%{"test" => 1}], bytes}} = result
       assert is_integer(bytes)
+    end
+
+    test "pages results with a next_page_token", %{backend: backend} do
+      query = {"SELECT number FROM numbers(5) ORDER BY number", [], %{}}
+
+      assert {:ok,
+              %QueryResult{rows: [%{"number" => 0}, %{"number" => 1}], next_page_token: token}} =
+               ClickHouseAdaptor.execute_query(backend, query, page_size: 2)
+
+      assert {:ok,
+              %QueryResult{rows: [%{"number" => 2}, %{"number" => 3}], next_page_token: token}} =
+               ClickHouseAdaptor.execute_query(backend, query, page_size: 2, page_token: token)
+
+      assert {:ok, %QueryResult{rows: [%{"number" => 4}], next_page_token: nil}} =
+               ClickHouseAdaptor.execute_query(backend, query, page_size: 2, page_token: token)
+    end
+
+    test "pages within the endpoint max_limit", %{backend: backend} do
+      query =
+        {"SELECT number FROM numbers(5) ORDER BY number", [], %{}, %EndpointQuery{max_limit: 3}}
+
+      assert {:ok, %QueryResult{rows: [_, _], next_page_token: token}} =
+               ClickHouseAdaptor.execute_query(backend, query, page_size: 2)
+
+      assert {:ok, %QueryResult{rows: [%{"number" => 2}], next_page_token: nil}} =
+               ClickHouseAdaptor.execute_query(backend, query, page_size: 2, page_token: token)
+    end
+
+    test "rejects a page_token issued to another user", %{backend: backend} do
+      token = PageToken.encode(backend.user_id + 1, %{"offset" => 2})
+
+      assert {:error, %QueryError{kind: :invalid_query}} =
+               ClickHouseAdaptor.execute_query(backend, {"SELECT 1", [], %{}},
+                 page_size: 2,
+                 page_token: token
+               )
+    end
+
+    test "returns all rows and no next_page_token without page_size", %{backend: backend} do
+      assert {:ok, %QueryResult{rows: rows, next_page_token: nil}} =
+               ClickHouseAdaptor.execute_query(
+                 backend,
+                 {"SELECT number FROM numbers(5)", [], %{}},
+                 []
+               )
+
+      assert length(rows) == 5
     end
 
     test "handles query errors", %{backend: backend} do

@@ -33,6 +33,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   alias Logflare.Backends.DynamicPipeline
   alias Logflare.Backends.Ecto.SqlUtils
   alias Logflare.Backends.IngestEventQueue
+  alias Logflare.Backends.Adaptor.PageToken
   alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Backends.QueryError
   alias Logflare.Endpoints.ClickHouseSettings
@@ -1740,13 +1741,63 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     ch_params = Map.take(input_params, declared_params)
     query_opts = put_replica_tag_header(opts, backend, input_params)
 
-    case execute_ch_query(backend, converted_query, ch_params, query_opts) do
-      {:ok, {rows, bytes}} ->
-        rows = if is_pos_integer(max_rows), do: Enum.take(rows, max_rows), else: rows
-        {:ok, QueryResult.new(rows, %{total_bytes_processed: bytes})}
+    with {:ok, page} <- decode_page(backend, opts),
+         {:ok, {paged_query, page}} <- page_query(converted_query, page),
+         {:ok, {rows, bytes}} <- execute_ch_query(backend, paged_query, ch_params, query_opts) do
+      rows = if is_pos_integer(max_rows), do: Enum.take(rows, max_rows), else: rows
+      {rows, next_page_token} = split_page(rows, page, backend)
 
-      error ->
-        error
+      {:ok,
+       QueryResult.new(rows, %{total_bytes_processed: bytes, next_page_token: next_page_token})}
+    end
+  end
+
+  @spec decode_page(Backend.t(), Keyword.t()) ::
+          {:ok, {pos_integer(), non_neg_integer()} | nil} | {:error, QueryError.t()}
+  defp decode_page(%Backend{user_id: user_id}, opts) do
+    case {Keyword.get(opts, :page_size), Keyword.get(opts, :page_token)} do
+      {page_size, nil} when is_pos_integer(page_size) ->
+        {:ok, {page_size, 0}}
+
+      {page_size, page_token} when is_pos_integer(page_size) ->
+        case PageToken.decode(user_id, page_token) do
+          {:ok, %{"offset" => offset}} when is_integer(offset) and offset >= 0 ->
+            {:ok, {page_size, offset}}
+
+          _error ->
+            {:error,
+             %QueryError{
+               kind: :invalid_query,
+               raw_error: :invalid_page_token,
+               backend: __MODULE__,
+               description: "Invalid or expired page token"
+             }}
+        end
+
+      _no_page ->
+        {:ok, nil}
+    end
+  end
+
+  @spec page_query(String.t(), {pos_integer(), non_neg_integer()} | nil) ::
+          {:ok, {String.t(), {pos_integer(), non_neg_integer()} | nil}}
+  defp page_query(query, nil), do: {:ok, {query, nil}}
+
+  defp page_query(query, {page_size, offset} = page) do
+    case ClickHouseSqlTransformer.apply_page(query, page_size + 1, offset) do
+      {:ok, paged_query} -> {:ok, {paged_query, page}}
+      {:error, _reason} -> {:ok, {query, nil}}
+    end
+  end
+
+  @spec split_page([map()], {pos_integer(), non_neg_integer()} | nil, Backend.t()) ::
+          {[map()], String.t() | nil}
+  defp split_page(rows, nil, _backend), do: {rows, nil}
+
+  defp split_page(rows, {page_size, offset}, %Backend{user_id: user_id}) do
+    case Enum.split(rows, page_size) do
+      {page, []} -> {page, nil}
+      {page, _more} -> {page, PageToken.encode(user_id, %{"offset" => offset + page_size})}
     end
   end
 

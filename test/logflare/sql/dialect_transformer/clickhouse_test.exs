@@ -317,6 +317,28 @@ defmodule Logflare.Sql.DialectTransformer.ClickHouseTest do
     end
   end
 
+  describe "apply_page/3" do
+    test "wraps the query with a limit and offset" do
+      assert {:ok,
+              "SELECT * FROM (SELECT number FROM numbers(100) ORDER BY number) LIMIT 10 OFFSET 20"} =
+               ClickHouse.apply_page("SELECT number FROM numbers(100) ORDER BY number", 10, 20)
+    end
+
+    test "keeps the query's own limit inside the page" do
+      assert {:ok, "SELECT * FROM (SELECT number FROM numbers(100) LIMIT 5) LIMIT 2 OFFSET 0"} =
+               ClickHouse.apply_page("SELECT number FROM numbers(100) LIMIT 5", 2, 0)
+    end
+
+    test "keeps terminal modifiers outermost" do
+      assert {:ok, "SELECT * FROM (SELECT 1 AS n) LIMIT 2 OFFSET 4 SETTINGS max_threads = 1"} =
+               ClickHouse.apply_page("SELECT 1 AS n SETTINGS max_threads = 1", 2, 4)
+    end
+
+    test "does not page EXPLAIN statements" do
+      assert {:error, :not_pageable} = ClickHouse.apply_page("EXPLAIN SELECT 1", 2, 0)
+    end
+  end
+
   describe "build_transformation_data/2" do
     test "passes through base data unchanged" do
       user = insert(:user)
