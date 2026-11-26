@@ -122,13 +122,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ProvisionerTest do
     @tag capture_log: true
     test "a database fixed between attempts", %{backend: backend} do
       warm_backend_cache(backend)
-      backend = save_backend_config!(backend, %{database: "logflare_test_missing"})
+      backend = update_backend_config!(backend, %{database: "logflare_test_missing"})
       stub_missing_database("logflare_test_missing")
 
       start_provisioner!(backend)
       assert_receive {:connection_tested, "logflare_test_missing"}, 1_000
 
-      backend = save_backend_config!(backend, %{database: "logflare_test"})
+      backend = update_backend_config!(backend, %{database: "logflare_test"})
 
       TestUtils.retry_assert(fn -> assert_tables_exist(backend) end)
     end
@@ -156,7 +156,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ProvisionerTest do
       stub_missing_database("logflare_test_missing")
       warm_backend_cache(backend)
 
-      backend = save_backend_config!(backend, %{database: "logflare_test_missing"})
+      backend = update_backend_config!(backend, %{database: "logflare_test_missing"})
       :ok = ClickHouseAdaptor.on_backend_config_changed(backend)
       await_idle(pid)
 
@@ -167,7 +167,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ProvisionerTest do
       pid = start_provisioned!(backend)
       stub_connection_test(fn _backend -> :ok end)
 
-      save_backend_config!(backend, %{batch_size: 2_000})
+      update_backend_config!(backend, %{batch_size: 2_000})
       :ok = Provisioner.config_changed(backend.id)
       await_idle(pid)
 
@@ -180,13 +180,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ProvisionerTest do
       Application.put_env(:logflare, Provisioner, initial_retry_ms: :timer.minutes(1))
       on_exit(fn -> Application.delete_env(:logflare, Provisioner) end)
 
-      backend = save_backend_config!(backend, %{database: "logflare_test_missing"})
+      backend = update_backend_config!(backend, %{database: "logflare_test_missing"})
       stub_missing_database("logflare_test_missing")
 
       pid = start_provisioner!(backend)
       assert_receive {:connection_tested, "logflare_test_missing"}, 1_000
 
-      backend = save_backend_config!(backend, %{database: "logflare_test"})
+      backend = update_backend_config!(backend, %{database: "logflare_test"})
       :ok = Provisioner.config_changed(backend.id)
       await_idle(pid)
 
@@ -409,7 +409,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ProvisionerTest do
     %Backend{} = Backends.Cache.get_backend(backend.id)
   end
 
-  defp save_backend_config!(backend, changes) do
+  defp update_backend_config!(backend, changes) do
     backend
     |> Repo.reload!()
     |> Backend.changeset(%{config: Map.merge(backend.config, changes)})
