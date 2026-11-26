@@ -229,7 +229,6 @@ defmodule Logflare.Networking do
       []
     else
       [
-        GRPC.Client.Supervisor,
         {Logflare.Networking.GrpcPool,
          name: GoogleApiClient.connetion_pool_name(),
          url: "https://bigquerystorage.googleapis.com",

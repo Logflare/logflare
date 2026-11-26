@@ -8,7 +8,6 @@ defmodule LogflareGrpc.Logs.ServerTest do
   setup do
     insert(:plan)
     start_supervised!(AllLogsLogged)
-    start_supervised!(GRPC.Client.Supervisor)
 
     :ok
   end
