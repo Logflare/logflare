@@ -15,6 +15,7 @@ defmodule Logflare.Alerting do
   alias Logflare.Backends.Adaptor.SlackAdaptor
   alias Logflare.Backends.Adaptor.WebhookAdaptor
   alias Logflare.Backends.Adaptor.QueryResult
+  alias Logflare.Backends.UserMonitoring.QueryTraces
   alias Logflare.Cluster
   alias Logflare.Endpoints
   alias Logflare.Google.BigQuery.GCPConfig
@@ -287,17 +288,18 @@ defmodule Logflare.Alerting do
 
   Send notifications if necessary configurations are set. If no results are returned from the query execution, no alert is sent.
   """
-  @spec run_alert(AlertQuery.t() | integer(), :scheduled) ::
+  @spec run_alert(AlertQuery.t() | integer(), :scheduled | :manual) ::
           {:ok, map()} | {:error, :not_found | :no_results | any}
-  def run_alert(alert_id, :scheduled) when is_integer(alert_id) do
+  def run_alert(alert_id, trigger)
+      when is_integer(alert_id) and trigger in [:scheduled, :manual] do
     if alert_query = get_alert_query_by(id: alert_id) do
-      run_alert(alert_query, :scheduled)
+      run_alert(alert_query, trigger)
     else
       {:error, :not_found}
     end
   end
 
-  def run_alert(%AlertQuery{} = alert_query, :scheduled) do
+  def run_alert(%AlertQuery{} = alert_query, trigger) when trigger in [:scheduled, :manual] do
     cluster_size = Cluster.Utils.actual_cluster_size()
 
     OpenTelemetry.Tracer.with_span "alerting.run_alert", %{
@@ -306,15 +308,19 @@ defmodule Logflare.Alerting do
       "alert.user_id" => alert_query.user_id,
       "system.cluster_size" => cluster_size
     } do
-      run_alert(alert_query)
+      run_alert_lifecycle(alert_query, trigger)
     end
   end
 
   @spec run_alert(AlertQuery.t()) :: {:ok, map()} | {:error, :no_results} | {:error, any()}
-  def run_alert(%AlertQuery{} = alert_query) do
+  def run_alert(%AlertQuery{} = alert_query), do: run_alert_lifecycle(alert_query, :scheduled)
+
+  @spec run_alert_lifecycle(AlertQuery.t(), :scheduled | :manual) ::
+          {:ok, map()} | {:error, :no_results} | {:error, any()}
+  defp run_alert_lifecycle(%AlertQuery{} = alert_query, trigger) do
     alert_query = alert_query |> preload_alert_query()
 
-    case execute_alert_query(alert_query) do
+    case execute_alert_query(alert_query, trigger: trigger) do
       {:ok, %QueryResult{rows: [_ | _] = results} = result} ->
         if alert_query.webhook_notification_url do
           send_webhook_notification(alert_query, results)
@@ -377,7 +383,11 @@ defmodule Logflare.Alerting do
   """
   @spec trigger_alert_now(AlertQuery.t()) :: {:ok, Oban.Job.t()} | {:error, Oban.Job.changeset()}
   def trigger_alert_now(%AlertQuery{id: alert_query_id}) do
-    %{alert_query_id: alert_query_id, scheduled_at: DateTime.to_iso8601(DateTime.utc_now())}
+    %{
+      alert_query_id: alert_query_id,
+      scheduled_at: DateTime.to_iso8601(DateTime.utc_now()),
+      trigger: "manual"
+    }
     |> AlertWorker.new()
     |> Oban.insert()
   end
@@ -457,7 +467,10 @@ defmodule Logflare.Alerting do
   {:ok, %Logflare.Backends.Adaptor.QueryResult{rows: [%{"user_id" => "my-user-id"}]}}
   ```
   """
-  @spec execute_alert_query(AlertQuery.t(), use_query_cache: boolean) ::
+  @spec execute_alert_query(AlertQuery.t(),
+          use_query_cache: boolean,
+          trigger: :scheduled | :manual
+        ) ::
           {:ok, QueryResult.t()} | {:error, any()}
   def execute_alert_query(%AlertQuery{user: %User{}} = alert_query, opts \\ []) do
     LoggerMetadata.with_metadata(alert_query_logger_metadata(alert_query), fn ->
@@ -469,25 +482,60 @@ defmodule Logflare.Alerting do
            {:ok, transformed_query} <-
              Logflare.Sql.transform(alert_query.language, expanded_query, alert_query.user_id),
            {:ok, result} <-
-             BigQueryAdaptor.execute_query(
-               {
-                 alert_query.user.bigquery_project_id || GCPConfig.default_project_id(),
-                 alert_query.user.bigquery_dataset_id,
-                 alert_query.user.id
-               },
-               {transformed_query, []},
-               parameterMode: "NAMED",
-               maxResults: 1000,
-               location: alert_query.user.bigquery_dataset_location,
-               use_query_cache: use_query_cache,
-               labels: %{
-                 "alert_id" => alert_query.id
-               },
-               query_type: :alerts
+             trace_alert_query(
+               alert_query,
+               transformed_query,
+               use_query_cache,
+               Keyword.get(opts, :trigger, :scheduled)
              ) do
         {:ok, result}
       end
     end)
+  end
+
+  @spec trace_alert_query(AlertQuery.t(), String.t(), boolean(), :scheduled | :manual) ::
+          {:ok, QueryResult.t()} | {:error, any()}
+  defp trace_alert_query(alert_query, transformed_query, use_query_cache, trigger) do
+    attrs = alert_trace_attrs(alert_query, transformed_query, trigger)
+
+    QueryTraces.measure(alert_query.user_id, attrs, fn ->
+      execute_bigquery_alert(alert_query, transformed_query, use_query_cache)
+    end)
+  end
+
+  @spec execute_bigquery_alert(AlertQuery.t(), String.t(), boolean()) ::
+          {:ok, QueryResult.t()} | {:error, any()}
+  defp execute_bigquery_alert(%AlertQuery{} = alert_query, transformed_query, use_query_cache) do
+    BigQueryAdaptor.execute_query(
+      {
+        alert_query.user.bigquery_project_id || GCPConfig.default_project_id(),
+        alert_query.user.bigquery_dataset_id,
+        alert_query.user.id
+      },
+      {transformed_query, []},
+      parameterMode: "NAMED",
+      maxResults: 1000,
+      location: alert_query.user.bigquery_dataset_location,
+      use_query_cache: use_query_cache,
+      labels: %{
+        "alert_id" => alert_query.id
+      },
+      query_type: :alerts
+    )
+  end
+
+  @spec alert_trace_attrs(AlertQuery.t(), String.t(), :scheduled | :manual) ::
+          QueryTraces.attrs()
+  defp alert_trace_attrs(%AlertQuery{} = alert_query, query, trigger) do
+    %{
+      query_type: :alert,
+      query: query,
+      alert_id: alert_query.id,
+      alert_name: alert_query.name,
+      alert_language: alert_query.language,
+      alert_trigger: trigger,
+      backend_type: :bigquery
+    }
   end
 
   defp alert_query_logger_metadata(%AlertQuery{} = alert_query) do

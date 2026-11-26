@@ -8,6 +8,7 @@ System Monitoring collects metrics and logs about your sources, backends, and en
 
 - **`system.metrics`** - OpenTelemetry metrics for ingestion, queries, and egress
 - **`system.logs`** - Application logs for your sources and backends
+- **`system.traces`** - Queries executed by Logflare on your behalf
 
 System sources behave like regular sources. Query, search, and monitor them with standard Logflare tools. They appear as favorites by default.
 
@@ -37,6 +38,58 @@ Metrics are collected every 60 seconds.
 ### system.logs
 
 Contains application logs related to your sources, backends, and endpoints.
+
+### system.traces
+
+Contains one event per query that Logflare executes on your behalf. Tracing is best effort: under heavy load, some traces may be dropped. The following queries are traced:
+
+- **Endpoint queries** (`query.endpoint`), including background refreshes of cached results. Requests served from the results cache are not traced.
+- **Log search queries** (`query.search`): the events query, the chart query, and the query behind the event context view. A live tail re-runs its queries every second; only the first query of a tail is traced.
+- **Alert queries** (`query.alert`): scheduled runs, runs started with "Trigger now", and queries run from the alert editor.
+- **Single event fetches** (`query.event`): the query that loads one event, for example when opening an event from search.
+- **Provisioning queries** (`query.provision`): the statements that create a ClickHouse backend's tables. They run each time the backend starts; each statement is traced once per Logflare server after it succeeds, and every failed run is traced.
+
+Each event includes:
+
+- **`event_message`** - Query kind: `query.endpoint`, `query.search`, `query.alert`, `query.event`, or `query.provision`
+- **`query`** - The SQL sent to the backend adaptor. For endpoints, the adaptor may still rewrite parameter placeholders before running it
+- **`backend_type`** - The backend that ran the query
+- **`backend_id`** - The backend that ran the query, for endpoint and provisioning queries
+- **`total_bytes_processed`** - Bytes scanned, for backends that report it (BigQuery, ClickHouse)
+- **`duration_ms`** - Time spent waiting for the backend adaptor to run the query
+- **`status`** and **`error`** - `ok` or `error`, with the error message
+
+Endpoint query events also include:
+
+- **`endpoint_language`** - Language the endpoint is written in: `bq_sql`, `pg_sql`, or `ch_sql`. The query may run in another dialect, see `backend_type`
+- **`params`** - Values of the parameters declared in the query, as a list of `name` and `value` records. Values are strings. Credentials such as `api_key` are never stored
+- **`labels`** - Endpoint labels, as a list of `name` and `value` records
+- **`endpoint_id`** and **`endpoint_uuid`** - The endpoint that ran the query
+
+Log search events also include:
+
+- **`search_kind`** - `events`, `aggregates` (the chart), or `context` (the event context view)
+- **`lql`** - The LQL query as typed in the search bar
+- **`source_id`**, **`source_token`**, and **`source_name`** - The source that was searched
+
+Alert query events also include:
+
+- **`alert_id`** and **`alert_name`** - The alert that ran the query. A query run from the editor before the alert is saved has no `alert_id`
+- **`alert_language`** - Language the alert is written in
+- **`alert_trigger`** - `scheduled` for runs on the alert schedule, `manual` for runs started by a user
+
+Single event fetch events also include:
+
+- **`event_id`** - The ID of the fetched event
+- **`lql`**, **`source_id`**, **`source_token`**, and **`source_name`** - As for log search events
+
+To find the traces of one tenant, filter on a parameter value. For example, on BigQuery:
+
+```sql
+select timestamp, query, total_bytes_processed
+from `system.traces` t
+where exists (select 1 from unnest(t.params) p where p.name = 'project' and p.value = 'abc')
+```
 
 ## Metrics Collected
 

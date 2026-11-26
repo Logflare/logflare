@@ -9,6 +9,7 @@ defmodule Logflare.Logs.SearchOperations do
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.Backends.Adaptor.QueryResult
+  alias Logflare.Backends.UserMonitoring.QueryTraces
   alias Logflare.DateTimeUtils
   alias Logflare.Google.BigQuery.GCPConfig
   alias Logflare.Google.BigQuery.GenUtils
@@ -109,7 +110,7 @@ defmodule Logflare.Logs.SearchOperations do
 
   @spec do_query(SO.t()) :: SO.t()
   def do_query(%SO{} = so) do
-    with {:ok, response} <- execute_backend_query(so) do
+    with {:ok, response} <- trace_backend_query(so) do
       response = normalize_query_result(so, response)
 
       so
@@ -128,6 +129,30 @@ defmodule Logflare.Logs.SearchOperations do
   end
 
   defp normalize_query_result(%SO{}, %QueryResult{} = response), do: response
+
+  @spec trace_backend_query(SO.t()) :: {:ok, map()} | {:error, term()}
+  defp trace_backend_query(%SO{tailing?: true, tailing_initial?: false} = so),
+    do: execute_backend_query(so)
+
+  defp trace_backend_query(%SO{} = so) do
+    QueryTraces.measure(so.source.user_id, search_trace_attrs(so), fn ->
+      execute_backend_query(so)
+    end)
+  end
+
+  @spec search_trace_attrs(SO.t()) :: QueryTraces.attrs()
+  defp search_trace_attrs(%SO{backend_type: backend_type, source: source} = so) do
+    %{
+      query_type: :search,
+      search_kind: so.type || :context,
+      query: {backend_type, query_for_execution(so)},
+      lql: so.querystring,
+      backend_type: backend_type,
+      source_id: source.id,
+      source_token: source.token,
+      source_name: source.name
+    }
+  end
 
   @spec execute_backend_query(SO.t()) :: {:ok, map()} | {:error, term()}
   defp execute_backend_query(%SO{backend_type: :postgres} = so) do
