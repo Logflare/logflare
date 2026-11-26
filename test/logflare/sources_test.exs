@@ -883,7 +883,7 @@ defmodule Logflare.SourcesTest do
     test "creates system sources with correct partition type", %{user: user} do
       sources = Sources.create_user_system_sources(user.id)
 
-      assert length(sources) == length(Source.system_source_types())
+      assert length(sources) == length(Source.monitoring_system_source_types())
 
       for source <- sources do
         assert source.system_source == true

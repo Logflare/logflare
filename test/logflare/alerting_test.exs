@@ -8,6 +8,7 @@ defmodule Logflare.AlertingTest do
   alias Logflare.Alerting.AlertQuery
   alias Logflare.Alerting.AlertWorker
   alias Logflare.Backends
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Backends.QueryError
   alias Logflare.Sources
@@ -17,6 +18,8 @@ defmodule Logflare.AlertingTest do
 
   setup do
     insert(:plan, name: "Free")
+    stub(Backends, :start_for_ingest, fn _source -> :ok end)
+    stub(Backends, :ingest_client_logs, fn batch, _source -> {:ok, length(batch)} end)
 
     on_exit(fn ->
       Tasks.kill_all_tasks()
@@ -440,13 +443,11 @@ defmodule Logflare.AlertingTest do
 
     test "ingests each row into system.alert_issues", %{user: user, alert_query: alert_query} do
       test_pid = self()
-      rows = [%{"status" => 500, "count" => 12}, %{"status" => 502, "count" => 3}]
+      rows = [%{"status" => "500", "count" => "12"}, %{"status" => "502", "count" => "3"}]
 
       expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
         {:ok, TestUtils.gen_bq_response(rows)}
       end)
-
-      stub(Backends, :start_for_ingest, fn _source -> :ok end)
 
       expect(Backends, :ingest_client_logs, fn batch, source ->
         send(test_pid, {:ingested, batch, source})
@@ -461,16 +462,15 @@ defmodule Logflare.AlertingTest do
 
       assert [
                %{
-                 "status" => 500,
-                 "count" => 12,
+                 "status" => "500",
+                 "count" => "12",
                  "alert_query_id" => alert_id,
                  "alert_query_name" => "high error rate",
-                 "alert_query_description" => "5xx responses above threshold",
-                 "event_message" => "high error rate"
+                 "alert_query_description" => "5xx responses above threshold"
                },
                %{
-                 "status" => 502,
-                 "count" => 3,
+                 "status" => "502",
+                 "count" => "3",
                  "alert_query_id" => alert_id,
                  "alert_query_name" => "high error rate",
                  "alert_query_description" => "5xx responses above threshold"
@@ -487,8 +487,6 @@ defmodule Logflare.AlertingTest do
         {:ok, TestUtils.gen_bq_response([%{"event_message" => "disk full"}])}
       end)
 
-      stub(Backends, :start_for_ingest, fn _source -> :ok end)
-
       expect(Backends, :ingest_client_logs, fn batch, _source ->
         send(test_pid, {:ingested, batch})
         {:ok, length(batch)}
@@ -498,13 +496,26 @@ defmodule Logflare.AlertingTest do
       assert_received {:ingested, [%{"event_message" => "disk full"}]}
     end
 
+    test "defaults event_message to the alert name", %{alert_query: alert_query} do
+      test_pid = self()
+
+      expect(BigQueryAdaptor, :execute_query, fn _identifier, _query, _opts ->
+        {:ok, %QueryResult{rows: [%{"status" => "500"}], total_rows: 1}}
+      end)
+
+      expect(Backends, :ingest_client_logs, fn batch, _source ->
+        send(test_pid, {:ingested, batch})
+        {:ok, length(batch)}
+      end)
+
+      assert {:ok, %{fired: true}} = Alerting.run_alert(alert_query)
+      assert_received {:ingested, [%{"event_message" => "high error rate"}]}
+    end
+
     test "reuses the same source across runs", %{user: user, alert_query: alert_query} do
       stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
         {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
       end)
-
-      stub(Backends, :start_for_ingest, fn _source -> :ok end)
-      stub(Backends, :ingest_client_logs, fn batch, _source -> {:ok, length(batch)} end)
 
       assert {:ok, %{fired: true}} = Alerting.run_alert(alert_query)
       assert {:ok, %{fired: true}} = Alerting.run_alert(alert_query)
