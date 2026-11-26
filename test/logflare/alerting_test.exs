@@ -7,8 +7,10 @@ defmodule Logflare.AlertingTest do
   alias Logflare.Alerting
   alias Logflare.Alerting.AlertQuery
   alias Logflare.Alerting.AlertWorker
+  alias Logflare.Backends
   alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Backends.QueryError
+  alias Logflare.Sources
   alias Logflare.Utils.Tasks
 
   doctest Logflare.SynEventHandler
@@ -419,6 +421,116 @@ defmodule Logflare.AlertingTest do
                 fired: false,
                 rows: []
               }} = Alerting.run_alert(alert_query)
+    end
+  end
+
+  describe "run_alert/1 alert issues system source" do
+    setup %{user: user} do
+      alert_query =
+        insert(:alert,
+          user: user,
+          name: "high error rate",
+          webhook_notification_url: nil,
+          slack_hook_url: nil
+        )
+
+      {:ok, alert_query: alert_query}
+    end
+
+    test "ingests each row into system.alert_issues", %{user: user, alert_query: alert_query} do
+      test_pid = self()
+      rows = [%{"status" => 500, "count" => 12}, %{"status" => 502, "count" => 3}]
+
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
+        {:ok, TestUtils.gen_bq_response(rows)}
+      end)
+
+      stub(Backends, :start_for_ingest, fn _source -> :ok end)
+
+      expect(Backends, :ingest_client_logs, fn batch, source ->
+        send(test_pid, {:ingested, batch, source})
+        {:ok, length(batch)}
+      end)
+
+      assert {:ok, %{fired: true}} = Alerting.run_alert(alert_query)
+
+      assert_received {:ingested, batch, source}
+      assert source.system_source_type == :alert_issues
+      assert source.user_id == user.id
+
+      assert [
+               %{
+                 "status" => 500,
+                 "count" => 12,
+                 "alert_query_id" => alert_id,
+                 "alert_query_name" => "high error rate",
+                 "event_message" => "high error rate"
+               },
+               %{"status" => 502, "count" => 3, "alert_query_id" => alert_id}
+             ] = batch
+
+      assert alert_id == alert_query.id
+    end
+
+    test "keeps an event_message column from the row", %{alert_query: alert_query} do
+      test_pid = self()
+
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
+        {:ok, TestUtils.gen_bq_response([%{"event_message" => "disk full"}])}
+      end)
+
+      stub(Backends, :start_for_ingest, fn _source -> :ok end)
+
+      expect(Backends, :ingest_client_logs, fn batch, _source ->
+        send(test_pid, {:ingested, batch})
+        {:ok, length(batch)}
+      end)
+
+      assert {:ok, %{fired: true}} = Alerting.run_alert(alert_query)
+      assert_received {:ingested, [%{"event_message" => "disk full"}]}
+    end
+
+    test "reuses the same source across runs", %{user: user, alert_query: alert_query} do
+      stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
+        {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
+      end)
+
+      stub(Backends, :start_for_ingest, fn _source -> :ok end)
+      stub(Backends, :ingest_client_logs, fn batch, _source -> {:ok, length(batch)} end)
+
+      assert {:ok, %{fired: true}} = Alerting.run_alert(alert_query)
+      assert {:ok, %{fired: true}} = Alerting.run_alert(alert_query)
+
+      assert [%{system_source_type: :alert_issues}] = Sources.list_system_sources_by_user(user)
+    end
+
+    test "does not create the source when the alert does not fire", %{
+      user: user,
+      alert_query: alert_query
+    } do
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
+        {:ok, TestUtils.gen_bq_response([])}
+      end)
+
+      reject(Backends, :ingest_client_logs, 2)
+
+      assert {:ok, %{fired: false}} = Alerting.run_alert(alert_query)
+      assert Sources.list_system_sources_by_user(user) == []
+    end
+
+    test "an ingest failure does not fail the alert", %{alert_query: alert_query} do
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
+        {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
+      end)
+
+      stub(Backends, :start_for_ingest, fn _source -> {:error, :source_unavailable} end)
+
+      log =
+        capture_log(fn ->
+          assert {:ok, %{fired: true}} = Alerting.run_alert(alert_query)
+        end)
+
+      assert log =~ "alert_issues"
     end
   end
 

@@ -18,7 +18,11 @@ defmodule Logflare.Alerting do
   alias Logflare.Cluster
   alias Logflare.Endpoints
   alias Logflare.Google.BigQuery.GCPConfig
+  alias Logflare.Logs
+  alias Logflare.Logs.Processor
   alias Logflare.Repo
+  alias Logflare.Sources
+  alias Logflare.Sources.Source
   alias Logflare.Teams
   alias Logflare.TeamUsers.TeamUser
   alias Logflare.User
@@ -338,6 +342,8 @@ defmodule Logflare.Alerting do
           )
         end
 
+        ingest_alert_issues(alert_query, results)
+
         {:ok, result |> Map.from_struct() |> Map.put(:fired, true)}
 
       {:ok, %QueryResult{rows: rows} = result} when rows == [] or rows == nil ->
@@ -346,6 +352,44 @@ defmodule Logflare.Alerting do
       other ->
         other
     end
+  end
+
+  @spec ingest_alert_issues(AlertQuery.t(), [map()]) :: :ok
+  defp ingest_alert_issues(%AlertQuery{user_id: user_id} = alert_query, rows) do
+    events = Enum.map(rows, &alert_issue_event(alert_query, &1))
+
+    result =
+      with {:ok, source} <- Sources.get_or_create_system_source(user_id, :alert_issues) do
+        source =
+          source
+          |> Source.parse_key_values_config()
+          |> Source.parse_copy_fields_config()
+          |> Source.parse_drop_fields_config()
+
+        Processor.ingest(events, Logs.Raw, source)
+      end
+
+    handle_alert_issues_ingest(result, alert_query, length(events))
+  end
+
+  @spec alert_issue_event(AlertQuery.t(), map()) :: map()
+  defp alert_issue_event(%AlertQuery{id: id, name: name}, row) do
+    %{"event_message" => name}
+    |> Map.merge(row)
+    |> Map.merge(%{"alert_query_id" => id, "alert_query_name" => name})
+  end
+
+  @spec handle_alert_issues_ingest(term(), AlertQuery.t(), non_neg_integer()) :: :ok
+  defp handle_alert_issues_ingest({:error, reason}, %AlertQuery{id: id}, _count) do
+    Logger.warning("Failed to ingest alert_issues for alert #{id}: #{inspect(reason)}")
+  end
+
+  defp handle_alert_issues_ingest(_result, _alert_query, count) do
+    OpenTelemetry.Tracer.add_event("alerting.run_alert.alert_issues_ingested", %{
+      "alert.issues.count" => count
+    })
+
+    :ok
   end
 
   defp send_webhook_notification(alert_query, results) do

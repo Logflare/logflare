@@ -26,6 +26,16 @@ The supported integrations are:
 1. Slack (via the Logflare v2 app)
 2. Webhooks
 
+### Alert Issues Source
+
+When a Query Alert returns rows, Logflare ingests each row as an event into the `system.alert_issues` source. Logflare creates this source the first time one of your alerts fires. It does not depend on [System Monitoring](/concepts/system-monitoring).
+
+Each event holds the row's columns at the top level, plus:
+
+- **`alert_query_id`** - ID of the alert that fired
+- **`alert_query_name`** - name of the alert that fired
+- **`event_message`** - the row's `event_message` column, or the alert name when the row has none
+
 ### Scheduling
 
 Query Alerts allows for cron-based scheduling, with a minimum interval of 5 minutes. It is advised to keep the queried time range to the bare minimum required so as to reduce query execution time, as queries that cover large time ranges may scan a lot of data and result in a slow query.

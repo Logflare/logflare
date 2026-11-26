@@ -276,6 +276,7 @@ defmodule Logflare.Users do
   defp toggle_system_monitoring(%{system_monitoring: false} = user) do
     [user_id: user.id, system_source: true]
     |> Sources.list_sources()
+    |> Enum.filter(&(&1.system_source_type in Source.monitoring_system_source_types()))
     |> Enum.each(&Supervisor.stop_source(&1.token))
   end
 

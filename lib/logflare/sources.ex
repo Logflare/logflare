@@ -172,34 +172,60 @@ defmodule Logflare.Sources do
     {:ok, source}
   end
 
-  @doc "
-  Create system sources for the user, if they don't exist yet
-  "
+  @doc """
+  Creates the system monitoring sources of the user when they do not exist yet.
+
+  Returns the system monitoring sources of the user.
+  """
+  @spec create_user_system_sources(pos_integer()) :: [Source.t()]
   def create_user_system_sources(user_id) do
     user = Users.get(user_id)
+    types = Source.monitoring_system_source_types()
 
-    for type <- Source.system_source_types() do
-      attrs = %{
-        name: "system.#{type}",
-        system_source: true,
-        system_source_type: type,
-        favorite: true
-      }
+    Enum.each(types, &insert_system_source(user, &1))
 
-      user
-      |> Ecto.build_assoc(:sources, default_ingest_backend_enabled?: false)
-      |> Source.changeset(attrs)
-      |> Repo.insert(on_conflict: :nothing, conflict_target: [:user_id, :system_source_type])
-    end
-
-    list_system_sources_by_user(user_id)
+    user_id
+    |> list_system_sources_by_user()
+    |> Enum.filter(&(&1.system_source_type in types))
     |> warn_missing_system_sources(user_id)
+  end
+
+  @doc """
+  Returns the system source of the type for the user. Creates it when it does not exist yet.
+  """
+  @spec get_or_create_system_source(pos_integer(), atom()) ::
+          {:ok, Source.t()} | {:error, :user_not_found | Ecto.Changeset.t()}
+  def get_or_create_system_source(user_id, type) do
+    case get_by(user_id: user_id, system_source_type: type) do
+      %Source{} = source -> {:ok, source}
+      nil -> create_system_source(Users.get(user_id), type)
+    end
+  end
+
+  defp create_system_source(nil, _type), do: {:error, :user_not_found}
+
+  defp create_system_source(%User{id: user_id} = user, type) do
+    with {:ok, _} <- insert_system_source(user, type) do
+      {:ok, get_by(user_id: user_id, system_source_type: type)}
+    end
+  end
+
+  defp insert_system_source(user, type) do
+    user
+    |> Ecto.build_assoc(:sources, default_ingest_backend_enabled?: false)
+    |> Source.changeset(%{
+      name: "system.#{type}",
+      system_source: true,
+      system_source_type: type,
+      favorite: true
+    })
+    |> Repo.insert(on_conflict: :nothing, conflict_target: [:user_id, :system_source_type])
   end
 
   defp warn_missing_system_sources(sources, user_id) do
     created_sources_types = Enum.map(sources, & &1.system_source_type)
 
-    Source.system_source_types()
+    Source.monitoring_system_source_types()
     |> Enum.each(fn type ->
       if type not in created_sources_types do
         Logger.warning("System source `#{type}` for user #{user_id} was not created")

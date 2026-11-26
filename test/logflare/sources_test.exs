@@ -894,6 +894,51 @@ defmodule Logflare.SourcesTest do
         assert String.starts_with?(source.name, "system.")
       end
     end
+
+    test "does not create the alert issues source", %{user: user} do
+      sources = Sources.create_user_system_sources(user.id)
+
+      refute Enum.any?(sources, &(&1.system_source_type == :alert_issues))
+      assert Sources.get_by(user_id: user.id, system_source_type: :alert_issues) == nil
+    end
+
+    test "returns only monitoring system sources", %{user: user} do
+      {:ok, _} = Sources.get_or_create_system_source(user.id, :alert_issues)
+
+      types = user.id |> Sources.create_user_system_sources() |> Enum.map(& &1.system_source_type)
+
+      assert Enum.sort(types) == Enum.sort(Source.monitoring_system_source_types())
+    end
+  end
+
+  describe "get_or_create_system_source/2" do
+    setup do
+      insert(:plan)
+      %{user: insert(:user)}
+    end
+
+    test "creates the source on first call", %{user: user} do
+      assert {:ok, %Source{} = source} =
+               Sources.get_or_create_system_source(user.id, :alert_issues)
+
+      assert source.name == "system.alert_issues"
+      assert source.system_source == true
+      assert source.system_source_type == :alert_issues
+      assert source.default_ingest_backend_enabled? == false
+      assert source.user_id == user.id
+    end
+
+    test "returns the existing source on later calls", %{user: user} do
+      {:ok, first} = Sources.get_or_create_system_source(user.id, :alert_issues)
+      {:ok, second} = Sources.get_or_create_system_source(user.id, :alert_issues)
+
+      assert first.id == second.id
+      assert length(Sources.list_system_sources_by_user(user.id)) == 1
+    end
+
+    test "returns an error for a missing user" do
+      assert {:error, :user_not_found} = Sources.get_or_create_system_source(-1, :alert_issues)
+    end
   end
 
   describe "labels validation and normalization" do

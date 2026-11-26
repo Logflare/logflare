@@ -5,6 +5,7 @@ defmodule Logflare.UsersTest do
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Mailer
   alias Logflare.Sources
+  alias Logflare.Sources.Source.Supervisor
   alias Logflare.User
   alias Logflare.Users
 
@@ -203,6 +204,23 @@ defmodule Logflare.UsersTest do
       Users.update_user_allowed(user, %{"system_monitoring" => false})
 
       refute Users.Cache.get(user.id).system_monitoring
+    end
+
+    test "toggling system monitoring leaves the alert issues source alone", %{user: user} do
+      {:ok, alert_issues} = Sources.get_or_create_system_source(user.id, :alert_issues)
+
+      Supervisor
+      |> stub(:reset_source, fn token ->
+        refute token == alert_issues.token
+        :ok
+      end)
+      |> stub(:stop_source, fn token ->
+        refute token == alert_issues.token
+        :ok
+      end)
+
+      {:ok, user} = Users.update_user_allowed(user, %{"system_monitoring" => true})
+      {:ok, _user} = Users.update_user_allowed(user, %{"system_monitoring" => false})
     end
   end
 

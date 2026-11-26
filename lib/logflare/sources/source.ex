@@ -119,7 +119,8 @@ defmodule Logflare.Sources.Source do
     end
   end
 
-  @system_source_types [:metrics, :logs]
+  @monitoring_system_source_types [:metrics, :logs]
+  @system_source_types @monitoring_system_source_types ++ [:alert_issues]
   @reserved_drop_field_heads ~w(id event_message timestamp)
 
   typed_schema "sources" do
@@ -592,7 +593,14 @@ defmodule Logflare.Sources.Source do
     end
   end
 
+  @spec system_source_types() :: [atom()]
   def system_source_types, do: @system_source_types
+
+  @doc """
+  Returns the system source types that `system_monitoring` creates and stops.
+  """
+  @spec monitoring_system_source_types() :: [atom()]
+  def monitoring_system_source_types, do: @monitoring_system_source_types
 
   @doc """
   Returns a combined list of BigQuery clustering fields
