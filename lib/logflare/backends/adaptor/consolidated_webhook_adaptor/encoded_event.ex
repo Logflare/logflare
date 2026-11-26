@@ -3,8 +3,7 @@ defmodule Logflare.Backends.Adaptor.ConsolidatedWebhookAdaptor.EncodedEvent do
   A JSON-encoded event body and the queue pointer that owns it.
 
   The processor stores this representation in the generation table in place of the
-  `Logflare.LogEvent`, so the generation table does not hold the decoded event while
-  the batch waits.
+  `Logflare.LogEvent`, so a retry sends the same bytes without a second encode.
   """
 
   alias Logflare.Backends.IngestEventQueue.LogEventPointer
