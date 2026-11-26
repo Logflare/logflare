@@ -225,9 +225,11 @@ defmodule Logflare.Alerting do
 
   @doc """
   Schedules the next 5 runs for an alert query based on its cron expression.
-  Inserts AlertWorker jobs into Oban.
+  Inserts AlertWorker jobs into Oban. Disabled alert queries are not scheduled.
   """
   @spec schedule_alert(AlertQuery.t()) :: :ok
+  def schedule_alert(%AlertQuery{enabled: false}), do: :ok
+
   def schedule_alert(%AlertQuery{} = alert_query) do
     case CronParser.parse(alert_query.cron) do
       {:ok, cron_expr} ->

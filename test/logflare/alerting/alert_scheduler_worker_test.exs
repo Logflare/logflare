@@ -23,6 +23,16 @@ defmodule Logflare.Alerting.AlertSchedulerWorkerTest do
     assert_enqueued(worker: AlertWorker, args: %{alert_query_id: alert.id})
   end
 
+  test "perform/1 does not enqueue jobs for disabled alert queries", %{user: user} do
+    enabled = insert(:alert, user: user, cron: "0 0 1 * *")
+    disabled = insert(:alert, user: user, cron: "0 0 1 * *", enabled: false)
+
+    assert :ok = perform_job(AlertSchedulerWorker, %{})
+
+    assert_enqueued(worker: AlertWorker, args: %{alert_query_id: enabled.id})
+    refute_enqueued(worker: AlertWorker, args: %{alert_query_id: disabled.id})
+  end
+
   test "perform/1 skips invalid cron expressions gracefully", %{user: user} do
     alert = insert(:alert, user: user, cron: "0 0 1 * *")
 
