@@ -10,6 +10,7 @@ defmodule Logflare.Google.BigQuery do
   alias GoogleApi.BigQuery.V2.Api.Tables
   alias GoogleApi.BigQuery.V2.Model
 
+  alias Logflare.Backends.UserMonitoring.QueryTraces
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Google.BigQuery.GCPConfig
   alias Logflare.Users
@@ -17,6 +18,7 @@ defmodule Logflare.Google.BigQuery do
   alias Logflare.Billing
   alias Logflare.Billing.Plan
   alias Logflare.TeamUsers
+  alias Logflare.Sources
   alias Logflare.Sources.Source
   alias Logflare.Sources.Source.BigQuery.SchemaBuilder
   alias Logflare.Utils.Tasks
@@ -32,7 +34,7 @@ defmodule Logflare.Google.BigQuery do
       {:ok, _} ->
         Logger.info("BigQuery dataset created: #{dataset_id}")
 
-        case create_table(source, dataset_id, project_id, ttl) do
+        case create_source_table(source, dataset_id, project_id, ttl) do
           {:ok, table} ->
             Logger.info("BigQuery table created: #{source}")
             {:ok, table}
@@ -44,7 +46,7 @@ defmodule Logflare.Google.BigQuery do
       {:error, %Tesla.Env{status: 409}} ->
         Logger.info("BigQuery dataset found: #{dataset_id}")
 
-        case create_table(source, dataset_id, project_id, ttl) do
+        case create_source_table(source, dataset_id, project_id, ttl) do
           {:ok, table} ->
             Logger.info("BigQuery table created: #{source}")
             {:ok, table}
@@ -71,13 +73,15 @@ defmodule Logflare.Google.BigQuery do
     %{user_id: user_id, bigquery_project_id: project_id, bigquery_dataset_id: dataset_id} =
       GenUtils.get_bq_user_info(source_id)
 
-    conn
-    |> Api.Tables.bigquery_tables_delete(
-      project_id,
-      dataset_id || Integer.to_string(user_id) <> GCPConfig.dataset_id_append(),
-      table_name
-    )
-    |> GenUtils.maybe_parse_google_api_result()
+    trace_source_operation(source_id, "tables.delete", fn ->
+      conn
+      |> Api.Tables.bigquery_tables_delete(
+        project_id,
+        dataset_id || Integer.to_string(user_id) <> GCPConfig.dataset_id_append(),
+        table_name
+      )
+      |> GenUtils.maybe_parse_google_api_result()
+    end)
   end
 
   @spec create_table(atom, binary, binary, any) ::
@@ -140,11 +144,13 @@ defmodule Logflare.Google.BigQuery do
       expirationMs: table_ttl
     }
 
-    conn
-    |> Api.Tables.bigquery_tables_patch(project_id, dataset_id, table_name,
-      body: %Model.Table{timePartitioning: partitioning}
-    )
-    |> GenUtils.maybe_parse_google_api_result()
+    trace_source_operation(source_id, "tables.patch", fn ->
+      conn
+      |> Api.Tables.bigquery_tables_patch(project_id, dataset_id, table_name,
+        body: %Model.Table{timePartitioning: partitioning}
+      )
+      |> GenUtils.maybe_parse_google_api_result()
+    end)
   end
 
   @spec patch_table_clustering(atom, list(String.t()), binary, binary) :: ok_err_tup
@@ -157,11 +163,13 @@ defmodule Logflare.Google.BigQuery do
       fields: clustering
     }
 
-    conn
-    |> Api.Tables.bigquery_tables_patch(project_id, dataset_id, table_name,
-      body: %Model.Table{clustering: clustering_model}
-    )
-    |> GenUtils.maybe_parse_google_api_result()
+    trace_source_operation(source_id, "tables.patch", fn ->
+      conn
+      |> Api.Tables.bigquery_tables_patch(project_id, dataset_id, table_name,
+        body: %Model.Table{clustering: clustering_model}
+      )
+      |> GenUtils.maybe_parse_google_api_result()
+    end)
   end
 
   @spec patch_table(atom, any, binary, binary) :: {:error, Tesla.Env.t()} | {:ok, Model.Table.t()}
@@ -294,9 +302,13 @@ defmodule Logflare.Google.BigQuery do
       location: dataset_location
     }
 
-    conn
-    |> Api.Datasets.bigquery_datasets_insert(project_id, body: body)
-    |> GenUtils.maybe_parse_google_api_result()
+    trace_attrs = %{query_type: :provision, operation: "datasets.insert", backend_type: :bigquery}
+
+    trace_once(user_id, {:bigquery, :dataset, project_id, dataset_id}, trace_attrs, fn ->
+      conn
+      |> Api.Datasets.bigquery_datasets_insert(project_id, body: body)
+      |> GenUtils.maybe_parse_google_api_result()
+    end)
   end
 
   def patch_dataset_access(
@@ -387,6 +399,71 @@ defmodule Logflare.Google.BigQuery do
         {:error, :not_patched}
     end
   end
+
+  @spec create_source_table(atom(), String.t(), String.t(), integer()) :: ok_err_tup
+  defp create_source_table(source_token, dataset_id, project_id, ttl) do
+    case traced_source(source_token) do
+      %Source{} = source ->
+        trace_once(
+          source.user_id,
+          {:bigquery, :table, source_token},
+          source_trace_attrs(source, "tables.insert"),
+          fn -> create_table(source_token, dataset_id, project_id, ttl) end
+        )
+
+      nil ->
+        create_table(source_token, dataset_id, project_id, ttl)
+    end
+  end
+
+  @spec trace_source_operation(atom(), String.t(), (-> ok_err_tup)) :: ok_err_tup
+  defp trace_source_operation(source_token, operation, fun) do
+    case traced_source(source_token) do
+      %Source{} = source ->
+        QueryTraces.measure(source.user_id, source_trace_attrs(source, operation), fun)
+
+      nil ->
+        fun.()
+    end
+  end
+
+  @spec traced_source(atom()) :: Source.t() | nil
+  defp traced_source(source_token) do
+    case Sources.Cache.get_by(token: source_token) do
+      %Source{system_source: true} -> nil
+      %Source{} = source -> source
+      _missing -> nil
+    end
+  end
+
+  @spec source_trace_attrs(Source.t(), String.t()) :: QueryTraces.attrs()
+  defp source_trace_attrs(%Source{} = source, operation) do
+    %{
+      query_type: :provision,
+      operation: operation,
+      backend_type: :bigquery,
+      source_id: source.id,
+      source_token: source.token,
+      source_name: source.name
+    }
+  end
+
+  @spec trace_once(User.id() | nil, term(), QueryTraces.attrs(), (-> ok_err_tup)) :: ok_err_tup
+  defp trace_once(user_id, key, attrs, fun) do
+    user_id
+    |> QueryTraces.measure_once(key, attrs, fn -> already_exists_as_ok(fun.()) end)
+    |> restore_already_exists()
+  end
+
+  @spec already_exists_as_ok(ok_err_tup) :: ok_err_tup
+  defp already_exists_as_ok({:error, %Tesla.Env{status: 409} = env}),
+    do: {:ok, {:already_exists, env}}
+
+  defp already_exists_as_ok(result), do: result
+
+  @spec restore_already_exists(ok_err_tup) :: ok_err_tup
+  defp restore_already_exists({:ok, {:already_exists, env}}), do: {:error, env}
+  defp restore_already_exists(result), do: result
 
   defp patch(_dataset_id, [], _project_id, _user_id), do: :noop
 

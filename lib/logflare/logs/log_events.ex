@@ -9,6 +9,7 @@ defmodule Logflare.Logs.LogEvents do
 
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Backends.Adaptor.QueryResult
+  alias Logflare.Backends.UserMonitoring.QueryTraces
   alias Logflare.Billing
   alias Logflare.Google.BigQuery.GCPConfig
   alias Logflare.Google.BigQuery.GenUtils
@@ -59,9 +60,22 @@ defmodule Logflare.Logs.LogEvents do
       |> Lql.apply_filter_rules(lql_rules)
       |> select([t], fragment("?.*", t))
 
-    BigQueryAdaptor.execute_query({bq_project_id, dataset_id, source.user.id}, query,
-      query_type: :search
-    )
+    trace_attrs = %{
+      query_type: :event,
+      query: {:bigquery, query},
+      lql: lql,
+      event_id: id,
+      backend_type: :bigquery,
+      source_id: source.id,
+      source_token: source.token,
+      source_name: source.name
+    }
+
+    QueryTraces.measure(source.user_id, trace_attrs, fn ->
+      BigQueryAdaptor.execute_query({bq_project_id, dataset_id, source.user.id}, query,
+        query_type: :search
+      )
+    end)
     |> case do
       {:ok, %QueryResult{rows: []}} ->
         {:error, :not_found}
