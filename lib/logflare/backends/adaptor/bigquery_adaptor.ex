@@ -21,6 +21,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   alias Logflare.Backends.DynamicPipeline
   alias Logflare.Backends.Ecto.SqlUtils
   alias Logflare.Backends.IngestEventQueue
+  alias Logflare.Backends.Adaptor.PageToken
   alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Backends.QueryError
   alias Logflare.BigQuery.SchemaTypes
@@ -593,7 +594,9 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
       use_query_cache: Keyword.get(opts, :use_query_cache, true),
       dryRun: Keyword.get(opts, :dry_run, false),
       query_type: query_type,
-      reservation: reservation
+      reservation: reservation,
+      page_size: Keyword.get(opts, :page_size),
+      page_token: Keyword.get(opts, :page_token)
     ] ++ query_timeout_opts(query_type, reservation)
   end
 
@@ -709,21 +712,28 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
           | {:error, QueryError.t()}
   defp execute_user_query(%User{} = user, project_id, query_string, bq_params, query_opts)
        when is_non_empty_binary(query_string) and is_list(bq_params) and is_list(query_opts) do
-    case BqRepo.query_with_sql_and_params(
-           user,
-           project_id,
-           query_string,
-           bq_params,
-           query_opts
-         ) do
+    query_opts
+    |> Keyword.get(:page_token)
+    |> run_user_query(user, project_id, query_string, bq_params, query_opts)
+    |> case do
       {:ok, result} ->
         {:ok,
          QueryResult.new(result.rows, %{
            total_bytes_processed: result.total_bytes_processed,
            total_rows: result.total_rows,
            query_string: query_string,
-           bq_params: bq_params
+           bq_params: bq_params,
+           next_page_token: next_page_token(user, result)
          })}
+
+      {:error, :invalid_page_token} ->
+        {:error,
+         %QueryError{
+           kind: :invalid_query,
+           raw_error: :invalid_page_token,
+           backend: __MODULE__,
+           description: "Invalid or expired page token"
+         }}
 
       {:error, error} ->
         query_type = Keyword.get(query_opts, :query_type)
@@ -739,6 +749,59 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
         {:error, query_error}
     end
   end
+
+  @spec run_user_query(
+          page_token :: String.t() | nil,
+          user :: User.t(),
+          project_id :: String.t(),
+          query_string :: String.t(),
+          bq_params :: [map()],
+          query_opts :: Keyword.t()
+        ) :: BqRepo.query_result() | {:error, :invalid_page_token}
+  defp run_user_query(nil, user, project_id, query_string, bq_params, query_opts) do
+    query_opts =
+      Keyword.merge(query_opts, page_request_opts(Keyword.get(query_opts, :page_size)))
+
+    BqRepo.query_with_sql_and_params(user, project_id, query_string, bq_params, query_opts)
+  end
+
+  defp run_user_query(page_token, user, _project_id, _query_string, _bq_params, query_opts) do
+    with {:ok,
+          %{
+            "project_id" => project_id,
+            "job_id" => job_id,
+            "location" => location,
+            "page_token" => bq_page_token
+          }} <- PageToken.decode(user.id, page_token) do
+      BqRepo.get_query_results(user, project_id, job_id, bq_page_token,
+        location: location,
+        maxResults: Keyword.get(query_opts, :page_size)
+      )
+    end
+  end
+
+  @spec page_request_opts(pos_integer() | nil) :: Keyword.t()
+  defp page_request_opts(nil), do: []
+
+  defp page_request_opts(page_size) when is_pos_integer(page_size) do
+    [maxResults: page_size, jobCreationMode: "JOB_CREATION_REQUIRED"]
+  end
+
+  @spec next_page_token(User.t(), map()) :: String.t() | nil
+  defp next_page_token(%User{id: user_id}, %{
+         page_token: bq_page_token,
+         job_reference: %Model.JobReference{} = job_reference
+       })
+       when is_non_empty_binary(bq_page_token) do
+    PageToken.encode(user_id, %{
+      "project_id" => job_reference.projectId,
+      "job_id" => job_reference.jobId,
+      "location" => job_reference.location,
+      "page_token" => bq_page_token
+    })
+  end
+
+  defp next_page_token(_user, _result), do: nil
 
   @spec to_query_error(
           Tesla.Env.t() | GenUtils.transport_error(),

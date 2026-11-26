@@ -79,6 +79,30 @@ defmodule Logflare.BqRepo do
     end
   end
 
+  @spec get_query_results(User.t(), String.t(), String.t(), String.t(), Keyword.t()) ::
+          query_result()
+  def get_query_results(%User{} = user, project_id, job_id, page_token, opts \\ [])
+      when is_binary(project_id) and is_binary(job_id) and is_binary(page_token) and
+             is_list(opts) do
+    optional_params =
+      [
+        pageToken: page_token,
+        location: Keyword.get(opts, :location),
+        maxResults: Keyword.get(opts, :maxResults),
+        timeoutMs: Keyword.get(opts, :timeoutMs, @query_request_timeout)
+      ]
+      |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+
+    result =
+      GenUtils.get_conn({:query, user})
+      |> Api.Jobs.bigquery_jobs_get_query_results(project_id, job_id, optional_params)
+      |> GenUtils.maybe_parse_google_api_result()
+
+    with {:ok, response} <- result do
+      {:ok, transform_response(response)}
+    end
+  end
+
   defp transform_response(response) do
     response
     |> Map.update!(:rows, &SchemaUtils.merge_rows_with_schema(response.schema, &1))
