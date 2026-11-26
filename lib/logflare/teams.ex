@@ -40,6 +40,24 @@ defmodule Logflare.Teams do
     end
   end
 
+  @doc """
+  Fetches the team that `user` owns, by the team token or by the token of one of its team users.
+  """
+  @spec fetch_owned_team_by_token(User.t(), binary()) :: {:ok, Team.t()} | {:error, :not_found}
+  def fetch_owned_team_by_token(%User{id: user_id}, token) do
+    from(t in Team,
+      left_join: tu in TeamUser,
+      on: tu.team_id == t.id,
+      where: t.user_id == ^user_id and (t.token == ^token or tu.token == ^token),
+      distinct: true
+    )
+    |> Repo.one()
+    |> case do
+      nil -> {:error, :not_found}
+      team -> {:ok, team}
+    end
+  end
+
   @doc "Preloads the `:user` assoc"
   @spec preload_user(nil | Team.t()) :: Team.t() | nil
   def preload_user(team), do: Repo.preload(team, :user)
@@ -178,15 +196,5 @@ defmodule Logflare.Teams do
       where:
         t.id == ^team_id or tu.id == ^team_user_id or u.email == ^email or tu.email == ^email,
       distinct: true
-  end
-
-  @doc "Fetches a single team with the given token from the list of teams he's part of. Returns {:ok, team} if found, {:error, :not_found} if not found"
-  @spec fetch_team_by_user_access(User.t(), binary()) :: {:ok, Team.t()} | {:error, :not_found}
-  def fetch_team_by_user_access(user, token) do
-    if team = get_team_by_user_access(user, token) do
-      {:ok, team}
-    else
-      {:error, :not_found}
-    end
   end
 end

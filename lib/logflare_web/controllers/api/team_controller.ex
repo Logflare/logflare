@@ -23,7 +23,12 @@ defmodule LogflareWeb.Api.TeamController do
   )
 
   def index(%{assigns: %{user: user}} = conn, _) do
-    teams = Teams.list_teams_by_user_access(user)
+    teams =
+      case Teams.get_team_by(user_id: user.id) do
+        nil -> []
+        team -> [Teams.preload_fields(team, [:user, :team_users])]
+      end
+
     json(conn, teams)
   end
 
@@ -37,7 +42,7 @@ defmodule LogflareWeb.Api.TeamController do
   )
 
   def show(%{assigns: %{user: user}} = conn, %{"token" => token}) do
-    with {:ok, team} <- Teams.fetch_team_by_user_access(user, token),
+    with {:ok, team} <- Teams.fetch_owned_team_by_token(user, token),
          team <- Teams.preload_fields(team, [:user, :team_users]) do
       json(conn, team)
     end

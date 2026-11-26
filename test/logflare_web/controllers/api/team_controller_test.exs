@@ -22,20 +22,26 @@ defmodule LogflareWeb.Api.TeamControllerTest do
   end
 
   describe "index/2" do
-    test "returns list of teams for given user", %{
+    test "returns only the team that the key's account owns", %{
       conn: conn,
       user: user,
-      main_team: %{token: main_team_token},
-      non_owner_team: %{token: non_owner_team_token}
+      main_team: %{token: main_team_token}
     } do
-      response =
-        conn
-        |> add_access_token(user, "private")
-        |> get(~p"/api/teams")
-        |> json_response(200)
+      assert [%{"token" => token}] =
+               conn
+               |> add_access_token(user, "private")
+               |> get(~p"/api/teams")
+               |> json_response(200)
 
-      assert Enum.any?(response, fn %{"token" => token} -> main_team_token == token end)
-      assert Enum.any?(response, fn %{"token" => token} -> non_owner_team_token == token end)
+      assert token == main_team_token
+    end
+
+    test "returns an empty list when the key's account owns no team", %{conn: conn} do
+      assert [] =
+               conn
+               |> add_access_token(insert(:user), "private")
+               |> get(~p"/api/teams")
+               |> json_response(200)
     end
   end
 
@@ -54,19 +60,41 @@ defmodule LogflareWeb.Api.TeamControllerTest do
       assert response["token"] == token
     end
 
-    test "returns a single team given user and team token where his not an owner but a member", %{
+    test "returns the owned team given the token of one of its team users", %{
+      conn: conn,
+      user: user,
+      main_team: main_team
+    } do
+      [team_user] = Logflare.TeamUsers.list_team_users_by(team_id: main_team.id)
+
+      assert %{"token" => token} =
+               conn
+               |> add_access_token(user, "private")
+               |> get(~p"/api/teams/#{team_user.token}")
+               |> json_response(200)
+
+      assert token == main_team.token
+    end
+
+    test "returns not found given a team-user token of a team that the key's account is only a member of",
+         %{conn: conn, user: user, non_owner_team: non_owner_team} do
+      [team_user] = Logflare.TeamUsers.list_team_users_by(team_id: non_owner_team.id)
+
+      conn
+      |> add_access_token(user, "private")
+      |> get(~p"/api/teams/#{team_user.token}")
+      |> json_response(404)
+    end
+
+    test "returns not found for a team that the key's account is only a member of", %{
       conn: conn,
       user: user,
       non_owner_team: non_owner_team
     } do
-      response =
-        conn
-        |> add_access_token(user, "private")
-        |> get(~p"/api/teams/#{non_owner_team.token}")
-        |> json_response(200)
-
-      assert response["token"] == non_owner_team.token
-      assert response["name"] == non_owner_team.name
+      conn
+      |> add_access_token(user, "private")
+      |> get(~p"/api/teams/#{non_owner_team.token}")
+      |> json_response(404)
     end
 
     test "returns not found if doesn't own the team or isn't part of it", %{

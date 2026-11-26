@@ -269,10 +269,13 @@ defmodule LogflareWeb.Api.AlertControllerTest do
                |> json_response(400)
     end
 
-    test "rejects non-positive and non-integer backend IDs", %{conn: conn, user: user} do
+    test "rejects non-positive, non-integer and out-of-range backend IDs", %{
+      conn: conn,
+      user: user
+    } do
       alert = insert(:alert, user: user)
 
-      for invalid_id <- [0, -1, 1.5, "1", %{}] do
+      for invalid_id <- [0, -1, 1.5, "1", %{}, 9_223_372_036_854_775_808] do
         assert %{"error" => "backend_ids must contain positive integers"} =
                  conn
                  |> put(~p"/api/alerts/#{alert.token}", %{backend_ids: [invalid_id]})
@@ -329,64 +332,95 @@ defmodule LogflareWeb.Api.AlertControllerTest do
                |> json_response(200)
     end
 
-    test "team member can manage team-owned alerts", %{conn: conn} do
+    test "a key does not reach the alerts of a team its account is a member of", %{conn: conn} do
       member = insert(:user)
       team_user = insert(:team_user, email: member.email)
       owner = team_user.team.user
-      managed_alert = insert(:alert, user: owner, name: "initial")
-      deleted_alert = insert(:alert, user: owner)
+      own_alert = insert(:alert, user: member)
+      team_alert = insert(:alert, user: owner, name: "initial")
       conn = add_access_token(conn, member, "private")
 
-      response =
-        conn
-        |> get(~p"/api/alerts")
-        |> json_response(200)
-
-      assert MapSet.new(Enum.map(response, & &1["token"])) ==
-               MapSet.new([managed_alert.token, deleted_alert.token])
-
-      response =
-        conn
-        |> get(~p"/api/alerts/#{managed_alert.token}")
-        |> json_response(200)
-
-      assert response["token"] == managed_alert.token
-
-      assert conn
-             |> patch(~p"/api/alerts/#{managed_alert.token}", %{name: "updated"})
-             |> text_response(204) == ""
-
-      assert %{"name" => "updated"} =
+      assert [%{"token" => own_token}] =
                conn
-               |> get(~p"/api/alerts/#{managed_alert.token}")
+               |> get(~p"/api/alerts")
                |> json_response(200)
 
+      assert own_token == own_alert.token
+
       assert conn
-             |> delete(~p"/api/alerts/#{deleted_alert.token}")
-             |> text_response(204) == ""
+             |> get(~p"/api/alerts/#{team_alert.token}")
+             |> json_response(404)
+
+      assert conn
+             |> patch(~p"/api/alerts/#{team_alert.token}", %{name: "updated"})
+             |> json_response(404)
+
+      assert conn
+             |> delete(~p"/api/alerts/#{team_alert.token}")
+             |> json_response(404)
+
+      assert %{name: "initial"} = Alerting.get_alert_query_by(id: team_alert.id)
     end
 
-    test "team member can attach a team-owned backend", %{conn: conn} do
+    test "a key cannot attach a backend of a team its account is a member of", %{conn: conn} do
       member = insert(:user)
       team_user = insert(:team_user, email: member.email)
-      owner = team_user.team.user
-      alert = insert(:alert, user: owner)
-      backend = insert(:backend, user: owner)
-      unrelated_backend = insert(:backend)
+      alert = insert(:alert, user: member)
+      own_backend = insert(:backend, user: member)
+      team_backend = insert(:backend, user: team_user.team.user)
       conn = add_access_token(conn, member, "private")
-
-      response =
-        conn
-        |> put(~p"/api/alerts/#{alert.token}", %{backend_ids: [backend.id]})
-        |> json_response(200)
-
-      assert %{"backends" => [%{"id" => backend_id}]} = response
-      assert backend_id == backend.id
 
       assert %{"error" => "Not Found"} =
                conn
-               |> put(~p"/api/alerts/#{alert.token}", %{backend_ids: [unrelated_backend.id]})
+               |> put(~p"/api/alerts/#{alert.token}", %{backend_ids: [team_backend.id]})
                |> json_response(404)
+
+      assert %{"backends" => [%{"id" => backend_id}]} =
+               conn
+               |> put(~p"/api/alerts/#{alert.token}", %{backend_ids: [own_backend.id]})
+               |> json_response(200)
+
+      assert backend_id == own_backend.id
+    end
+
+    test "a key cannot create an alert with a backend of a team its account is a member of", %{
+      conn: conn
+    } do
+      member = insert(:user)
+      team_user = insert(:team_user, email: member.email)
+      team_backend = insert(:backend, user: team_user.team.user)
+
+      assert %{"error" => "Not Found"} =
+               conn
+               |> add_access_token(member, "private")
+               |> post(~p"/api/alerts", %{
+                 name: "my alert",
+                 query: "select current_date() as date",
+                 cron: "0 0 1 * *",
+                 backend_ids: [team_backend.id]
+               })
+               |> json_response(404)
+
+      assert Alerting.list_alert_queries(member) == []
+    end
+
+    test "a key cannot send another account's backend on update, even when the alert already links to it",
+         %{conn: conn} do
+      member = insert(:user)
+      team_user = insert(:team_user, email: member.email)
+      team_backend = insert(:backend, user: team_user.team.user)
+      alert = insert(:alert, user: member, backends: [team_backend], name: "linked")
+      conn = add_access_token(conn, member, "private")
+
+      assert %{"error" => "Not Found"} =
+               conn
+               |> put(~p"/api/alerts/#{alert.token}", %{
+                 name: "renamed",
+                 backend_ids: [team_backend.id]
+               })
+               |> json_response(404)
+
+      assert %{name: "linked"} = Alerting.get_alert_query_by(id: alert.id)
     end
 
     test "show alert with bad user", %{conn: conn, user: user} do

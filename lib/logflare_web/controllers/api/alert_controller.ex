@@ -2,6 +2,8 @@ defmodule LogflareWeb.Api.AlertController do
   use LogflareWeb, :controller
   use OpenApiSpex.ControllerSpecs
 
+  import Logflare.Utils.Guards
+
   alias Logflare.Alerting
   alias Logflare.Backends
   alias LogflareWeb.OpenApi.Accepted
@@ -26,7 +28,7 @@ defmodule LogflareWeb.Api.AlertController do
   def index(%{assigns: %{user: user}} = conn, _params) do
     alerts =
       user
-      |> Alerting.list_alert_queries_user_access()
+      |> Alerting.list_alert_queries()
       |> Enum.map(&Alerting.preload_alert_query/1)
 
     json(conn, alerts)
@@ -42,7 +44,7 @@ defmodule LogflareWeb.Api.AlertController do
   )
 
   def show(%{assigns: %{user: user}} = conn, %{"token" => token}) do
-    with {:ok, alert} <- Alerting.fetch_alert_query_by_user_access(user, token: token) do
+    with {:ok, alert} <- fetch_alert(user, token) do
       json(conn, Alerting.preload_alert_query(alert))
     end
   end
@@ -81,7 +83,7 @@ defmodule LogflareWeb.Api.AlertController do
   )
 
   def update(%{assigns: %{user: user}} = conn, %{"token" => token} = params) do
-    with {:ok, alert} <- Alerting.fetch_alert_query_by_user_access(user, token: token),
+    with {:ok, alert} <- fetch_alert(user, token),
          {:ok, attrs} <- verify_backends_owner(params, user),
          {:ok, updated} <- Alerting.update_alert_query(alert, attrs) do
       conn
@@ -98,6 +100,8 @@ defmodule LogflareWeb.Api.AlertController do
     end
   end
 
+  @spec verify_backends_owner(map(), Logflare.User.t()) ::
+          {:ok, map()} | {:error, String.t() | :not_found}
   defp verify_backends_owner(%{"backends" => _}, _user) do
     {:error, "backends is read-only; use backend_ids"}
   end
@@ -121,19 +125,29 @@ defmodule LogflareWeb.Api.AlertController do
   defp verify_backends_owner(params, _user), do: {:ok, params}
 
   defp validate_backend_ids(ids) do
-    if Enum.all?(ids, &(is_integer(&1) and &1 > 0)),
+    if Enum.all?(ids, &is_db_id/1),
       do: :ok,
       else: {:error, "backend_ids must contain positive integers"}
   end
 
-  defp fetch_backends(ids, user), do: fetch_backends(ids, user, [])
+  @spec fetch_backends([integer()], Logflare.User.t(), [Backends.Backend.t()]) ::
+          {:ok, [Backends.Backend.t()]} | {:error, :not_found}
+  defp fetch_backends(ids, user, acc \\ [])
 
   defp fetch_backends([], _user, acc), do: {:ok, Enum.reverse(acc)}
 
   defp fetch_backends([id | ids], user, acc) do
-    case Backends.get_backend_by_user_access(user, id) do
+    with {:ok, backend} <- Backends.fetch_backend_by(id: id, user_id: user.id) do
+      fetch_backends(ids, user, [backend | acc])
+    end
+  end
+
+  @spec fetch_alert(Logflare.User.t(), String.t()) ::
+          {:ok, Alerting.AlertQuery.t()} | {:error, :not_found}
+  defp fetch_alert(user, token) do
+    case Alerting.get_alert_query_by(token: token, user_id: user.id) do
       nil -> {:error, :not_found}
-      backend -> fetch_backends(ids, user, [backend | acc])
+      alert -> {:ok, alert}
     end
   end
 
@@ -147,7 +161,7 @@ defmodule LogflareWeb.Api.AlertController do
   )
 
   def delete(%{assigns: %{user: user}} = conn, %{"token" => token}) do
-    with {:ok, alert} <- Alerting.fetch_alert_query_by_user_access(user, token: token),
+    with {:ok, alert} <- fetch_alert(user, token),
          {:ok, _} <- Alerting.delete_alert_query(alert) do
       conn
       |> put_status(204)

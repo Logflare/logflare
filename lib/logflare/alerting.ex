@@ -102,23 +102,6 @@ defmodule Logflare.Alerting do
     |> Repo.one()
   end
 
-  @doc """
-  Fetches a single alert query by arbitrary conditions, scoped to the
-  alert queries the user has team access to.
-  """
-  @spec fetch_alert_query_by_user_access(User.t() | TeamUser.t(), keyword()) ::
-          {:ok, AlertQuery.t()} | {:error, :not_found}
-  def fetch_alert_query_by_user_access(user_or_team_user, kw) when is_list(kw) do
-    AlertQuery
-    |> Teams.filter_by_user_access(user_or_team_user)
-    |> where([alert_query], ^kw)
-    |> Repo.one()
-    |> case do
-      nil -> {:error, :not_found}
-      alert_query -> {:ok, alert_query}
-    end
-  end
-
   def preload_alert_query(alert) do
     alert
     |> Repo.preload([:user, :backends])
