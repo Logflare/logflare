@@ -430,6 +430,7 @@ defmodule Logflare.AlertingTest do
         insert(:alert,
           user: user,
           name: "high error rate",
+          description: "5xx responses above threshold",
           webhook_notification_url: nil,
           slack_hook_url: nil
         )
@@ -464,9 +465,16 @@ defmodule Logflare.AlertingTest do
                  "count" => 12,
                  "alert_query_id" => alert_id,
                  "alert_query_name" => "high error rate",
+                 "alert_query_description" => "5xx responses above threshold",
                  "event_message" => "high error rate"
                },
-               %{"status" => 502, "count" => 3, "alert_query_id" => alert_id}
+               %{
+                 "status" => 502,
+                 "count" => 3,
+                 "alert_query_id" => alert_id,
+                 "alert_query_name" => "high error rate",
+                 "alert_query_description" => "5xx responses above threshold"
+               }
              ] = batch
 
       assert alert_id == alert_query.id

@@ -373,10 +373,14 @@ defmodule Logflare.Alerting do
   end
 
   @spec alert_issue_event(AlertQuery.t(), map()) :: map()
-  defp alert_issue_event(%AlertQuery{id: id, name: name}, row) do
+  defp alert_issue_event(%AlertQuery{id: id, name: name, description: description}, row) do
     %{"event_message" => name}
     |> Map.merge(row)
-    |> Map.merge(%{"alert_query_id" => id, "alert_query_name" => name})
+    |> Map.merge(%{
+      "alert_query_id" => id,
+      "alert_query_name" => name,
+      "alert_query_description" => description
+    })
   end
 
   @spec handle_alert_issues_ingest(term(), AlertQuery.t(), non_neg_integer()) :: :ok

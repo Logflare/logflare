@@ -34,6 +34,7 @@ Each event holds the row's columns at the top level, plus:
 
 - **`alert_query_id`** - ID of the alert that fired
 - **`alert_query_name`** - name of the alert that fired
+- **`alert_query_description`** - description of the alert that fired
 - **`event_message`** - the row's `event_message` column, or the alert name when the row has none
 
 ### Scheduling
