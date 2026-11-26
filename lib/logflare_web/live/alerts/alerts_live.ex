@@ -217,7 +217,7 @@ defmodule LogflareWeb.AlertsLive do
         else: %AlertQuery{query: query, language: :bq_sql, user: user, user_id: user.id}
 
     with {:ok, %QueryResult{rows: [_ | _]} = result} <-
-           Alerting.execute_alert_query(test_alert, use_query_cache: false) do
+           Alerting.execute_alert_query(test_alert, use_query_cache: false, trigger: :manual) do
       {:noreply,
        socket
        |> assign(:query_result_rows, result.rows)
@@ -247,7 +247,7 @@ defmodule LogflareWeb.AlertsLive do
         %{assigns: %{alert: %_{} = alert}} = socket
       ) do
     with {:ok, %QueryResult{} = result} <-
-           Alerting.execute_alert_query(alert, use_query_cache: false) do
+           Alerting.execute_alert_query(alert, use_query_cache: false, trigger: :manual) do
       {:noreply,
        socket
        |> assign(:query_result_rows, result.rows)

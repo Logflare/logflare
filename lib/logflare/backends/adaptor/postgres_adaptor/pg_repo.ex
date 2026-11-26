@@ -35,7 +35,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo do
     create_repo(backend)
 
     SharedRepo.with_repo(backend, fn ->
-      SharedRepo.migrate!(source)
+      SharedRepo.migrate!(source, backend)
     end)
   end
 
