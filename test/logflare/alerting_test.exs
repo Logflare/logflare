@@ -609,6 +609,15 @@ defmodule Logflare.AlertingTest do
       assert Alerting.list_future_jobs(alert.id) == []
     end
 
+    test "schedule_alert/1 schedules runs once a disabled alert is enabled", %{user: user} do
+      alert = insert(:alert, user: user, cron: "0 0 * * *", enabled: false)
+      assert :ok = Alerting.schedule_alert(alert)
+      assert Alerting.list_future_jobs(alert.id) == []
+
+      assert :ok = Alerting.schedule_alert(%{alert | enabled: true})
+      assert length(Alerting.list_future_jobs(alert.id)) == 5
+    end
+
     test "changing cron on disabled alert does not schedule runs", %{user: user} do
       alert = insert(:alert, user: user, cron: "0 0 * * *", enabled: false)
 
