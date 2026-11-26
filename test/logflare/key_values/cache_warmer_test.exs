@@ -7,6 +7,7 @@ defmodule Logflare.KeyValues.CacheWarmerTest do
   alias Logflare.KeyValues.Cache
   alias Logflare.KeyValues.CacheWarmer
   alias Logflare.KeyValues.KeyFilter
+  alias Logflare.KeyValues.KeyValue
 
   @pt_key {CacheWarmer, :initialized}
   @pt_warmed_at {CacheWarmer, :warmed_at}
@@ -94,6 +95,22 @@ defmodule Logflare.KeyValues.CacheWarmerTest do
       assert KeyFilter.maybe_exists?(user.id, "a")
       assert KeyFilter.maybe_exists?(user.id, "b")
       refute KeyFilter.maybe_exists?(user.id, "missing")
+    end
+
+    test "the filter rebuild pages through more keys than one page", %{user: user} do
+      now = DateTime.utc_now()
+
+      rows =
+        for i <- 1..10_001 do
+          %{user_id: user.id, key: "k#{i}", value: %{}, inserted_at: now, updated_at: now}
+        end
+
+      for chunk <- Enum.chunk_every(rows, 5_000), do: Repo.insert_all(KeyValue, chunk)
+
+      assert {:ok, 10_001} = CacheWarmer.rebuild_filter()
+      assert KeyFilter.maybe_exists?(user.id, "k1")
+      assert KeyFilter.maybe_exists?(user.id, "k10001")
+      assert %{size: 10_001} = KeyFilter.info()
     end
 
     test "sweep deletes cached lookups for keys missing from the filter only", %{user: user} do

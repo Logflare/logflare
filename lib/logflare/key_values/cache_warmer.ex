@@ -16,6 +16,7 @@ defmodule Logflare.KeyValues.CacheWarmer do
   @pt_warmed_at {__MODULE__, :warmed_at}
   @warm_limit Application.compile_env!(:logflare, [__MODULE__, :warm_limit])
   @full_warm_interval to_timeout(hour: 12)
+  @filter_page_size 10_000
 
   @impl true
   def execute(_state) do
@@ -41,29 +42,38 @@ defmodule Logflare.KeyValues.CacheWarmer do
   """
   @spec warm_all() :: {:ok, :ok} | {:error, term()}
   def warm_all do
-    with {:ok, _count} <- rebuild_filter(), do: warm_top_n()
+    {:ok, _count} = rebuild_filter()
+    warm_top_n()
   end
 
   @doc """
   Rebuilds the `KeyFilter` from every key.
   """
-  @spec rebuild_filter() :: {:ok, non_neg_integer()} | {:error, term()}
+  @spec rebuild_filter() :: {:ok, non_neg_integer()}
   def rebuild_filter do
-    Repo.transaction(
-      fn -> KeyValue |> Repo.aggregate(:count) |> KeyFilter.rebuild(&add_all_keys/1) end,
-      timeout: :infinity
-    )
+    count =
+      KeyValue
+      |> Repo.aggregate(:count)
+      |> KeyFilter.rebuild(&add_keys_after(&1, 0, 0))
+
+    {:ok, count}
   end
 
-  defp add_all_keys(filter) do
-    KeyValue
-    |> select([kv], {kv.user_id, kv.key})
-    |> Repo.stream()
-    |> Stream.chunk_every(1_000)
-    |> Enum.reduce(0, fn chunk, count ->
-      KeyFilter.add_all(filter, chunk)
-      count + length(chunk)
-    end)
+  defp add_keys_after(filter, last_id, count) do
+    rows =
+      KeyValue
+      |> where([kv], kv.id > ^last_id)
+      |> order_by(:id)
+      |> limit(@filter_page_size)
+      |> select([kv], {kv.id, kv.user_id, kv.key})
+      |> Repo.all()
+
+    KeyFilter.add_all(filter, for({_id, user_id, key} <- rows, do: {user_id, key}))
+
+    case List.last(rows) do
+      nil -> count
+      {id, _user_id, _key} -> add_keys_after(filter, id, count + length(rows))
+    end
   end
 
   @doc """
@@ -89,15 +99,12 @@ defmodule Logflare.KeyValues.CacheWarmer do
   """
   @spec warm_top_n(pos_integer()) :: {:ok, :ok} | {:error, term()}
   def warm_top_n(limit \\ @warm_limit) do
-    Repo.transaction(
-      fn ->
-        warmed = limit |> recently_used_query() |> put_all()
-        remaining = limit - warmed
-        if remaining > 0, do: remaining |> never_used_query() |> put_all()
-        :ok
-      end,
-      timeout: :infinity
-    )
+    Repo.transaction(fn ->
+      warmed = limit |> recently_used_query() |> put_all()
+      remaining = limit - warmed
+      if remaining > 0, do: remaining |> never_used_query() |> put_all()
+      :ok
+    end)
   end
 
   defp recently_used_query(limit) do
