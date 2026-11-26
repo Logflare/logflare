@@ -43,7 +43,7 @@ defmodule LogflareWeb.Hooks.AllowTestSandbox do
       end)
 
     metadata = socket.assigns.phoenix_ecto_sandbox
-    Phoenix.Ecto.SQL.Sandbox.allow(metadata, Ecto.Adapters.SQL.Sandbox)
+    Phoenix.Ecto.SQL.Sandbox.allow(metadata, Fluffy.Sandbox)
     {:cont, socket}
   end
 end

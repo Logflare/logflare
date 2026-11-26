@@ -245,13 +245,14 @@ defmodule E2e.Features.LogsSearchTest do
       session
       |> click(load_more_top_button())
       |> assert(count(log_rows(), 150))
-
-      Playwright.Expect.poll!(
-        fn -> round(bounding_box(session, anchor).y - before.y) end,
-        fn drift ->
-          assert abs(drift) <= 4,
-                 "the reader's row moved #{drift}px. An older page must not move the viewport."
-        end
+      |> assert(
+        poll(
+          fn session -> round(bounding_box(session, anchor).y - before.y) end,
+          fn drift ->
+            assert abs(drift) <= 4,
+                   "the reader's row moved #{drift}px. An older page must not move the viewport."
+          end
+        )
       )
     end
 
