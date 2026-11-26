@@ -792,6 +792,20 @@ defmodule LogflareWeb.AlertsLiveTest do
       assert length(Alerting.list_future_jobs(alert_query.id)) == 5
     end
 
+    test "index shows the enabled state of each alert", %{
+      conn: conn,
+      user: user,
+      alert_query: enabled_alert
+    } do
+      disabled_alert = insert(:alert, user_id: user.id, enabled: false)
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/alerts")
+
+      assert view |> element("#alert-#{enabled_alert.id} .badge", "Enabled") |> has_element?()
+      refute view |> element("#alert-#{enabled_alert.id} .badge", "Disabled") |> has_element?()
+      assert view |> element("#alert-#{disabled_alert.id} .badge", "Disabled") |> has_element?()
+      refute view |> element("#alert-#{disabled_alert.id} .badge", "Enabled") |> has_element?()
+    end
+
     test "index shows Disabled badge for disabled alert", %{conn: conn, user: user} do
       _disabled_alert = insert(:alert, user_id: user.id, enabled: false, name: "Disabled Alert")
       {:ok, _view, html} = live_with_redirect(conn, ~p"/alerts")
