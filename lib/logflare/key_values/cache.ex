@@ -7,6 +7,7 @@ defmodule Logflare.KeyValues.Cache do
   alias Logflare.ContextCache
   alias Logflare.KeyValues
   alias Logflare.KeyValues.CacheWarmer
+  alias Logflare.KeyValues.KeyFilter
   alias Logflare.Repo
 
   @usage_touch_window :timer.minutes(20)
@@ -35,6 +36,12 @@ defmodule Logflare.KeyValues.Cache do
     end
   end
 
+  @doc """
+  Returns the value for a key, or `nil` when it has none.
+
+  Only keys the `KeyFilter` reports may exist reach the database on a miss; other misses return
+  `nil` without a query or a cache entry.
+  """
   @spec lookup(integer(), String.t()) :: map() | nil
   def lookup(user_id, key) do
     lookup(user_id, key, nil)
@@ -42,25 +49,42 @@ defmodule Logflare.KeyValues.Cache do
 
   @spec lookup(integer(), String.t(), String.t() | nil) :: term() | nil
   def lookup(user_id, key, accessor_path) do
-    key_args = [user_id, key, accessor_path]
-    cache_key = {:lookup, key_args}
+    case Cachex.get(__MODULE__, {:lookup, [user_id, key, accessor_path]}) do
+      {:ok, {:cached, value}} -> value
+      {:ok, nil} -> lookup_miss(user_id, key, accessor_path)
+    end
+  end
 
-    Cachex.execute!(__MODULE__, fn worker ->
-      Cachex.fetch(worker, cache_key, fn _key -> lookup_fallback(worker, key_args) end)
+  defp lookup_miss(user_id, key, nil), do: maybe_fetch(user_id, key, nil)
+
+  defp lookup_miss(user_id, key, accessor_path) do
+    case Cachex.get(__MODULE__, {:lookup, [user_id, key, nil]}) do
+      {:ok, {:cached, full_value}} ->
+        value = KeyValues.extract_value(full_value, accessor_path)
+
+        {:ok, true} =
+          Cachex.put(__MODULE__, {:lookup, [user_id, key, accessor_path]}, {:cached, value})
+
+        value
+
+      {:ok, nil} ->
+        maybe_fetch(user_id, key, accessor_path)
+    end
+  end
+
+  defp maybe_fetch(user_id, key, accessor_path) do
+    if KeyFilter.maybe_exists?(user_id, key), do: fetch(user_id, key, accessor_path)
+  end
+
+  defp fetch(user_id, key, accessor_path) do
+    key_args = [user_id, key, accessor_path]
+
+    Cachex.fetch(__MODULE__, {:lookup, key_args}, fn _key ->
+      {:commit, {:cached, Repo.apply_with_replica(KeyValues, :lookup, key_args)}}
     end)
     |> case do
       {:commit, {:cached, v}} -> v
       {:ok, {:cached, v}} -> v
-    end
-  end
-
-  defp lookup_fallback(worker, [user_id, key, accessor_path] = key_args) do
-    case Cachex.get(worker, {:lookup, [user_id, key, nil]}) do
-      {:ok, {:cached, full_value}} ->
-        {:commit, {:cached, KeyValues.extract_value(full_value, accessor_path)}}
-
-      {:ok, nil} ->
-        {:commit, {:cached, Repo.apply_with_replica(KeyValues, :lookup, key_args)}}
     end
   end
 
@@ -101,6 +125,21 @@ defmodule Logflare.KeyValues.Cache do
       warmed_at -> max(window_start, DateTime.to_unix(warmed_at, :millisecond) + 1)
     end
   end
+
+  @doc """
+  Deletes the cached entries for a key. With `exists: true`, from a WAL insert or update, it first
+  adds the key to the `KeyFilter`.
+  """
+  @impl ContextCache
+  def bust_by(kw) do
+    maybe_add_to_filter(kw[:user_id], kw[:key], kw[:exists])
+    delete_keys(keys_to_bust(kw))
+  end
+
+  defp maybe_add_to_filter(user_id, key, true) when is_integer(user_id) and is_binary(key),
+    do: KeyFilter.add(user_id, key)
+
+  defp maybe_add_to_filter(_user_id, _key, _exists), do: :ok
 
   @impl ContextCache
   def keys_to_bust(kw) do

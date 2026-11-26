@@ -14,8 +14,9 @@ defmodule Logflare.ContextCache do
 
   ## Busting
 
-  `bust_keys/1` busts entries by primary key or by a keyword of fields. Caches that need busting
-  keys other than `id:` override `c:keys_to_bust/1`.
+  `bust_keys/1` busts entries by primary key or by a keyword of fields through `c:bust_by/1`, which
+  deletes the keys returned by `c:keys_to_bust/1` unless overridden. Caches that need busting keys
+  other than `id:` override `c:keys_to_bust/1`.
 
   ## Memoization
 
@@ -46,6 +47,11 @@ defmodule Logflare.ContextCache do
   """
   @callback update(key :: term(), value :: term()) :: :ok
 
+  @doc """
+  Busts the entries for a keyword of values, returning the number of entries changed.
+  """
+  @callback bust_by(keyword()) :: {:ok, non_neg_integer()}
+
   defmacro __using__(opts) do
     impl = Keyword.get(opts, :impl, CachexOps)
 
@@ -66,7 +72,10 @@ defmodule Logflare.ContextCache do
       @impl Logflare.ContextCache
       def update(key, value), do: unquote(impl).update(__MODULE__, key, value)
 
-      defoverridable keys_to_bust: 1, delete_keys: 1, fetch: 2, update: 2
+      @impl Logflare.ContextCache
+      def bust_by(kw), do: delete_keys(keys_to_bust(kw))
+
+      defoverridable keys_to_bust: 1, delete_keys: 1, fetch: 2, update: 2, bust_by: 1
     end
   end
 
@@ -93,7 +102,7 @@ defmodule Logflare.ContextCache do
   It is intended for following a WAL for cache busting. When a new record comes in from the WAL,
   the CacheBuster process calls this function with either the primary keys extracted from those records
   or a keyword list with fields useful for busting. Both are passed to the context cache's
-  `c:keys_to_bust/1`, a primary key as `[id: pkey]`, and the returned keys to `c:delete_keys/1`.
+  `c:bust_by/1`, a primary key as `[id: pkey]`.
   """
   @spec bust_keys(list()) :: {:ok, non_neg_integer()}
   def bust_keys(values) when is_list(values) do
@@ -107,10 +116,7 @@ defmodule Logflare.ContextCache do
     {:ok, busted}
   end
 
-  defp bust_key(context, kw) when is_list(kw) do
-    cache = cache_name(context)
-    cache.delete_keys(cache.keys_to_bust(kw))
-  end
+  defp bust_key(context, kw) when is_list(kw), do: cache_name(context).bust_by(kw)
 
   defp bust_key(context, pkey), do: bust_key(context, id: pkey)
 

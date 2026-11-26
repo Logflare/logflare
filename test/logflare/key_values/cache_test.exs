@@ -5,31 +5,61 @@ defmodule Logflare.KeyValues.CacheTest do
   alias Logflare.ContextCache
   alias Logflare.KeyValues
   alias Logflare.KeyValues.CacheWarmer
+  alias Logflare.KeyValues.KeyFilter
 
   setup do
-    :persistent_term.erase({CacheWarmer, :initialized})
     :persistent_term.erase({CacheWarmer, :warmed_at})
+    KeyFilter.rebuild(0, fn _filter -> :ok end)
+    on_exit(&KeyFilter.clear/0)
     user = insert(:user)
     [user: user]
   end
 
-  test "lookup/2 caches results", %{user: user} do
+  test "lookup/2 fetches and caches a key in the filter", %{user: user} do
     value = %{"org_id" => "org_abc"}
     insert(:key_value, user: user, key: "proj1", value: value)
+    KeyFilter.add(user.id, "proj1")
 
-    # first call populates cache
     assert ^value = KeyValues.Cache.lookup(user.id, "proj1")
     cache_key = {:lookup, [user.id, "proj1", nil]}
     assert {:cached, ^value} = Cachex.get!(KeyValues.Cache, cache_key)
   end
 
-  test "lookup/3 caches extracted value with accessor path", %{user: user} do
+  test "lookup/3 fetches and caches an extracted value for a key in the filter", %{user: user} do
     value = %{"org" => %{"id" => "abc", "name" => "Acme"}}
     insert(:key_value, user: user, key: "proj1", value: value)
+    KeyFilter.add(user.id, "proj1")
 
     assert "abc" = KeyValues.Cache.lookup(user.id, "proj1", "org.id")
     cache_key = {:lookup, [user.id, "proj1", "org.id"]}
     assert {:cached, "abc"} = Cachex.get!(KeyValues.Cache, cache_key)
+  end
+
+  test "a key missing from the filter returns nil without a query or a cache entry",
+       %{user: user} do
+    insert(:key_value, user: user, key: "proj1", value: %{"org" => "a"})
+    reject(&KeyValues.lookup/2)
+    reject(&KeyValues.lookup/3)
+
+    assert KeyValues.Cache.lookup(user.id, "proj1") == nil
+    assert KeyValues.Cache.lookup(user.id, "proj1", "org") == nil
+    assert Cachex.get!(KeyValues.Cache, {:lookup, [user.id, "proj1", nil]}) == nil
+    assert Cachex.get!(KeyValues.Cache, {:lookup, [user.id, "proj1", "org"]}) == nil
+  end
+
+  test "every key reads as absent before the filter is built", %{user: user} do
+    insert(:key_value, user: user, key: "proj1", value: %{"org" => "a"})
+    KeyFilter.clear()
+    reject(&KeyValues.lookup/2)
+
+    assert KeyValues.Cache.lookup(user.id, "proj1") == nil
+  end
+
+  test "a key in the filter without a row caches nil", %{user: user} do
+    KeyFilter.add(user.id, "gone")
+
+    assert KeyValues.Cache.lookup(user.id, "gone") == nil
+    assert {:cached, nil} = Cachex.get!(KeyValues.Cache, {:lookup, [user.id, "gone", nil]})
   end
 
   test "lookup/3 on a warmed entry", %{user: user} do
@@ -48,12 +78,26 @@ defmodule Logflare.KeyValues.CacheTest do
     end
   end
 
-  test "lookup/2 returns nil for missing keys", %{user: user} do
-    assert nil == KeyValues.Cache.lookup(user.id, "nonexistent")
+  test "a WAL insert adds the key to the filter", %{user: user} do
+    insert(:key_value, user: user, key: "new", value: %{"org" => "a"})
+    assert KeyValues.Cache.lookup(user.id, "new") == nil
+
+    assert {:ok, _} =
+             ContextCache.bust_keys([{KeyValues, user_id: user.id, key: "new", exists: true}])
+
+    assert KeyFilter.maybe_exists?(user.id, "new")
+    assert KeyValues.Cache.lookup(user.id, "new") == %{"org" => "a"}
+  end
+
+  test "a WAL delete does not add the key to the filter", %{user: user} do
+    assert {:ok, _} = ContextCache.bust_keys([{KeyValues, user_id: user.id, key: "gone"}])
+
+    refute KeyFilter.maybe_exists?(user.id, "gone")
   end
 
   test "busting a cached lookup and its accessor variants", %{user: user} do
     kv = insert(:key_value, user: user, key: "proj1", value: %{"org" => %{"id" => "abc"}})
+    KeyFilter.add(user.id, "proj1")
 
     assert "abc" = KeyValues.Cache.lookup(user.id, "proj1", "org.id")
     assert %{"org" => %{"id" => "abc"}} = KeyValues.Cache.lookup(user.id, "proj1")

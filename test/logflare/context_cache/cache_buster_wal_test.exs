@@ -11,6 +11,7 @@ defmodule Logflare.ContextCache.CacheBusterWalTest do
   alias Logflare.KeyValues
   alias Logflare.Repo
   alias Logflare.TestUtils
+  alias Logflare.User
 
   setup do
     for child_spec <- ContextCache.Supervisor.buster_specs() do
@@ -37,7 +38,7 @@ defmodule Logflare.ContextCache.CacheBusterWalTest do
     on_exit(fn ->
       Sandbox.unboxed_run(Repo, fn ->
         Repo.delete_all(Logflare.KeyValues.KeyValue)
-        Repo.delete(Repo.get(Logflare.User, kv.user_id))
+        Repo.delete(Repo.get(User, kv.user_id))
       end)
     end)
 
@@ -53,6 +54,24 @@ defmodule Logflare.ContextCache.CacheBusterWalTest do
     TestUtils.retry_assert(fn ->
       assert Cachex.get!(KeyValues.Cache, {:lookup, [kv.user_id, "proj", nil]}) == nil
       assert Cachex.get!(KeyValues.Cache, {:lookup, [kv.user_id, "proj", "org"]}) == nil
+    end)
+  end
+
+  test "inserting a key_values row through the real WAL stream makes it visible", %{kv: kv} do
+    KeyValues.KeyFilter.rebuild(0, fn _filter -> :ok end)
+    on_exit(&KeyValues.KeyFilter.clear/0)
+
+    Sandbox.unboxed_run(Repo, fn ->
+      user = Repo.get!(User, kv.user_id)
+      insert(:key_value, user: user, key: "new", value: %{"org" => "c"})
+    end)
+
+    TestUtils.retry_assert(fn ->
+      assert KeyValues.KeyFilter.maybe_exists?(kv.user_id, "new")
+    end)
+
+    Sandbox.unboxed_run(Repo, fn ->
+      assert KeyValues.Cache.lookup(kv.user_id, "new") == %{"org" => "c"}
     end)
   end
 end

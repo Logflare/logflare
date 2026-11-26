@@ -3,6 +3,8 @@ defmodule Logflare.LogEventTest do
   use Logflare.DataCase
   use ExUnitProperties
 
+  alias Logflare.KeyValues.CacheWarmer
+  alias Logflare.KeyValues.KeyFilter
   alias Logflare.LogEvent
   alias Logflare.Sources.Source
   alias Logflare.Utils
@@ -252,6 +254,9 @@ defmodule Logflare.LogEventTest do
         value: %{"org" => %{"id" => 123, "name" => "Acme"}, "role" => "admin"}
       )
 
+      {:ok, _} = CacheWarmer.warm_all()
+      on_exit(&KeyFilter.clear/0)
+
       [source: source, user: user]
     end
 
@@ -436,6 +441,7 @@ defmodule Logflare.LogEventTest do
 
     test "boolean field values are stringified for key lookup", %{source: source, user: user} do
       insert(:key_value, user: user, key: "true", value: %{"result" => "bool_hit"})
+      {:ok, _} = CacheWarmer.warm_all()
 
       source =
         %{source | transform_key_values: "flag:result:result"}
@@ -652,6 +658,7 @@ defmodule Logflare.LogEventTest do
       user: user
     } do
       insert(:key_value, user: user, key: "router", value: %{"org_id" => "acme"})
+      {:ok, _} = CacheWarmer.warm_all()
 
       source =
         %{
@@ -695,6 +702,7 @@ defmodule Logflare.LogEventTest do
   describe "transform pipeline" do
     test "runs all four stages in documented order", %{source: source, user: user} do
       insert(:key_value, user: user, key: "router", value: %{"org_id" => "acme"})
+      {:ok, _} = CacheWarmer.warm_all()
 
       source =
         %{
@@ -1117,6 +1125,7 @@ defmodule Logflare.LogEventTest do
       user: user
     } do
       insert(:key_value, user: user, key: "router", value: %{"org_id" => "acme"})
+      {:ok, _} = CacheWarmer.warm_all()
 
       source =
         %{

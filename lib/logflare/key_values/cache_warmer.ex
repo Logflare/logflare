@@ -3,85 +3,90 @@ defmodule Logflare.KeyValues.CacheWarmer do
 
   use Cachex.Warmer
 
-  alias Logflare.KeyValues.Cache
-  alias Logflare.KeyValues.KeyValue
-  alias Logflare.KeyValues.KeyValueUsage
-  alias Logflare.Repo
-
-  require Logger
   import Ecto.Query
 
-  @pt_key {__MODULE__, :initialized}
+  require Logger
+
+  alias Logflare.KeyValues.Cache
+  alias Logflare.KeyValues.KeyFilter
+  alias Logflare.KeyValues.KeyValue
+  alias Logflare.Repo
+
   @pt_warmed_at {__MODULE__, :warmed_at}
-  @warm_limit Application.compile_env!(:logflare, [__MODULE__, :warm_limit])
+  @full_warm_interval to_timeout(hour: 12)
 
   @impl true
   def execute(_state) do
-    if initialized?() do
-      Repo.apply_with_replica(__MODULE__, :warm_recent, [])
+    if full_warm_due?() do
+      full_warm()
     else
-      try do
-        Repo.apply_with_replica(__MODULE__, :warm_top_n, [])
-        :persistent_term.put(@pt_warmed_at, DateTime.utc_now())
-        :persistent_term.put(@pt_key, true)
-      rescue
-        e ->
-          Logger.error("Error performing full KeyValues.Cache warming: #{inspect(e)}")
-      end
+      Repo.apply_with_replica(__MODULE__, :warm_recent, [])
     end
 
     :ignore
   end
 
+  defp full_warm do
+    started_at = System.system_time(:millisecond)
+    {:ok, _count} = Repo.apply_with_replica(__MODULE__, :warm_all, [])
+    sweep(started_at)
+    :persistent_term.put(@pt_warmed_at, DateTime.utc_now())
+  rescue
+    e ->
+      Logger.error("Error performing full KeyValues.Cache warming: #{inspect(e)}")
+  end
+
   @doc """
-  Warms up to `limit` entries: keys with recorded usage, most recently used
-  first, then keys never used, most recently updated first.
+  Loads every key value into the cache and rebuilds the `KeyFilter` from the same rows.
   """
-  @spec warm_top_n(pos_integer()) :: {:ok, :ok} | {:error, term()}
-  def warm_top_n(limit \\ @warm_limit) do
-    Repo.transaction(fn ->
-      warmed = limit |> recently_used_query() |> put_all()
-      remaining = limit - warmed
-      if remaining > 0, do: remaining |> never_used_query() |> put_all()
-      :ok
-    end)
+  @spec warm_all() :: {:ok, non_neg_integer()} | {:error, term()}
+  def warm_all do
+    Repo.transaction(
+      fn ->
+        KeyValue
+        |> Repo.aggregate(:count)
+        |> KeyFilter.rebuild(&put_all/1)
+      end,
+      timeout: :infinity
+    )
   end
 
-  defp recently_used_query(limit) do
-    KeyValueUsage
-    |> join(:inner, [u], kv in assoc(u, :key_value))
-    |> order_by([u], desc: u.last_used_at)
-    |> limit(^limit)
-    |> select([_u, kv], kv)
-  end
-
-  defp never_used_query(limit) do
-    used = where(KeyValueUsage, [u], u.key_value_id == parent_as(:kv).id)
-
-    from(kv in KeyValue, as: :kv)
-    |> where(not exists(used))
-    |> order_by(desc: :updated_at)
-    |> limit(^limit)
-  end
-
-  defp put_all(query) do
-    query
+  defp put_all(filter) do
+    KeyValue
     |> Repo.stream()
     |> Stream.chunk_every(500)
     |> Enum.reduce(0, fn chunk, count ->
       Cachex.put_many(Cache, Enum.map(chunk, &to_cache_entry/1))
+      KeyFilter.add_all(filter, Enum.map(chunk, &{&1.user_id, &1.key}))
       count + length(chunk)
     end)
   end
 
+  @doc """
+  Deletes lookup entries written before `started_at`, in ms. Run after a full warm, these are keys
+  that no longer exist and derived entries, which are rebuilt from the warmed values.
+  """
+  @spec sweep(integer()) :: non_neg_integer()
+  def sweep(started_at) do
+    query = Cachex.Query.build(where: {:<, :modified, started_at}, output: :key)
+
+    Cache
+    |> Cachex.stream!(query)
+    |> Stream.filter(&match?({:lookup, _}, &1))
+    |> Enum.reduce(0, fn key, count ->
+      {:ok, _} = Cachex.del(Cache, key)
+      count + 1
+    end)
+  end
+
   def warm_recent do
-    entries =
+    key_values =
       KeyValue
       |> where([kv], kv.updated_at >= ago(1, "hour"))
       |> Repo.all()
-      |> Enum.map(&to_cache_entry/1)
 
-    if entries != [], do: Cachex.put_many(Cache, entries)
+    Enum.each(key_values, &KeyFilter.add(&1.user_id, &1.key))
+    if key_values != [], do: Cachex.put_many(Cache, Enum.map(key_values, &to_cache_entry/1))
   end
 
   defp to_cache_entry(%KeyValue{} = kv) do
@@ -100,7 +105,13 @@ defmodule Logflare.KeyValues.CacheWarmer do
     :persistent_term.get(@pt_warmed_at, nil)
   end
 
-  defp initialized? do
-    :persistent_term.get(@pt_key, false)
+  defp full_warm_due? do
+    case warmed_at() do
+      nil ->
+        true
+
+      warmed_at ->
+        DateTime.diff(DateTime.utc_now(), warmed_at, :millisecond) >= @full_warm_interval
+    end
   end
 end
