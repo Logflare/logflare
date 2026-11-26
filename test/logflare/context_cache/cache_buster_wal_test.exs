@@ -74,4 +74,25 @@ defmodule Logflare.ContextCache.CacheBusterWalTest do
       assert KeyValues.Cache.lookup(kv.user_id, "new") == %{"org" => "c"}
     end)
   end
+
+  test "updating a key_values row through the real WAL stream refreshes its cached value",
+       %{kv: kv} do
+    KeyValues.KeyFilter.rebuild(0, fn _filter -> :ok end)
+    on_exit(&KeyValues.KeyFilter.clear/0)
+    KeyValues.KeyFilter.add(kv.user_id, "proj")
+    Cachex.put!(KeyValues.Cache, {:lookup, [kv.user_id, "proj", nil]}, {:cached, kv.value})
+    Cachex.put!(KeyValues.Cache, {:lookup, [kv.user_id, "proj", "org"]}, {:cached, "a"})
+
+    Sandbox.unboxed_run(Repo, fn ->
+      kv |> Ecto.Changeset.change(value: %{"org" => "b"}) |> Repo.update!()
+    end)
+
+    TestUtils.retry_assert(fn ->
+      assert Cachex.get!(KeyValues.Cache, {:lookup, [kv.user_id, "proj", "org"]}) == nil
+    end)
+
+    Sandbox.unboxed_run(Repo, fn ->
+      assert KeyValues.Cache.lookup(kv.user_id, "proj", "org") == "b"
+    end)
+  end
 end

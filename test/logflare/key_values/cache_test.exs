@@ -114,6 +114,95 @@ defmodule Logflare.KeyValues.CacheTest do
     assert {:ok, 0} = ContextCache.bust_keys([{KeyValues, user_id: user.id, key: "nonexistent"}])
   end
 
+  describe "WAL changes" do
+    setup %{user: user} do
+      kv = insert(:key_value, user: user, key: "proj", value: %{"org" => "a"})
+      {:ok, _} = CacheWarmer.warm_all()
+      assert "a" = KeyValues.Cache.lookup(user.id, "proj", "org")
+      [kv: kv]
+    end
+
+    test "an insert makes the key visible", %{user: user} do
+      insert(:key_value, user: user, key: "new", value: %{"org" => "b"})
+      assert KeyValues.Cache.lookup(user.id, "new") == nil
+
+      wal_bust(user.id, "new", exists: true)
+
+      assert KeyValues.Cache.lookup(user.id, "new", "org") == "b"
+    end
+
+    test "an update replaces the cached value", %{user: user, kv: kv} do
+      update_value(kv, %{"org" => "b"})
+
+      wal_bust(user.id, "proj", exists: true)
+
+      assert KeyValues.Cache.lookup(user.id, "proj", "org") == "b"
+      assert KeyValues.Cache.lookup(user.id, "proj") == %{"org" => "b"}
+    end
+
+    test "a delete makes the key read as absent", %{user: user, kv: kv} do
+      Repo.delete!(kv)
+
+      wal_bust(user.id, "proj", [])
+
+      assert KeyValues.Cache.lookup(user.id, "proj", "org") == nil
+      assert KeyValues.Cache.lookup(user.id, "proj") == nil
+    end
+
+    test "a missed insert reads as absent until the hourly warm", %{user: user} do
+      insert(:key_value, user: user, key: "new", value: %{"org" => "b"})
+      assert KeyValues.Cache.lookup(user.id, "new") == nil
+
+      hourly_warm()
+
+      assert KeyValues.Cache.lookup(user.id, "new", "org") == "b"
+    end
+
+    test "a missed insert is visible after a full re-warm", %{user: user} do
+      insert(:key_value, user: user, key: "new", value: %{"org" => "b"})
+
+      full_rewarm()
+
+      assert KeyFilter.maybe_exists?(user.id, "new")
+      assert KeyValues.Cache.lookup(user.id, "new", "org") == "b"
+    end
+
+    test "a missed update serves the old value until the hourly warm", %{user: user, kv: kv} do
+      update_value(kv, %{"org" => "b"})
+      assert KeyValues.Cache.lookup(user.id, "proj") == %{"org" => "a"}
+
+      hourly_warm()
+
+      assert KeyValues.Cache.lookup(user.id, "proj") == %{"org" => "b"}
+    end
+
+    test "a missed delete serves the old value until a full re-warm", %{user: user, kv: kv} do
+      Repo.delete!(kv)
+      hourly_warm()
+      assert KeyValues.Cache.lookup(user.id, "proj") == %{"org" => "a"}
+      assert KeyValues.Cache.lookup(user.id, "proj", "org") == "a"
+
+      full_rewarm()
+      reject(&KeyValues.lookup/2)
+      reject(&KeyValues.lookup/3)
+
+      refute KeyFilter.maybe_exists?(user.id, "proj")
+      assert KeyValues.Cache.lookup(user.id, "proj") == nil
+      assert KeyValues.Cache.lookup(user.id, "proj", "org") == nil
+    end
+
+    test "a missed delete is dropped once its value expires", %{user: user, kv: kv} do
+      Repo.delete!(kv)
+
+      Cachex.expire!(KeyValues.Cache, {:lookup, [user.id, "proj", nil]}, 1)
+      Cachex.expire!(KeyValues.Cache, {:lookup, [user.id, "proj", "org"]}, 1)
+      Process.sleep(5)
+
+      assert KeyValues.Cache.lookup(user.id, "proj") == nil
+      assert KeyValues.Cache.lookup(user.id, "proj", "org") == nil
+    end
+  end
+
   describe "touch_recent_usages/1" do
     alias Logflare.KeyValues.KeyValueUsage
 
@@ -198,5 +287,25 @@ defmodule Logflare.KeyValues.CacheTest do
       cache_key = {:count, user.id}
       assert is_nil(Cachex.get!(KeyValues.Cache, cache_key))
     end
+  end
+
+  defp wal_bust(user_id, key, opts) do
+    assert {:ok, _} = ContextCache.bust_keys([{KeyValues, [user_id: user_id, key: key] ++ opts}])
+  end
+
+  defp update_value(kv, value) do
+    kv |> Ecto.Changeset.change(value: value) |> Repo.update!()
+  end
+
+  defp hourly_warm do
+    :persistent_term.put({CacheWarmer, :warmed_at}, DateTime.utc_now())
+    CacheWarmer.execute(nil)
+  end
+
+  defp full_rewarm do
+    Process.sleep(2)
+    :persistent_term.put({CacheWarmer, :warmed_at}, DateTime.add(DateTime.utc_now(), -13, :hour))
+    CacheWarmer.execute(nil)
+    assert DateTime.diff(DateTime.utc_now(), CacheWarmer.warmed_at()) < 60
   end
 end
