@@ -758,6 +758,40 @@ defmodule LogflareWeb.AlertsLiveTest do
       assert html =~ "Enabled"
     end
 
+    test "show page toggle disables an enabled alert and unschedules its jobs", %{
+      conn: conn,
+      alert_query: alert_query
+    } do
+      :ok = Alerting.schedule_alert(alert_query)
+      assert length(Alerting.list_future_jobs(alert_query.id)) == 5
+
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/alerts/#{alert_query.id}")
+
+      html = view |> element("#alert-enabled-toggle") |> render_click()
+
+      assert html =~ "Alert disabled"
+      refute view |> element("#alert-enabled-toggle[checked]") |> has_element?()
+      refute Alerting.get_alert_query_by(id: alert_query.id).enabled
+      assert Alerting.list_future_jobs(alert_query.id) == []
+    end
+
+    test "show page toggle enables a disabled alert and schedules its jobs", %{
+      conn: conn,
+      user: user
+    } do
+      alert_query = insert(:alert, user_id: user.id, enabled: false)
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/alerts/#{alert_query.id}")
+
+      refute view |> element("#alert-enabled-toggle[checked]") |> has_element?()
+
+      html = view |> element("#alert-enabled-toggle") |> render_click()
+
+      assert html =~ "Alert enabled"
+      assert view |> element("#alert-enabled-toggle[checked]") |> has_element?()
+      assert Alerting.get_alert_query_by(id: alert_query.id).enabled
+      assert length(Alerting.list_future_jobs(alert_query.id)) == 5
+    end
+
     test "index shows Disabled badge for disabled alert", %{conn: conn, user: user} do
       _disabled_alert = insert(:alert, user_id: user.id, enabled: false, name: "Disabled Alert")
       {:ok, _view, html} = live_with_redirect(conn, ~p"/alerts")

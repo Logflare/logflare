@@ -354,6 +354,30 @@ defmodule LogflareWeb.AlertsLive do
     end
   end
 
+  def handle_event(
+        "toggle-enabled",
+        _params,
+        %{assigns: %{alert: %AlertQuery{} = alert}} = socket
+      ) do
+    socket =
+      case Alerting.update_alert_query(alert, %{enabled: !alert.enabled}) do
+        {:ok, updated} ->
+          socket
+          |> assign(:alert, %{alert | enabled: updated.enabled})
+          |> assign(:future_jobs, Alerting.list_future_jobs(alert.id))
+          |> put_flash(:info, if(updated.enabled, do: "Alert enabled", else: "Alert disabled"))
+
+        {:error, %Ecto.Changeset{} = changeset} ->
+          put_flash(
+            socket,
+            :error,
+            stringify_changeset_errors(changeset, "Failed to update alert")
+          )
+      end
+
+    {:noreply, socket}
+  end
+
   def handle_event("toggle-add-backend", _params, socket) do
     socket =
       if socket.assigns.show_add_backend_form do
