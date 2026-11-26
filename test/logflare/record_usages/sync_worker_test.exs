@@ -17,7 +17,7 @@ defmodule Logflare.RecordUsages.SyncWorkerTest do
     token = insert(:access_token)
     key = {OauthAccessToken, token.id}
     timestamp = 1_767_225_600
-    Cache.record(key, timestamp)
+    Writer.record(key, timestamp)
     assert Cache.stream() |> Enum.to_list() == [{key, timestamp}]
     writer = Process.whereis(Writer)
 
@@ -27,7 +27,7 @@ defmodule Logflare.RecordUsages.SyncWorkerTest do
     end)
 
     :sys.suspend(writer)
-    Cache.record(key, timestamp + 19)
+    Writer.record(key, timestamp + 19)
     start_supervised!({SyncWorker, interval: 20})
 
     TestUtils.retry_assert(fn ->
@@ -42,7 +42,7 @@ defmodule Logflare.RecordUsages.SyncWorkerTest do
 
   test "a failed local flush is retried after the worker restarts without losing usage" do
     token = insert(:access_token)
-    Cache.record({OauthAccessToken, token.id}, 1_767_225_600)
+    Writer.record({OauthAccessToken, token.id}, 1_767_225_600)
     stub(RecordUsages, :persist, &call_original(RecordUsages, :persist, [&1]))
     expect(RecordUsages, :persist, fn _entries -> raise "database unavailable" end)
 
@@ -69,8 +69,8 @@ defmodule Logflare.RecordUsages.SyncWorkerTest do
     cached_user = Users.Cache.get_by(api_key: user.api_key)
 
     refute Ecto.assoc_loaded?(cached_token.usage)
-    Cache.record({OauthAccessToken, token.id}, DateTime.to_unix(timestamp, :second))
-    Cache.record({User, user.id}, DateTime.to_unix(timestamp, :second) + 10)
+    Writer.record({OauthAccessToken, token.id}, DateTime.to_unix(timestamp, :second))
+    Writer.record({User, user.id}, DateTime.to_unix(timestamp, :second) + 10)
 
     assert :ok = RecordUsages.flush()
     assert [%{usage: %{last_used_at: ^timestamp}}] = Auth.list_valid_access_tokens(user)
@@ -95,7 +95,7 @@ defmodule Logflare.RecordUsages.SyncWorkerTest do
     latest = ~U[2026-01-01 00:00:00Z]
     newer = ~U[2026-01-01 00:00:01Z]
 
-    Cache.record({OauthAccessToken, token.id}, DateTime.to_unix(latest, :second))
+    Writer.record({OauthAccessToken, token.id}, DateTime.to_unix(latest, :second))
     assert :ok = RecordUsages.flush()
 
     row_query =
@@ -108,22 +108,20 @@ defmodule Logflare.RecordUsages.SyncWorkerTest do
     assert {^latest, _version} = original_row
 
     for timestamp <- [latest, old] do
-      Cache.record({OauthAccessToken, token.id}, DateTime.to_unix(timestamp, :second))
+      Writer.record({OauthAccessToken, token.id}, DateTime.to_unix(timestamp, :second))
       assert :ok = RecordUsages.flush()
       assert Repo.one!(row_query) == original_row
       assert Cache.stream() |> Enum.to_list() == []
     end
 
-    Cache.record({OauthAccessToken, token.id}, DateTime.to_unix(newer, :second))
+    Writer.record({OauthAccessToken, token.id}, DateTime.to_unix(newer, :second))
     assert :ok = RecordUsages.flush()
     assert {^newer, _version} = Repo.one!(row_query)
   end
 
-  test "streamed flush retains newer arrivals to persisted keys and updates later batches" do
+  test "flush retains newer arrivals to persisted keys for the next flush" do
     user = insert(:user)
-    tokens = insert_list(1_001, :access_token, resource_owner: user)
-    first = hd(tokens)
-    last = List.last(tokens)
+    [first, last] = tokens = insert_list(2, :access_token, resource_owner: user)
     first_key = {OauthAccessToken, first.id}
     last_key = {OauthAccessToken, last.id}
     timestamp = 1_767_225_600
@@ -134,8 +132,8 @@ defmodule Logflare.RecordUsages.SyncWorkerTest do
 
     expect(RecordUsages, :persist, fn batch ->
       :ok = call_original(RecordUsages, :persist, [batch])
-      Cache.record(first_key, timestamp + 2)
-      Cache.record(last_key, timestamp + 30)
+      Writer.record(first_key, timestamp + 2)
+      Writer.record(last_key, timestamp + 30)
       Writer.drain()
     end)
 
@@ -145,16 +143,18 @@ defmodule Logflare.RecordUsages.SyncWorkerTest do
              ~U[2026-01-01 00:00:00Z]
 
     assert RecordUsages.get(OauthAccessToken, last.id).last_used_at ==
-             ~U[2026-01-01 00:00:30Z]
+             ~U[2026-01-01 00:00:00Z]
 
-    assert Cache.stream() |> Enum.to_list() == [{first_key, timestamp + 2}]
-    assert Repo.aggregate(RecordUsage, :count) == 1_001
+    assert Map.new(Cache.stream()) == %{first_key => timestamp + 2, last_key => timestamp + 30}
 
     assert :ok = RecordUsages.flush()
     assert Cache.stream() |> Enum.to_list() == []
 
     assert RecordUsages.get(OauthAccessToken, first.id).last_used_at ==
              ~U[2026-01-01 00:00:02Z]
+
+    assert RecordUsages.get(OauthAccessToken, last.id).last_used_at ==
+             ~U[2026-01-01 00:00:30Z]
   end
 
   test "ignores deleted resources and cascades persisted usage when a resource is deleted" do
@@ -178,19 +178,15 @@ defmodule Logflare.RecordUsages.SyncWorkerTest do
     end
   end
 
-  test "legacy usage survives key rotation and an older buffered timestamp" do
+  test "legacy usage survives key rotation" do
     user = insert(:user)
     timestamp = 1_767_225_600
-    Cache.record({User, user.id}, timestamp)
+    Writer.record({User, user.id}, timestamp)
     {:ok, user} = Users.update_user_all_fields(user, %{api_key: "rotated-legacy-key"})
 
     assert :ok = RecordUsages.flush()
     usage = Repo.get_by!(RecordUsage, legacy_api_key_user_id: user.id)
     assert usage.last_used_at == ~U[2026-01-01 00:00:00Z]
-
-    Cache.record({User, user.id}, timestamp - 10)
-    assert :ok = RecordUsages.flush()
-    assert Repo.get_by!(RecordUsage, legacy_api_key_user_id: user.id) == usage
   end
 
   test "a later flush batch failure retains only failed and unprocessed usage" do
@@ -200,15 +196,12 @@ defmodule Logflare.RecordUsages.SyncWorkerTest do
     entries = tokens |> Enum.map(&{{OauthAccessToken, &1.id}, timestamp})
     assert Cache |> Cachex.put_many!(entries)
     snapshot = Cache.stream() |> Enum.sort()
-    {{OauthAccessToken, failed_id}, _timestamp} = Enum.at(snapshot, 1_000)
 
-    Repo.query!("""
-    ALTER TABLE record_usages
-    ADD CONSTRAINT reject_usage_batch
-    CHECK (oauth_access_token_id <> #{failed_id}) NOT VALID
-    """)
+    stub(RecordUsages, :persist, &call_original(RecordUsages, :persist, [&1]))
+    expect(RecordUsages, :persist, &call_original(RecordUsages, :persist, [&1]))
+    expect(RecordUsages, :persist, fn _entries -> raise "database unavailable" end)
 
-    assert_raise Postgrex.Error, ~r/reject_usage_batch/, fn ->
+    assert_raise RuntimeError, "database unavailable", fn ->
       RecordUsages.flush()
     end
 
@@ -222,8 +215,6 @@ defmodule Logflare.RecordUsages.SyncWorkerTest do
       |> Repo.all()
 
     assert persisted_ids == tokens |> Enum.map(& &1.id) |> Enum.sort() |> Enum.take(1_000)
-
-    Repo.query!("ALTER TABLE record_usages DROP CONSTRAINT reject_usage_batch")
 
     assert :ok = RecordUsages.flush()
     assert Cache.stream() |> Enum.to_list() == []

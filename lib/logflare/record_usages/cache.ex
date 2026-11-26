@@ -2,17 +2,12 @@ defmodule Logflare.RecordUsages.Cache do
   @moduledoc """
   Buffers usage timestamps in Cachex on this node. Timestamps are UTC Unix seconds.
 
-  A writer queues up timestamps and periodically writes to Cachex.
-  Restarting the node loses pending samples. Values already in Cachex remain.
-
-  Cachex timestamps are periodically persited to the database.
+  The writer calls `put_if_newer/2` for each timestamp, skipping already-fresh values. Cachex timestamps are periodically persited to the database.
   """
 
   use Logflare.Cache
 
   import Cachex.Spec, only: [hook: 1]
-
-  require Logger
 
   alias Logflare.Cache.CachexOps
   alias Logflare.RecordUsages.Writer
@@ -27,24 +22,23 @@ defmodule Logflare.RecordUsages.Cache do
     Supervisor.child_spec({Cachex, name: __MODULE__, ordered: true, hooks: hooks}, id: __MODULE__)
   end
 
-  @spec record(key(), integer()) :: :ok
-  def record(key, timestamp) do
-    case Cachex.get(__MODULE__, key) do
-      {:ok, previous} when is_integer(previous) and previous >= timestamp ->
-        :ok
+  @spec put_if_newer(key(), integer()) :: {:ok, term()} | {:error, term()}
+  def put_if_newer(key, timestamp) do
+    update_timestamp = fn cache ->
+      previous = Cachex.get!(cache, key)
 
-      {:ok, _} ->
-        Writer.record(key, timestamp)
-
-      {:error, reason} ->
-        Logger.warning("Record usage cache read failed", error_string: inspect(reason))
+      if is_nil(previous) or previous < timestamp do
+        Cachex.put!(cache, key, timestamp)
+      end
     end
 
-    :ok
-  rescue
-    error in ArgumentError ->
-      Logger.warning("Record usage cache read failed", error_string: Exception.message(error))
-      :ok
+    case Cachex.get(__MODULE__, key) do
+      {:ok, previous} when is_nil(previous) or previous < timestamp ->
+        Cachex.transaction(__MODULE__, [], update_timestamp)
+
+      result ->
+        result
+    end
   end
 
   @spec stream(drain: boolean()) :: Enumerable.t()
@@ -70,7 +64,7 @@ defmodule Logflare.RecordUsages.Cache do
   @spec acknowledge_entry({key(), integer()}) :: :ok
   defp acknowledge_entry({key, timestamp}) do
     {:ok, _} =
-      Cachex.transaction(__MODULE__, [key], fn cache ->
+      Cachex.transaction(__MODULE__, [], fn cache ->
         case Cachex.get!(cache, key) do
           ^timestamp -> Cachex.del!(cache, key)
           _ -> false

@@ -25,6 +25,7 @@ defmodule Logflare.RecordUsages do
   alias Logflare.OauthAccessTokens.OauthAccessToken
   alias Logflare.RecordUsages.Cache
   alias Logflare.RecordUsages.RecordUsage
+  alias Logflare.RecordUsages.Writer
   alias Logflare.Repo
   alias Logflare.User
 
@@ -37,7 +38,7 @@ defmodule Logflare.RecordUsages do
 
   @spec record(resource_type(), pos_integer()) :: :ok
   def record(resource_type, id) when resource_type in [OauthAccessToken, User] do
-    Cache.record({resource_type, id}, System.system_time(:second))
+    Writer.record({resource_type, id}, System.system_time(:second))
   end
 
   @spec flush(drain: boolean()) :: :ok
