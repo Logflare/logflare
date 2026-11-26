@@ -894,6 +894,15 @@ defmodule Logflare.SourcesTest do
         assert String.starts_with?(source.name, "system.")
       end
     end
+
+    test "loads a traces system source without creating one", %{user: user} do
+      traces = insert(:source, user: user, system_source: true, system_source_type: :traces)
+
+      sources = Sources.create_user_system_sources(user.id)
+
+      assert Sources.get(traces.id).system_source_type == :traces
+      assert Enum.count(sources, &(&1.system_source_type == :traces)) == 1
+    end
   end
 
   describe "labels validation and normalization" do
