@@ -49,42 +49,31 @@ defmodule Logflare.KeyValues.Cache do
 
   @spec lookup(integer(), String.t(), String.t() | nil) :: term() | nil
   def lookup(user_id, key, accessor_path) do
-    case Cachex.get(__MODULE__, {:lookup, [user_id, key, accessor_path]}) do
-      {:ok, {:cached, value}} -> value
-      {:ok, nil} -> lookup_miss(user_id, key, accessor_path)
-    end
-  end
-
-  defp lookup_miss(user_id, key, nil), do: maybe_fetch(user_id, key, nil)
-
-  defp lookup_miss(user_id, key, accessor_path) do
-    case Cachex.get(__MODULE__, {:lookup, [user_id, key, nil]}) do
-      {:ok, {:cached, full_value}} ->
-        value = KeyValues.extract_value(full_value, accessor_path)
-
-        {:ok, true} =
-          Cachex.put(__MODULE__, {:lookup, [user_id, key, accessor_path]}, {:cached, value})
-
-        value
-
-      {:ok, nil} ->
-        maybe_fetch(user_id, key, accessor_path)
-    end
-  end
-
-  defp maybe_fetch(user_id, key, accessor_path) do
-    if KeyFilter.maybe_exists?(user_id, key), do: fetch(user_id, key, accessor_path)
-  end
-
-  defp fetch(user_id, key, accessor_path) do
     key_args = [user_id, key, accessor_path]
+    cache_key = {:lookup, key_args}
 
-    Cachex.fetch(__MODULE__, {:lookup, key_args}, fn _key ->
-      {:commit, {:cached, Repo.apply_with_replica(KeyValues, :lookup, key_args)}}
-    end)
+    Cachex.execute!(__MODULE__, &get_or_fetch(&1, cache_key, key_args))
     |> case do
       {:commit, {:cached, v}} -> v
       {:ok, {:cached, v}} -> v
+      false -> nil
+    end
+  end
+
+  defp get_or_fetch(worker, cache_key, [user_id, key, _accessor_path] = key_args) do
+    with {:ok, nil} <- Cachex.get(worker, cache_key),
+         true <- KeyFilter.maybe_exists?(user_id, key) do
+      Cachex.fetch(worker, cache_key, fn _key -> lookup_fallback(worker, key_args) end)
+    end
+  end
+
+  defp lookup_fallback(worker, [user_id, key, accessor_path] = key_args) do
+    case Cachex.get(worker, {:lookup, [user_id, key, nil]}) do
+      {:ok, {:cached, full_value}} ->
+        {:commit, {:cached, KeyValues.extract_value(full_value, accessor_path)}}
+
+      {:ok, nil} ->
+        {:commit, {:cached, Repo.apply_with_replica(KeyValues, :lookup, key_args)}}
     end
   end
 

@@ -8,6 +8,7 @@ defmodule Logflare.KeyValues.CacheTest do
   alias Logflare.KeyValues.KeyFilter
 
   setup do
+    :persistent_term.erase({CacheWarmer, :initialized})
     :persistent_term.erase({CacheWarmer, :warmed_at})
     KeyFilter.rebuild(0, fn _filter -> :ok end)
     on_exit(&KeyFilter.clear/0)
@@ -298,6 +299,7 @@ defmodule Logflare.KeyValues.CacheTest do
   end
 
   defp hourly_warm do
+    :persistent_term.put({CacheWarmer, :initialized}, true)
     :persistent_term.put({CacheWarmer, :warmed_at}, DateTime.utc_now())
     CacheWarmer.execute(nil)
   end
