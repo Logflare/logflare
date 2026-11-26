@@ -301,6 +301,81 @@ defmodule Logflare.Backends.UserMonitoring.QueryTracesTest do
     end
   end
 
+  describe "ClickHouse provisioning" do
+    setup :start_traces_source
+
+    test "trace a failed table provisioning with its DDL", %{user: user} do
+      config = %{
+        url: "http://localhost:1",
+        port: 1,
+        username: "user",
+        password: "password",
+        database: "default"
+      }
+
+      backend = insert(:backend, user: user, type: :clickhouse, config: config)
+
+      capture_log(fn ->
+        assert {:error, _error} = ClickHouseAdaptor.provision_ingest_tables(backend)
+      end)
+
+      assert_receive {:insert_all, [trace]}, 5_000
+      backend_id = backend.id
+
+      assert %{
+               "event_message" => "query.provision",
+               "backend_type" => "clickhouse",
+               "backend_id" => ^backend_id,
+               "status" => "error",
+               "query" => query
+             } = trace
+
+      assert query =~ "CREATE TABLE IF NOT EXISTS"
+    end
+  end
+
+  describe "measure_once/4" do
+    setup :start_traces_source
+
+    test "trace a successful step only the first time", %{user: user} do
+      key = make_ref()
+      result = {:ok, QueryResult.new([], %{})}
+
+      assert measure_once(user, key, "CREATE TABLE a", result) == result
+      assert_receive {:insert_all, [%{"query" => "CREATE TABLE a"}]}, 5_000
+
+      assert measure_once(user, key, "CREATE TABLE a", result) == result
+      assert_next_trace_is_marker(user)
+    end
+
+    test "trace failed runs until a run succeeds", %{user: user} do
+      key = make_ref()
+      ok = {:ok, QueryResult.new([], %{})}
+
+      assert measure_once(user, key, "CREATE TABLE b", {:error, "boom"}) == {:error, "boom"}
+      assert_receive {:insert_all, [%{"status" => "error"}]}, 5_000
+
+      assert measure_once(user, key, "CREATE TABLE b", ok) == ok
+      assert_receive {:insert_all, [%{"status" => "ok"}]}, 5_000
+
+      assert measure_once(user, key, "CREATE TABLE b", ok) == ok
+      assert_next_trace_is_marker(user)
+    end
+
+    test "run without tracing when there is no user" do
+      result = {:ok, QueryResult.new([], %{})}
+
+      assert QueryTraces.measure_once(
+               nil,
+               make_ref(),
+               %{query_type: :provision, query: "x"},
+               fn ->
+                 result
+               end
+             ) == result
+    end
+  end
+
   describe "measure/3" do
     setup :start_traces_source
 
@@ -403,6 +478,24 @@ defmodule Logflare.Backends.UserMonitoring.QueryTracesTest do
     }
     |> Map.merge(Map.new(opts))
     |> SO.new()
+  end
+
+  @spec measure_once(Logflare.User.t(), reference(), String.t(), QueryTraces.query_result()) ::
+          QueryTraces.query_result()
+  defp measure_once(user, key, query, result) do
+    QueryTraces.measure_once(user.id, key, %{query_type: :provision, query: query}, fn ->
+      result
+    end)
+  end
+
+  @spec assert_next_trace_is_marker(Logflare.User.t()) :: term()
+  defp assert_next_trace_is_marker(user) do
+    QueryTraces.measure(user.id, %{query_type: :provision, query: "marker"}, fn ->
+      {:ok, QueryResult.new([], %{})}
+    end)
+
+    assert_receive {:insert_all, rows}, 5_000
+    assert [%{"query" => "marker"}] = rows
   end
 
   @spec event_schema(map()) :: map()

@@ -35,6 +35,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Backends.QueryError
+  alias Logflare.Backends.UserMonitoring.QueryTraces
   alias Logflare.Endpoints.ClickHouseSettings
   alias Logflare.LogEvent
   alias Logflare.LogEvent.TypeDetection
@@ -1351,7 +1352,18 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       ddl_opts = build_ddl_opts(event_type, cloud?)
       statement = QueryTemplates.create_table_statement(table_name, event_type, ddl_opts)
 
-      case execute_direct_query(config.url, config, statement) do
+      trace_attrs = %{
+        query_type: :provision,
+        query: statement,
+        backend_type: :clickhouse,
+        backend_id: backend.id
+      }
+
+      backend.user_id
+      |> QueryTraces.measure_once({:clickhouse, backend.id, event_type}, trace_attrs, fn ->
+        execute_direct_query(config.url, config, statement)
+      end)
+      |> case do
         {:ok, _} -> {:cont, :ok}
         {:error, _} = error -> {:halt, error}
       end

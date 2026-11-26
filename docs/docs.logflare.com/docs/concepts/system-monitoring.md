@@ -47,12 +47,14 @@ Contains one event per query that Logflare executes on your behalf. Tracing is b
 - **Log search queries** (`query.search`): the events query, the chart query, and the query behind the event context view. A live tail re-runs its queries every second; only the first query of a tail is traced.
 - **Alert queries** (`query.alert`): scheduled runs, runs started with "Trigger now", and queries run from the alert editor.
 - **Single event fetches** (`query.event`): the query that loads one event, for example when opening an event from search.
+- **Provisioning queries** (`query.provision`): the statements that create a ClickHouse backend's tables. They run each time the backend starts; each statement is traced once per Logflare server after it succeeds, and every failed run is traced.
 
 Each event includes:
 
-- **`event_message`** - Query kind: `query.endpoint`, `query.search`, `query.alert`, or `query.event`
+- **`event_message`** - Query kind: `query.endpoint`, `query.search`, `query.alert`, `query.event`, or `query.provision`
 - **`query`** - The SQL sent to the backend adaptor. For endpoints, the adaptor may still rewrite parameter placeholders before running it
 - **`backend_type`** - The backend that ran the query
+- **`backend_id`** - The backend that ran the query, for endpoint and provisioning queries
 - **`total_bytes_processed`** - Bytes scanned, for backends that report it (BigQuery, ClickHouse)
 - **`duration_ms`** - Time spent waiting for the backend adaptor to run the query
 - **`status`** and **`error`** - `ok` or `error`, with the error message
@@ -60,7 +62,6 @@ Each event includes:
 Endpoint query events also include:
 
 - **`endpoint_language`** - Language the endpoint is written in: `bq_sql`, `pg_sql`, or `ch_sql`. The query may run in another dialect, see `backend_type`
-- **`backend_id`** - The backend that ran the query
 - **`params`** - Values of the parameters declared in the query, as a list of `name` and `value` records. Values are strings. Credentials such as `api_key` are never stored
 - **`labels`** - Endpoint labels, as a list of `name` and `value` records
 - **`endpoint_id`** and **`endpoint_uuid`** - The endpoint that ran the query

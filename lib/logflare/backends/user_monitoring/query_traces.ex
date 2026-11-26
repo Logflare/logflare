@@ -35,6 +35,7 @@ defmodule Logflare.Backends.UserMonitoring.QueryTraces do
 
   @default_max_queue_len 10_000
   @ingest_timeout :timer.seconds(15)
+  @traced_once_table :query_traces_traced_once
 
   @type attrs :: %{
           required(:query_type) => atom(),
@@ -84,6 +85,27 @@ defmodule Logflare.Backends.UserMonitoring.QueryTraces do
   end
 
   @doc """
+  Like `measure/3`, but a successful run is traced only the first time `key` is seen on this node.
+
+  Failed runs are always traced and do not count as seen. The seen keys live in an ETS table
+  owned by this process, so they reset when it restarts, for example on deploy.
+  """
+  @spec measure_once(pos_integer() | nil, term(), attrs(), (-> result)) :: result
+        when result: query_result()
+  def measure_once(nil, _key, _attrs, fun) when is_function(fun, 0), do: fun.()
+
+  def measure_once(user_id, key, attrs, fun)
+      when is_pos_integer(user_id) and is_function(fun, 0) do
+    if traced_once?(key) do
+      fun.()
+    else
+      user_id
+      |> measure(attrs, fun)
+      |> tap(&mark_traced_once(key, &1))
+    end
+  end
+
+  @doc """
   Builds the `system.traces` event body.
 
   `params` and `labels` become lists of `%{"name" => name, "value" => value}` records, so the
@@ -104,7 +126,10 @@ defmodule Logflare.Backends.UserMonitoring.QueryTraces do
   end
 
   @impl GenServer
-  def init(_opts), do: {:ok, %{}}
+  def init(_opts) do
+    :ets.new(@traced_once_table, [:set, :public, :named_table, read_concurrency: true])
+    {:ok, %{}}
+  end
 
   @impl GenServer
   def handle_info({:trace, user_id, attrs}, state) do
@@ -131,6 +156,22 @@ defmodule Logflare.Backends.UserMonitoring.QueryTraces do
       Processor.ingest([build_event(attrs)], Raw, source)
     end
   end
+
+  @spec traced_once?(term()) :: boolean()
+  defp traced_once?(key) do
+    :ets.whereis(@traced_once_table) != :undefined and :ets.member(@traced_once_table, key)
+  end
+
+  @spec mark_traced_once(term(), query_result()) :: :ok
+  defp mark_traced_once(key, {:ok, _result}) do
+    if :ets.whereis(@traced_once_table) != :undefined do
+      :ets.insert(@traced_once_table, {key})
+    end
+
+    :ok
+  end
+
+  defp mark_traced_once(_key, _result), do: :ok
 
   @spec push(pos_integer(), map()) :: :ok
   defp push(user_id, attrs) do
