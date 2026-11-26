@@ -3,7 +3,7 @@ defmodule Logflare.Test.ShutdownProbeGrpc do
 
   alias Opentelemetry.Proto.Collector.Logs.V1.ExportLogsServiceResponse
 
-  @spec export(term(), GRPC.Server.Stream.t()) :: ExportLogsServiceResponse.t()
+  @spec export(term(), %GRPC.Server.Stream{}) :: ExportLogsServiceResponse.t()
   def export(_request, _stream) do
     test_pid = :persistent_term.get({__MODULE__, :test_pid})
     send(test_pid, {:held_rpc, self()})
