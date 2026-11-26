@@ -168,6 +168,19 @@ defmodule Logflare.SourcesTest do
       assert changes == %{labels: "test=some_label"}
     end
 
+    test "source updates cannot change the source token" do
+      source = insert(:source, user: insert(:user))
+      attrs = %{description: "updated description", token: Ecto.UUID.generate()}
+
+      for changeset <- [
+            Source.changeset(source, attrs),
+            Source.update_by_user_changeset(source, attrs)
+          ] do
+        assert Ecto.Changeset.get_change(changeset, :description) == "updated description"
+        assert Ecto.Changeset.get_field(changeset, :token) == source.token
+      end
+    end
+
     test "bug: update_by_user_changeset  empty string should clear labels" do
       source = insert(:source, user: insert(:user), labels: "status=m.level")
 
