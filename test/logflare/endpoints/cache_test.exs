@@ -34,6 +34,7 @@ defmodule Logflare.Endpoints.CacheTest do
     setup context do
       if context[:clickhouse_cache] do
         {_source, backend} = setup_clickhouse_test(user: context.user)
+        drop_clickhouse_tables_on_exit(backend)
         start_supervised!({ClickHouseAdaptor, backend})
 
         %{clickhouse_backend: backend}

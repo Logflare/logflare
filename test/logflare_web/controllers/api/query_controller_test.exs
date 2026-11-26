@@ -1,7 +1,6 @@
 defmodule LogflareWeb.Api.QueryControllerTest do
   use LogflareWeb.ConnCase
 
-  alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.DataCase
 
@@ -215,7 +214,6 @@ defmodule LogflareWeb.Api.QueryControllerTest do
   describe "backend_id parameter" do
     test "?sql= with backend_id uses backend's language", %{conn: conn, user: user} do
       {_source, backend} = DataCase.setup_clickhouse_test(user: user)
-      start_supervised!({ClickHouseAdaptor, backend})
 
       query = "SELECT dummy AS my_time FROM system.one LIMIT 1 BY dummy"
 
@@ -236,7 +234,6 @@ defmodule LogflareWeb.Api.QueryControllerTest do
 
     test "?ch_sql= with backend_id", %{conn: conn, user: user} do
       {_source, backend} = DataCase.setup_clickhouse_test(user: user)
-      start_supervised!({ClickHouseAdaptor, backend})
 
       query = "SELECT dummy AS my_time FROM system.one LIMIT 1 BY dummy"
 
@@ -291,8 +288,7 @@ defmodule LogflareWeb.Api.QueryControllerTest do
       conn: conn,
       user: user
     } do
-      {_source, backend} = DataCase.setup_clickhouse_test(user: user)
-      start_supervised!({ClickHouseAdaptor, backend})
+      {_source, _backend} = DataCase.setup_clickhouse_test(user: user)
 
       query = "SELECT dummy AS my_time FROM system.one LIMIT 1 BY dummy"
 
@@ -307,7 +303,6 @@ defmodule LogflareWeb.Api.QueryControllerTest do
 
     test "bq_sql param with backend_id executes query", %{conn: conn, user: user} do
       {_source, clickhouse_backend} = DataCase.setup_clickhouse_test(user: user)
-      start_supervised!({ClickHouseAdaptor, clickhouse_backend})
 
       query = ~S|select 1 as my_time|
 
@@ -322,7 +317,6 @@ defmodule LogflareWeb.Api.QueryControllerTest do
 
     test "?sql= takes precedence over deprecated params", %{conn: conn, user: user} do
       {_source, backend} = DataCase.setup_clickhouse_test(user: user)
-      start_supervised!({ClickHouseAdaptor, backend})
 
       response =
         conn

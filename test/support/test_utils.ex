@@ -26,6 +26,7 @@ defmodule Logflare.TestUtils do
   Options:
   - :seed_user - boolean - enable to seed default plan and user
   - :supabase_mode - enable to seed supabase data
+  - :backend_type - the selected single-tenant backend
   """
   defmacro setup_single_tenant(opts \\ []) do
     opts =
@@ -42,7 +43,17 @@ defmodule Logflare.TestUtils do
 
       setup do
         initial_single_tenant = Application.get_env(:logflare, :single_tenant)
+
+        initial_single_tenant_backend =
+          Application.get_env(:logflare, :single_tenant_backend)
+
         Application.put_env(:logflare, :single_tenant, true)
+
+        Application.put_env(
+          :logflare,
+          :single_tenant_backend,
+          unquote(opts.backend_type)
+        )
 
         if unquote(opts.seed_user) do
           {:ok, _} = SingleTenant.create_default_plan()
@@ -67,6 +78,13 @@ defmodule Logflare.TestUtils do
 
         on_exit(fn ->
           Application.put_env(:logflare, :single_tenant, initial_single_tenant)
+
+          Application.put_env(
+            :logflare,
+            :single_tenant_backend,
+            initial_single_tenant_backend
+          )
+
           Application.put_env(:logflare, :public_access_token, initial_public_access_token)
           Application.put_env(:logflare, :private_access_token, initial_private_access_token)
         end)
@@ -113,6 +131,34 @@ defmodule Logflare.TestUtils do
         :ok
       end
     end
+  end
+
+  defp setup_single_tenant_backend(%{backend_type: :clickhouse}) do
+    quote do
+      setup do
+        previous = Application.get_env(:logflare, :clickhouse_backend_adapter)
+
+        Application.put_env(
+          :logflare,
+          :clickhouse_backend_adapter,
+          Map.to_list(Logflare.TestUtils.clickhouse_config())
+        )
+
+        on_exit(fn -> Application.put_env(:logflare, :clickhouse_backend_adapter, previous) end)
+        :ok
+      end
+    end
+  end
+
+  @spec clickhouse_config() :: map()
+  def clickhouse_config do
+    %{
+      url: "http://localhost:8123",
+      database: "logflare_test",
+      username: "logflare",
+      password: "logflare",
+      port: 8123
+    }
   end
 
   def default_bq_schema, do: SchemaBuilder.initial_table_schema()

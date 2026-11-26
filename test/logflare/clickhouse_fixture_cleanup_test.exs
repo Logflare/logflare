@@ -11,7 +11,7 @@ defmodule Logflare.ClickHouseFixtureCleanupTest do
       Mimic.call_original(Ch, :query, [conn, statement, params, opts])
     end)
 
-    {source, backend} = setup_clickhouse_test(cleanup?: false)
+    {source, backend} = setup_clickhouse_test()
 
     tables =
       Enum.map(
