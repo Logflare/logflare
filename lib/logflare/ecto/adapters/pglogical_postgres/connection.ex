@@ -32,7 +32,11 @@ defmodule Logflare.Ecto.Adapters.PglogicalPostgres.Connection do
   @impl true
   defdelegate delete_all(query), to: PG
   @impl true
+  defdelegate insert(prefix, table, header, rows, on_conflict, returning, placeholders, opts),
+    to: PG
+
   defdelegate insert(prefix, table, header, rows, on_conflict, returning, placeholders), to: PG
+
   @impl true
   defdelegate update(prefix, table, fields, filters, returning), to: PG
   @impl true
