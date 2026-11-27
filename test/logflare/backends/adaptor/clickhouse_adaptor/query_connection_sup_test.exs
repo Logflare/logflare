@@ -1,6 +1,7 @@
 defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSupTest do
   use Logflare.DataCase, async: false
 
+  alias Logflare.Backends
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup
 
@@ -100,6 +101,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSupTest do
       api_pool = ConnectionManager.get_pool_pid(backend, "api")
       assert {backend.id, "api", api_pool, 32} in QueryConnectionSup.list_read_pools()
 
+      save_backend_config!(backend, %{labeled_read_pool_size: 2})
       assert :ok == QueryConnectionSup.refresh_backend_local(backend.id)
 
       TestUtils.retry_assert(fn ->
@@ -185,9 +187,39 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSupTest do
       assert :ok == ConnectionManager.ensure_pool_started(backend)
       assert ConnectionManager.pool_active?(backend)
 
+      save_backend_config!(backend, %{read_pool_size: 2})
       assert :ok == QueryConnectionSup.refresh_backend_local(backend.id)
 
       refute ConnectionManager.pool_active?(backend)
+    end
+
+    test "cache still holding the backend from before a read pool size change", %{
+      backend: backend
+    } do
+      {:ok, _manager_pid} =
+        QueryConnectionSup.start_connection_manager(ConnectionManager.child_spec(backend))
+
+      assert :ok == ConnectionManager.ensure_pool_started(backend)
+      stub(Backends.Cache, :get_backend, fn _backend_id -> backend end)
+      save_backend_config!(backend, %{read_pool_size: 2})
+
+      assert :ok == QueryConnectionSup.refresh_backend_local(backend.id)
+
+      refute ConnectionManager.pool_active?(backend)
+    end
+
+    test "backend saved with new batch limits", %{backend: backend} do
+      {:ok, _manager_pid} =
+        QueryConnectionSup.start_connection_manager(ConnectionManager.child_spec(backend))
+
+      assert :ok == ConnectionManager.ensure_pool_started(backend)
+      pool_pid = ConnectionManager.get_pool_pid(backend)
+      save_backend_config!(backend, %{batch_size: 1_000, batch_timeout: 1_500})
+
+      assert :ok == QueryConnectionSup.refresh_backend_local(backend.id)
+
+      assert ^pool_pid = ConnectionManager.get_pool_pid(backend)
+      assert Process.alive?(pool_pid)
     end
   end
 
@@ -198,6 +230,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSupTest do
 
       assert :ok == ConnectionManager.ensure_pool_started(backend)
 
+      save_backend_config!(backend, %{read_pool_size: 2})
       assert :ok == QueryConnectionSup.refresh_backend(backend)
 
       TestUtils.retry_assert(fn ->
@@ -323,6 +356,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSupTest do
       assert ConnectionManager.pool_active?(backend, "api")
       assert ConnectionManager.pool_active?(backend, "mcp")
 
+      save_backend_config!(backend, %{labeled_read_pool_size: 2})
       assert :ok == QueryConnectionSup.refresh_backend_local(backend.id)
 
       refute ConnectionManager.pool_active?(backend, "api")
