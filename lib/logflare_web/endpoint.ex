@@ -29,6 +29,8 @@ defmodule LogflareWeb.Endpoint do
     only_matching: ~w(manifest)
   )
 
+  plug(LogflareWeb.Plugs.DocsAssets)
+
   # Code reloading can be explicitly enabled under the
   # :code_reloader configuration of your endpoint.
   if code_reloading? do

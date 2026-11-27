@@ -2,8 +2,21 @@ defmodule LogflareWeb.DocsView do
   use LogflareWeb, :live_view_with_templates
 
   alias Logflare.MixTasks.Docs
+  alias MDEx.Document
+  alias MDEx.FrontMatter
+  alias MDEx.Heading
+  alias MDEx.HtmlInline
+  alias MDEx.Image
+  alias MDEx.Text
 
   Docs.run(nil)
+
+  @assets_path "/docs/assets"
+
+  @markdown_options [
+    extension: [table: true, autolink: true, front_matter_delimiter: "---"],
+    render: [unsafe: true]
+  ]
 
   @doc """
   This is used to render docs markdown pages within the app.
@@ -33,6 +46,7 @@ defmodule LogflareWeb.DocsView do
     false
 
   Inline html in tables are also fixed and replaced
+
     iex> escaped = "<code>" |> Phoenix.HTML.html_escape() |> Phoenix.HTML.safe_to_string()
     iex> render_docs("concepts/lql") =~ escaped
     false
@@ -40,7 +54,7 @@ defmodule LogflareWeb.DocsView do
   We can also hide the top level header
 
     iex> render_docs("concepts/lql#event-message-filtering", hide_header: true) |> String.slice(0, 29)
-    "<p>\\nAny string not matching a"
+    "<p>Any string not matching a "
 
 
   """
@@ -60,108 +74,90 @@ defmodule LogflareWeb.DocsView do
       (Path.wildcard(file_path <> "/index.{md,mdx}") ++ Path.wildcard(file_path <> ".{md,mdx}"))
       |> hd()
 
+    doc_dir = file |> Path.dirname() |> Path.relative_to(docs_path)
+
     File.read!(file)
-    |> Earmark.as_ast!()
+    |> MDEx.parse_document!(@markdown_options)
+    |> drop_front_matter()
+    |> rewrite_image_urls(doc_dir)
     |> filter_to_anchor(anchor)
-    |> replace_html_entities()
     |> replace_line_breaks()
-    |> replace_table_inline_code_tag()
     |> maybe_hide_header(opts.hide_header)
-    |> Earmark.Transform.transform()
+    |> MDEx.to_html!(@markdown_options)
   end
 
-  # filters down to a particular section
-  defp filter_to_anchor(ast, nil), do: ast
+  defp drop_front_matter(%Document{nodes: [%FrontMatter{} | rest]} = document),
+    do: %{document | nodes: rest}
 
-  defp filter_to_anchor(ast, anchor) when is_binary(anchor) do
-    {ast, _value} =
-      ast
-      |> Earmark.Transform.map_ast_with(
-        false,
-        fn
-          # not matched yet, check if header node is matching
-          {tag, _attrs, [child], _meta} = node, false when tag in ["h1", "h2", "h3", "h4"] ->
-            header_parts =
-              child
-              |> String.downcase()
-              |> String.replace("(", " ")
-              |> String.replace(")", " ")
-              |> String.split()
+  defp drop_front_matter(document), do: document
 
-            if header_parts == String.split(anchor, "-") do
-              {node, {true, tag}}
-            else
-              {{"drop", [], [], %{}}, false}
-            end
-
-          # node not matched yet, continue
-          {_tag, _attrs, _child, _meta}, false ->
-            {{"drop", [], [], %{}}, false}
-
-          # matched, have not met stop cond,  keep node
-          {tag, _attrs, _children, _meta} = node, {true, _} = acc
-          when tag not in ["h1", "h2", "h3", "h4"] ->
-            {node, acc}
-
-          # node matched, is header node, check if stop cond
-          {"h" <> num, _attrs, _children, _meta} = node, {true, "h" <> start_num} = acc ->
-            {num, _} = Integer.parse(num)
-            {start_num, _} = Integer.parse(start_num)
-
-            if start_num < num do
-              # lower level header, keep
-              {node, acc}
-            else
-              {{"drop", [], [], %{}}, :halt}
-            end
-
-          {_tag, _attrs, _children, _meta}, :halt ->
-            {{"drop", [], [], %{}}, :halt}
-
-          node, acc ->
-            {node, acc}
-        end
-      )
-
-    ast
-    |> Enum.reject(fn
-      {"drop", _attrs, _children, _meta} -> true
-      _ -> false
+  defp rewrite_image_urls(%Document{} = document, doc_dir) do
+    MDEx.traverse_and_update(document, fn
+      %Image{url: url} = image -> %{image | url: asset_url(url, doc_dir)}
+      node -> node
     end)
   end
 
-  defp replace_html_entities(ast) do
-    ast
-    |> Earmark.Transform.map_ast(fn
-      text when is_binary(text) -> String.replace(text, "&#124;", "|")
-      other -> other
+  defp asset_url(url, doc_dir) do
+    case URI.parse(url) do
+      %URI{scheme: nil, host: nil, path: "/" <> _} ->
+        url
+
+      %URI{scheme: nil, host: nil, path: path} = uri when is_binary(path) and path != "" ->
+        asset_path = Path.expand(Path.join([@assets_path, doc_dir, path]))
+        URI.to_string(%{uri | path: asset_path})
+
+      _uri ->
+        url
+    end
+  end
+
+  defp filter_to_anchor(document, nil), do: document
+
+  defp filter_to_anchor(%Document{nodes: nodes} = document, anchor) when is_binary(anchor) do
+    anchor_parts = String.split(anchor, "-")
+
+    section =
+      nodes
+      |> Enum.drop_while(&(not anchor_heading?(&1, anchor_parts)))
+      |> take_section()
+
+    %{document | nodes: section}
+  end
+
+  defp anchor_heading?(%Heading{level: level, nodes: [%Text{literal: text}]}, anchor_parts)
+       when level in 1..4 do
+    heading_parts(text) == anchor_parts
+  end
+
+  defp anchor_heading?(_node, _anchor_parts), do: false
+
+  defp heading_parts(text) do
+    text
+    |> String.downcase()
+    |> String.replace("(", " ")
+    |> String.replace(")", " ")
+    |> String.split()
+  end
+
+  defp take_section([%Heading{level: level} = heading | rest]) do
+    [heading | Enum.take_while(rest, &(not section_end?(&1, level)))]
+  end
+
+  defp take_section([]), do: []
+
+  defp section_end?(%Heading{level: level}, section_level), do: level <= section_level
+  defp section_end?(_node, _section_level), do: false
+
+  defp replace_line_breaks(%Document{} = document) do
+    MDEx.traverse_and_update(document, fn
+      %HtmlInline{literal: "<br/>"} -> %Text{literal: "\n"}
+      node -> node
     end)
   end
 
-  defp replace_line_breaks(ast) do
-    ast
-    |> Earmark.Transform.map_ast(fn
-      text when is_binary(text) -> String.replace(text, "<br/>", "\n")
-      other -> other
-    end)
-  end
+  defp maybe_hide_header(%Document{nodes: [%Heading{} | rest]} = document, true),
+    do: %{document | nodes: rest}
 
-  defp replace_table_inline_code_tag(ast) do
-    ast
-    |> Earmark.Transform.map_ast(fn
-      "<code>" <> text when is_binary(text) ->
-        # TODO: naive, use regex
-        new_text =
-          text
-          |> String.replace("</code>", "")
-
-        {"code", [], [new_text], %{}}
-
-      other ->
-        other
-    end)
-  end
-
-  defp maybe_hide_header([{"h" <> _, _attrs, _children, _meta} | rest], true), do: rest
-  defp maybe_hide_header(ast, _), do: ast
+  defp maybe_hide_header(document, _hide_header), do: document
 end
