@@ -139,7 +139,7 @@ defmodule Logflare.Mixfile do
       {:timber_logfmt, github: "Logflare/logfmt-elixir"},
 
       # in-app docs
-      {:earmark, "~> 1.4.33"},
+      {:mdex, "~> 0.14.9"},
 
       # Outbound Requests
       {:inet_cidr, "~> 1.0"},
