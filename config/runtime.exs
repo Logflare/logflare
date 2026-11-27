@@ -631,6 +631,11 @@ config :logflare, :context_cache_gossip, %{
   max_nodes: cache_gossip_max_nodes
 }
 
+# LOGFLARE_KEY_VALUES_CACHE_L2_ENABLED: Partition the key-values cache across the cluster as an L2 level
+config :logflare,
+       Logflare.KeyValues.Cache,
+       l2_enabled: Env.get_boolean("LOGFLARE_KEY_VALUES_CACHE_L2_ENABLED", false)
+
 # LOGFLARE_READ_REPLICAS: PostgreSQL read replicas for selected cache queries.
 # An empty list uses the primary database. Entries are bare host names, IP literals, or URIs
 # whose omitted options inherit the primary.

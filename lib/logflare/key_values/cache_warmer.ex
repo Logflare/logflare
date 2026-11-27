@@ -69,7 +69,7 @@ defmodule Logflare.KeyValues.CacheWarmer do
     |> Repo.stream()
     |> Stream.chunk_every(500)
     |> Enum.reduce(0, fn chunk, count ->
-      Cachex.put_many(Cache, Enum.map(chunk, &to_cache_entry/1))
+      chunk |> Enum.map(&to_cache_entry/1) |> Cache.put_unless_tombstoned()
       count + length(chunk)
     end)
   end
@@ -81,7 +81,7 @@ defmodule Logflare.KeyValues.CacheWarmer do
       |> Repo.all()
       |> Enum.map(&to_cache_entry/1)
 
-    if entries != [], do: Cachex.put_many(Cache, entries)
+    if entries != [], do: Cache.put_unless_tombstoned(entries)
   end
 
   defp to_cache_entry(%KeyValue{} = kv) do

@@ -15,8 +15,14 @@ defmodule Logflare.ContextCache.Tombstones.Cache do
     )
   end
 
-  def put_tombstone(cache, tombstone) do
-    Cachex.put(@name, {cache, tombstone}, true)
+  @spec put_tombstone(atom(), term(), non_neg_integer() | nil) :: {:ok, boolean()}
+  def put_tombstone(cache, tombstone, ttl \\ nil) do
+    Cachex.put(@name, {cache, tombstone}, true, expire: ttl)
+  end
+
+  @spec delete_tombstone(atom(), term()) :: {:ok, boolean()}
+  def delete_tombstone(cache, tombstone) do
+    Cachex.del(@name, {cache, tombstone})
   end
 
   def tombstoned?(cache, tombstone) do

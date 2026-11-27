@@ -1553,6 +1553,14 @@
       "message": "list destructured into [head, replace, tail] then reassembled; bind as a whole with `= name`",
       "file": "unknown",
       "line": null
+    },
+    {
+      "source": "smells",
+      "kind": "fixed_shape_map",
+      "fingerprint": "sha256:ef98fe9e91273e7357e1a3a2ff6c4ff0ed42bc0ef4974dc30f671ff29b7ab455",
+      "message": "map shape [:id, :start, :type] appears 3 times; consider a struct or explicit contract if it is domain data",
+      "file": "lib/logflare/key_values/cache.ex",
+      "line": 34
     }
   ],
   "scopes": {
