@@ -9,6 +9,7 @@ defmodule Logflare.Factory do
   alias Logflare.Billing.PaymentMethod
   alias Logflare.Billing.Plan
   alias Logflare.Endpoints.EndpointQuery
+  alias Logflare.EnrichmentRules.EnrichmentRule
   alias Logflare.LogEvent
   alias Logflare.Lql
   alias Logflare.OauthAccessTokens.OauthAccessToken
@@ -135,6 +136,19 @@ defmodule Logflare.Factory do
       source: attrs[:source],
       backend: attrs[:backend],
       backend_id: attrs[:backend_id]
+    }
+  end
+
+  def enrichment_rule_factory(attrs) do
+    lql = Map.get(attrs, :lql_string, "testing")
+    {:ok, lql_filters} = Lql.Parser.parse(lql)
+
+    %EnrichmentRule{
+      lql_string: lql,
+      lql_filters: lql_filters,
+      set_fields: Map.get(attrs, :set_fields, %{"enriched" => true}),
+      source_id: attrs[:source_id],
+      source: attrs[:source]
     }
   end
 

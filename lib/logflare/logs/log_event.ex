@@ -325,6 +325,19 @@ defmodule Logflare.LogEvent do
     end
   end
 
+  @doc """
+  Sets each value at its path in the event body. A path that crosses a non-map value is skipped.
+  """
+  @spec put_fields(LE.t(), [{[String.t()], term()}]) :: LE.t()
+  def put_fields(%LE{body: body} = le, fields) do
+    new_body =
+      Enum.reduce(fields, body, fn {path, value}, acc ->
+        acc |> put_at_path(path, value) |> unwrap_put(acc)
+      end)
+
+    replace_body(le, new_body)
+  end
+
   @spec unwrap_put({:ok, map()} | :error, map()) :: map()
   defp unwrap_put({:ok, new_body}, _body), do: new_body
   defp unwrap_put(:error, body), do: body

@@ -14,6 +14,7 @@ defmodule Logflare.ContextCache.CacheBuster do
   alias Logflare.Billing
   alias Logflare.ContextCache.CacheBusterWorker
   alias Logflare.Endpoints
+  alias Logflare.EnrichmentRules
   alias Logflare.KeyValues
   alias Logflare.PubSub
   alias Logflare.QueryContext
@@ -503,6 +504,14 @@ defmodule Logflare.ContextCache.CacheBuster do
        })
        when is_binary(uid) and is_binary(key) do
     {KeyValues, [user_id: String.to_integer(uid), key: key]}
+  end
+
+  defp handle_record(%{relation: {_schema, "enrichment_rules"}} = change) do
+    records = [Map.get(change, :record), Map.get(change, :old_record)]
+
+    for %{"source_id" => <<source_id::binary>>} <- records, uniq: true do
+      {EnrichmentRules, [source_id: String.to_integer(source_id)]}
+    end
   end
 
   defp handle_record(_record) do
