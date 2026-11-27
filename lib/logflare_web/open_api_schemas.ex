@@ -126,6 +126,28 @@ defmodule LogflareWeb.OpenApiSchemas do
     use LogflareWeb.OpenApi, properties: @properties, required: [:token, :name]
   end
 
+  defmodule EnrichmentRule do
+    @properties %{
+      match: %Schema{type: :string, enum: ["all", "any"]},
+      conditions: %Schema{
+        type: :array,
+        items: %Schema{
+          type: :object,
+          properties: %{
+            path: %Schema{type: :string},
+            predicate: %Schema{type: :string},
+            value: %Schema{},
+            case_insensitive: %Schema{type: :boolean}
+          },
+          required: [:path, :predicate]
+        }
+      },
+      set_fields: %Schema{type: :object}
+    }
+
+    use LogflareWeb.OpenApi, properties: @properties, required: [:conditions, :set_fields]
+  end
+
   defmodule Source do
     @properties %{
       name: %Schema{type: :string},
@@ -149,6 +171,11 @@ defmodule LogflareWeb.OpenApiSchemas do
       transform_copy_fields: %Schema{type: :string, nullable: true},
       transform_key_values: %Schema{type: :string, nullable: true},
       transform_drop_fields: %Schema{type: :string, nullable: true},
+      enrichment_rules: %Schema{
+        type: :array,
+        items: LogflareWeb.OpenApiSchemas.EnrichmentRule,
+        description: "The source's enrichment rules, in order. Sending it replaces every rule."
+      },
       bigquery_clustering_fields: %Schema{type: :string, nullable: true},
       default_ingest_backend_enabled?: %Schema{
         type: :boolean,
@@ -183,6 +210,11 @@ defmodule LogflareWeb.OpenApiSchemas do
       transform_copy_fields: %Schema{type: :string, nullable: true},
       transform_key_values: %Schema{type: :string, nullable: true},
       transform_drop_fields: %Schema{type: :string, nullable: true},
+      enrichment_rules: %Schema{
+        type: :array,
+        items: LogflareWeb.OpenApiSchemas.EnrichmentRule,
+        description: "The source's enrichment rules, in order. Sending it replaces every rule."
+      },
       bigquery_clustering_fields: %Schema{type: :string, nullable: true},
       default_ingest_backend_enabled?: %Schema{
         type: :boolean,

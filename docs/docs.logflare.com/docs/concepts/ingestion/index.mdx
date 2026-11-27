@@ -267,7 +267,7 @@ Key-value enrichment runs after field copying, so copied fields can be used as l
 
 ### Enrichment Rules
 
-An enrichment rule sets fields on every event of a source that meets its conditions. Rules are managed in the source settings, under **Enrichment Rules**.
+An enrichment rule sets fields on every event of a source that meets its conditions. Rules are managed in the source settings, under **Enrichment Rules**. They can also be managed through the Management API: the `enrichment_rules` list on `GET /api/sources` and `GET /api/sources/:token` holds a source's rules in order, and sending `enrichment_rules` with `POST /api/sources` or `PUT /api/sources/:token` replaces all of them.
 
 Each rule has:
 

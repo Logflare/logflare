@@ -40,6 +40,13 @@ defmodule Logflare.EnrichmentRules do
     |> Repo.all()
   end
 
+  @spec list_by_source_ids([integer()]) :: %{integer() => [EnrichmentRule.t()]}
+  def list_by_source_ids(source_ids) do
+    from(r in EnrichmentRule, where: r.source_id in ^source_ids, order_by: [asc: r.id])
+    |> Repo.all()
+    |> Enum.group_by(& &1.source_id)
+  end
+
   @spec get(integer()) :: EnrichmentRule.t() | nil
   def get(id), do: Repo.get(EnrichmentRule, id)
 
@@ -52,6 +59,63 @@ defmodule Logflare.EnrichmentRules do
     |> EnrichmentRule.changeset(Map.put(params, "source_id", source.id))
     |> validate_compiles()
     |> Repo.insert()
+  end
+
+  @doc """
+  Replaces all of a source's rules with `rules_params`, in order, in one transaction.
+  """
+  @spec replace_for_source(Source.t(), [map()]) ::
+          {:ok, [EnrichmentRule.t()]} | {:error, Ecto.Changeset.t()}
+  def replace_for_source(%Source{} = source, rules_params) when is_list(rules_params) do
+    Repo.transaction(fn ->
+      Repo.delete_all(from(r in EnrichmentRule, where: r.source_id == ^source.id))
+
+      Enum.map(rules_params, &create_or_rollback(source, &1))
+    end)
+  end
+
+  def replace_for_source(%Source{}, _rules_params), do: {:error, not_a_list_changeset()}
+
+  defp create_or_rollback(source, params) do
+    case create(source, params) do
+      {:ok, rule} -> rule
+      {:error, changeset} -> Repo.rollback(changeset)
+    end
+  end
+
+  @doc """
+  Checks rule params without a source, as `replace_for_source/2` would.
+  """
+  @spec validate_params(term()) :: :ok | {:error, Ecto.Changeset.t()}
+  def validate_params(rules_params) when is_list(rules_params) do
+    Enum.find_value(rules_params, :ok, fn params ->
+      changeset =
+        %EnrichmentRule{}
+        |> EnrichmentRule.changeset(Map.put(params, "source_id", 0))
+        |> validate_compiles()
+
+      if changeset.valid?, do: nil, else: {:error, changeset}
+    end)
+  end
+
+  def validate_params(_rules_params), do: {:error, not_a_list_changeset()}
+
+  @doc """
+  The API representation of a rule.
+  """
+  @spec to_api(EnrichmentRule.t()) :: map()
+  def to_api(%EnrichmentRule{} = rule) do
+    %{
+      "match" => Atom.to_string(rule.match),
+      "conditions" => rule.conditions,
+      "set_fields" => rule.set_fields
+    }
+  end
+
+  defp not_a_list_changeset do
+    {%{}, %{enrichment_rules: {:array, :map}}}
+    |> Ecto.Changeset.change()
+    |> Ecto.Changeset.add_error(:enrichment_rules, "must be a list of rules")
   end
 
   @spec delete(EnrichmentRule.t()) :: {:ok, EnrichmentRule.t()} | {:error, Ecto.Changeset.t()}
