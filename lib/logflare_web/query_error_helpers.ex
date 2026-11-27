@@ -105,6 +105,11 @@ defmodule LogflareWeb.QueryErrorHelpers do
     end
   end
 
+  defp classified_sandbox_error_message(
+         "Sandboxed SQL supports at most one chart rule" = message
+       ),
+       do: message
+
   defp classified_sandbox_error_message(message) do
     if String.starts_with?(message, @user_facing_sandbox_error_prefixes),
       do: String.replace_invalid(message)

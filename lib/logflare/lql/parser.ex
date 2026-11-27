@@ -47,7 +47,7 @@ defmodule Logflare.Lql.Parser do
   `parse/1` allows for parsing of an LQL statement without validating against a provided BQ schema.
   This allows for parse-only workflows, as coupling validations with the parsing makes things more complex.
   """
-  @spec parse(String.t()) :: {:ok, Rules.lql_rules()}
+  @spec parse(String.t()) :: {:ok, Rules.lql_rules()} | {:error, term()}
   def parse(nil), do: {:ok, []}
   def parse(""), do: {:ok, []}
 
@@ -81,14 +81,7 @@ defmodule Logflare.Lql.Parser do
 
     from_rule = build_from_rule(from_rule_tokens)
 
-    chart_rule =
-      if not Enum.empty?(chart_rule_tokens) do
-        chart_rule =
-          chart_rule_tokens
-          |> Enum.reduce(%{}, fn {:chart, fields}, acc -> Map.merge(acc, Map.new(fields)) end)
-
-        ChartRule.build(Map.to_list(chart_rule))
-      end
+    chart_rules = build_chart_rules(chart_rule_tokens)
 
     select_rules =
       select_rule_tokens
@@ -107,7 +100,7 @@ defmodule Logflare.Lql.Parser do
       end)
 
     rules =
-      ([from_rule, chart_rule | select_rules] ++ filter_rules)
+      ([from_rule | chart_rules] ++ select_rules ++ filter_rules)
       |> List.flatten()
       |> Enum.reject(&is_nil/1)
 
@@ -157,7 +150,11 @@ defmodule Logflare.Lql.Parser do
             _ -> false
           end)
 
-        chart_rule = build_chart_rule(chart_rule_tokens, typemap, querystring)
+        chart_rules =
+          chart_rule_tokens
+          |> build_chart_rules()
+          |> Enum.map(&build_chart_rule(&1, typemap, querystring))
+
         from_rule = build_from_rule(from_rule_tokens)
 
         select_rules =
@@ -179,7 +176,7 @@ defmodule Logflare.Lql.Parser do
           end)
 
         rules =
-          ([from_rule, chart_rule | select_rules] ++ rules)
+          ([from_rule | chart_rules] ++ select_rules ++ rules)
           |> List.flatten()
           |> Enum.reject(&is_nil/1)
 
@@ -211,20 +208,37 @@ defmodule Logflare.Lql.Parser do
     FromRule.build(keyword_list)
   end
 
-  @spec build_chart_rule([{:chart, Keyword.t()}], schema_flat_map(), String.t()) ::
-          ChartRule.t() | nil
-  defp build_chart_rule([], _typemap, _querystring), do: nil
+  @spec build_chart_rules([{:chart, Keyword.t()}]) :: [ChartRule.t()]
+  defp build_chart_rules([]), do: []
 
-  defp build_chart_rule(chart_rule_tokens, typemap, querystring) do
-    fields =
-      Enum.reduce(chart_rule_tokens, [], fn {:chart, fields}, acc ->
-        Keyword.merge(acc, fields)
+  defp build_chart_rules(tokens) do
+    period =
+      Enum.reduce(tokens, :minute, fn {:chart, fields}, period ->
+        Keyword.get(fields, :period, period)
       end)
 
-    rule =
-      fields
-      |> ChartRule.build()
-      |> Map.put(:value_type, get_path_type(typemap, Keyword.fetch!(fields, :path), querystring))
+    aggregates =
+      Enum.filter(tokens, fn {:chart, fields} -> Keyword.has_key?(fields, :aggregate) end)
+
+    case aggregates do
+      [] ->
+        [ChartRule.build(period: period)]
+
+      aggregates ->
+        for {:chart, fields} <- aggregates,
+            aggregate <- List.wrap(Keyword.fetch!(fields, :aggregate)),
+            uniq: true do
+          fields
+          |> Keyword.put(:aggregate, aggregate)
+          |> Keyword.put(:period, period)
+          |> ChartRule.build()
+        end
+    end
+  end
+
+  @spec build_chart_rule(ChartRule.t(), schema_flat_map(), String.t()) :: ChartRule.t()
+  defp build_chart_rule(rule, typemap, querystring) do
+    rule = %{rule | value_type: get_path_type(typemap, rule.path, querystring)}
 
     case Validator.validate_chart_rule(rule) do
       nil -> rule

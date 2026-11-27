@@ -5,6 +5,7 @@ defmodule Logflare.Logs.SearchQueries do
   import Logflare.Ecto.BQQueryAPI
 
   alias Logflare.Lql
+  alias Logflare.Lql.Rules.ChartRule
 
   @chart_periods ~w(day hour minute second)a
 
@@ -19,7 +20,7 @@ defmodule Logflare.Logs.SearchQueries do
           when ? = 'HOUR'  then TIMESTAMP_TRUNC(?, HOUR)
           when ? = 'MINUTE'  then TIMESTAMP_TRUNC(?, MINUTE)
           when ? = 'SECOND'  then TIMESTAMP_TRUNC(?, SECOND)
-          end) as timestamp
+          end)
           """,
           ^String.upcase("#{chart_period}"),
           t.timestamp,
@@ -30,6 +31,7 @@ defmodule Logflare.Logs.SearchQueries do
           ^String.upcase("#{chart_period}"),
           t.timestamp
         )
+        |> selected_as(:timestamp)
     })
   end
 
@@ -44,7 +46,7 @@ defmodule Logflare.Logs.SearchQueries do
           when ? = 'HOUR'  then TIMESTAMP_TRUNC(?, HOUR , ?)
           when ? = 'MINUTE'  then TIMESTAMP_TRUNC(?, MINUTE , ?)
           when ? = 'SECOND'  then TIMESTAMP_TRUNC(?, SECOND , ?)
-          end) as timestamp
+          end)
           """,
           ^String.upcase("#{chart_period}"),
           t.timestamp,
@@ -59,6 +61,7 @@ defmodule Logflare.Logs.SearchQueries do
           t.timestamp,
           ^timezone
         )
+        |> selected_as(:timestamp)
     })
   end
 
@@ -66,104 +69,54 @@ defmodule Logflare.Logs.SearchQueries do
           Ecto.Query.t()
   @spec select_merge_agg_value(
           any,
-          :avg | :count | :countd | :sum | :max,
-          atom(),
+          :avg | :count | :countd | :sum | :max | :p50 | :p95 | :p99,
+          atom() | String.t(),
           :base_table | :joined_table
         ) :: Ecto.Query.t()
   def select_merge_agg_value(query, :count, :timestamp) do
-    select_merge(query, [t, ...], %{
-      value: fragment("COUNT(?) as value", t.timestamp)
-    })
+    select_merge_agg_value(query, :count, :timestamp, :base_table)
   end
 
-  # Chart aggregations - single function handling both table types
-  def select_merge_agg_value(query, chart_aggregate, last_chart_field, table_type) do
-    case {chart_aggregate, table_type} do
-      {:sum, :base_table} ->
-        select_merge(query, [t, ...], %{
-          value: fragment("SUM(?) as value", field(t, ^last_chart_field))
-        })
+  @spec select_merge_agg_value(
+          Ecto.Query.t(),
+          atom(),
+          atom() | String.t(),
+          :base_table | :joined_table,
+          atom() | String.t()
+        ) :: Ecto.Query.t()
+  def select_merge_agg_value(query, aggregate, column, table_type, key \\ :value) do
+    field =
+      case table_type do
+        :base_table -> dynamic([t, ...], field(t, ^column))
+        :joined_table -> dynamic([..., t], field(t, ^column))
+      end
 
-      {:sum, :joined_table} ->
-        select_merge(query, [..., l], %{
-          value: fragment("SUM(?) as value", field(l, ^last_chart_field))
-        })
+    value = aggregate_value(aggregate, field)
+    value = if key == :value, do: dynamic(selected_as(^value, :value)), else: value
+    select_merge(query, ^%{key => value})
+  end
 
-      {:avg, :base_table} ->
-        select_merge(query, [t, ...], %{
-          value: fragment("AVG(?) as value", field(t, ^last_chart_field))
-        })
+  @spec aggregate_value(atom(), Ecto.Query.dynamic_expr()) :: Ecto.Query.dynamic_expr()
+  defp aggregate_value(aggregate, field) do
+    case aggregate do
+      :sum ->
+        dynamic(fragment("SUM(?)", ^field))
 
-      {:avg, :joined_table} ->
-        select_merge(query, [..., l], %{
-          value: fragment("AVG(?) as value", field(l, ^last_chart_field))
-        })
+      :avg ->
+        dynamic(fragment("AVG(?)", ^field))
 
-      {:count, :base_table} ->
-        select_merge(query, [t, ...], %{
-          value: fragment("COUNT(?) as value", field(t, ^last_chart_field))
-        })
+      :count ->
+        dynamic(fragment("COUNT(?)", ^field))
 
-      {:count, :joined_table} ->
-        select_merge(query, [..., l], %{
-          value: fragment("COUNT(?) as value", field(l, ^last_chart_field))
-        })
+      :countd ->
+        dynamic(fragment("COUNT(DISTINCT ?)", ^field))
 
-      {:countd, :base_table} ->
-        select_merge(query, [t, ...], %{
-          value: fragment("COUNT(DISTINCT ?) as value", field(t, ^last_chart_field))
-        })
+      :max ->
+        dynamic(fragment("MAX(?)", ^field))
 
-      {:countd, :joined_table} ->
-        select_merge(query, [..., l], %{
-          value: fragment("COUNT(DISTINCT ?) as value", field(l, ^last_chart_field))
-        })
-
-      {:max, :base_table} ->
-        select_merge(query, [t, ...], %{
-          value: fragment("MAX(?) as value", field(t, ^last_chart_field))
-        })
-
-      {:max, :joined_table} ->
-        select_merge(query, [..., l], %{
-          value: fragment("MAX(?) as value", field(l, ^last_chart_field))
-        })
-
-      {:p50, :base_table} ->
-        select_merge(query, [t, ...], %{
-          value:
-            fragment("APPROX_QUANTILES(?, 100)[OFFSET(50)] as value", field(t, ^last_chart_field))
-        })
-
-      {:p50, :joined_table} ->
-        select_merge(query, [..., l], %{
-          value:
-            fragment("APPROX_QUANTILES(?, 100)[OFFSET(50)] as value", field(l, ^last_chart_field))
-        })
-
-      {:p95, :base_table} ->
-        select_merge(query, [t, ...], %{
-          value:
-            fragment("APPROX_QUANTILES(?, 100)[OFFSET(95)] as value", field(t, ^last_chart_field))
-        })
-
-      {:p95, :joined_table} ->
-        select_merge(query, [..., l], %{
-          value:
-            fragment("APPROX_QUANTILES(?, 100)[OFFSET(95)] as value", field(l, ^last_chart_field))
-        })
-
-      {:p99, :base_table} ->
-        select_merge(query, [t, ...], %{
-          value:
-            fragment("APPROX_QUANTILES(?, 100)[OFFSET(99)] as value", field(t, ^last_chart_field))
-        })
-
-      {:p99, :joined_table} ->
-        select_merge(query, [..., l], %{
-          value:
-            fragment("APPROX_QUANTILES(?, 100)[OFFSET(99)] as value", field(l, ^last_chart_field))
-        })
+      percentile ->
+        offset = round(ChartRule.percentile_to_value(percentile) * 100)
+        dynamic(fragment("APPROX_QUANTILES(?, 100)[OFFSET(?)]", ^field, constant(^offset)))
     end
   end
 

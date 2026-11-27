@@ -246,15 +246,33 @@ defmodule Logflare.Lql.Parser.Combinators do
   end
 
   def chart_aggregate do
+    aggregate =
+      choice([
+        string("avg") |> replace(:avg),
+        string("countd") |> replace(:countd),
+        string("count") |> replace(:count),
+        string("sum") |> replace(:sum),
+        string("max") |> replace(:max),
+        string("p50") |> replace(:p50),
+        string("p95") |> replace(:p95),
+        string("p99") |> replace(:p99)
+      ])
+
+    whitespace = ignore(ascii_string([?\s, ?\t, ?\r, ?\n], min: 0))
+
     choice([
-      string("avg") |> replace(:avg),
-      string("countd") |> replace(:countd),
-      string("count") |> replace(:count),
-      string("sum") |> replace(:sum),
-      string("max") |> replace(:max),
-      string("p50") |> replace(:p50),
-      string("p95") |> replace(:p95),
-      string("p99") |> replace(:p99)
+      ignore(string("{"))
+      |> concat(whitespace)
+      |> concat(aggregate)
+      |> repeat(
+        concat(whitespace, ignore(string(",")))
+        |> concat(whitespace)
+        |> concat(aggregate)
+      )
+      |> concat(whitespace)
+      |> ignore(string("}"))
+      |> wrap(),
+      aggregate
     ])
     |> unwrap_and_tag(:aggregate)
     |> ignore(string("("))

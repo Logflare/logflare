@@ -8,6 +8,7 @@ module.exports = {
   theme: {
     extend: {
       colors: {
+        "brand-gray": "#9a9a9a",
         "json-tree-key": "#6286db",
         "json-tree-string": "#63ff99",
         "json-tree-number": "#c7a1ff",
