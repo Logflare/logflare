@@ -1,0 +1,108 @@
+name: JSDOM Tests
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "assets/**"
+      - "lib/logflare_web/**"
+  pull_request:
+    branches: ["**"]
+    paths:
+      - "assets/**"
+      - "lib/logflare_web/**"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: JSDOM Tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: bitnamilegacy/postgresql:15
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: logflare_test
+          POSTGRESQL_WAL_LEVEL: logical
+        options: >-
+          --health-cmd "pg_isready -d logflare_test -U postgres -p 5432"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      MIX_ENV: test
+      SHELL: /bin/bash
+      JSDOM: true
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Read versions from .tool-versions
+        id: versions
+        run: |
+          echo "elixir=$(grep '^elixir '  .tool-versions | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+          echo "erlang=$(grep '^erlang '  .tool-versions | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+          echo "node=$(grep   '^nodejs '  .tool-versions | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+          echo "rust=$(grep   '^rust '    .tool-versions | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          version-file: .tool-versions
+          version-type: strict
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: ${{ steps.versions.outputs.rust }}
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ steps.versions.outputs.node }}
+          cache: npm
+          cache-dependency-path: assets/package-lock.json
+
+      - name: Restore Cargo cache
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo
+          key: cargo-${{ runner.os }}-${{ steps.versions.outputs.rust }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            cargo-${{ runner.os }}-${{ steps.versions.outputs.rust }}-
+            cargo-${{ runner.os }}-
+
+      - name: Restore Mix cache
+        uses: actions/cache@v5
+        with:
+          path: |
+            deps
+            _build
+          key: mix-${{ runner.os }}-${{ steps.versions.outputs.erlang }}-${{ steps.versions.outputs.elixir }}-${{ hashFiles('mix.lock') }}
+          restore-keys: |
+            mix-${{ runner.os }}-${{ steps.versions.outputs.erlang }}-${{ steps.versions.outputs.elixir }}-
+            mix-${{ runner.os }}-${{ steps.versions.outputs.erlang }}-
+
+      - name: Fetch Mix dependencies
+        run: mix deps.get
+
+      - name: Install phoenix_test_jsdom Node dependencies
+        run: npm ci --prefix deps/phoenix_test_jsdom/priv
+
+      - name: Install frontend dependencies
+        run: npm ci --prefix assets
+
+      - name: Compile dependencies
+        run: mix deps.compile
+
+      - name: Build assets
+        run: npm run deploy --prefix assets
+
+      - name: Run JSDOM tests
+        run: mix do ecto.create + ecto.migrate + test --only jsdom test/jsdom
