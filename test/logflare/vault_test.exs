@@ -3,6 +3,17 @@ defmodule Logflare.VaultTest do
   use Logflare.DataCase
   alias Logflare.Repo
 
+  describe "ciphers" do
+    test "only the authenticated AES-GCM cipher is configured" do
+      {:ok, config} = Logflare.Vault.get_config()
+      ciphers = Keyword.fetch!(config, :ciphers)
+
+      assert [_ | _] = ciphers
+
+      assert Enum.all?(ciphers, fn {_name, {module, _opts}} -> module == Cloak.Ciphers.AES.GCM end)
+    end
+  end
+
   describe "migrator with retired" do
     setup do
       insert(:backend, config_encrypted: %{some_value: "testing"})

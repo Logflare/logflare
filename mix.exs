@@ -12,6 +12,13 @@ defmodule Logflare.Mixfile do
       deps: deps(),
       dialyzer: dialyzer(),
       listeners: [Phoenix.CodeReloader],
+      hex: [
+        ignore_advisories: [
+          # cloak AES-CTR has no fix; Logflare.Vault only configures
+          # Cloak.Ciphers.AES.GCM (see vault_test.exs)
+          "EEF-CVE-2026-95105"
+        ]
+      ],
       test_coverage: [tool: ExCoveralls],
       test_ignore_filters: [~r|test/profiling|, "test/bq_logs_search_seed.exs"],
       releases: [
