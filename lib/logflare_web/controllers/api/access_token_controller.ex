@@ -18,7 +18,7 @@ defmodule LogflareWeb.Api.AccessTokenController do
 
   operation(:index,
     summary: "List access tokens",
-    responses: %{200 => List.response(AccessToken)}
+    responses: %{200 => List.response(AccessToken), 401 => Unauthorized.response()}
   )
 
   def index(%{assigns: %{user: user}} = conn, _) do
@@ -42,12 +42,15 @@ defmodule LogflareWeb.Api.AccessTokenController do
     }
   )
 
-  def create(%{assigns: %{user: user}} = conn, params) do
-    with {:ok, access_token} <-
-           Auth.create_access_token(user, Map.take(params, ["description", "scopes"])) do
+  def create(%{assigns: %{user: user, access_token: current_token}} = conn, params) do
+    attrs = Map.take(params, ["description", "scopes"])
+
+    with {:ok, access_token} <- Auth.create_access_token(current_token, user, attrs) do
       conn
       |> put_status(201)
       |> json(format_access_token(access_token))
+    else
+      {:error, _} = err -> err
     end
   end
 

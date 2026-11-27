@@ -12,6 +12,7 @@ defmodule LogflareWeb.AccessTokensLive.Form do
   typed_embedded_schema do
     field :description, :string, default: ""
     field :private, :boolean, default: false
+    field :admin, :boolean, default: false
     embeds_one :ingest, ResourcePermission, on_replace: :update
     embeds_one :query, ResourcePermission, on_replace: :update
   end
@@ -27,8 +28,8 @@ defmodule LogflareWeb.AccessTokensLive.Form do
   @spec change(t(), map()) :: Ecto.Changeset.t()
   def change(form, attrs \\ %{}) do
     form
-    |> cast(attrs, [:description, :private])
-    |> validate_required([:private])
+    |> cast(attrs, [:description, :private, :admin])
+    |> validate_required([:private, :admin])
     |> cast_embed(:ingest, required: true, with: &ResourcePermission.changeset/2)
     |> cast_embed(:query, required: true, with: &ResourcePermission.changeset/2)
   end
@@ -42,6 +43,8 @@ defmodule LogflareWeb.AccessTokensLive.Form do
   end
 
   @spec to_scopes(t()) :: [binary()]
+  def to_scopes(%__MODULE__{admin: true}), do: ["private:admin"]
+
   def to_scopes(%__MODULE__{private: true}), do: ["private"]
 
   def to_scopes(%__MODULE__{} = form) do
@@ -49,7 +52,7 @@ defmodule LogflareWeb.AccessTokensLive.Form do
   end
 
   defp validate_permissions(changeset, source_ids, endpoint_ids) do
-    if get_field(changeset, :private) do
+    if get_field(changeset, :private) or get_field(changeset, :admin) do
       changeset
     else
       changeset
