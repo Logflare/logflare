@@ -4,7 +4,8 @@ use rustler::{Binary, Encoder, Env, Term};
 
 use crate::coerce;
 use crate::mapping::{
-    CompiledField, CompiledMapping, Enum8Data, FieldType, PathSource, Predicate, PredicateValue,
+    CompiledField, CompiledMapping, ConditionSource, Enum8Data, FieldType, InferCondition,
+    PathSource, Predicate, PredicateValue,
 };
 use crate::query;
 
@@ -195,7 +196,7 @@ pub fn map_values_into<'a>(
 
         // For Enum8 fields, handle enum resolution (string->int lookup + inference + default)
         let value = if is_enum8 {
-            resolve_enum8(env, body, field, value, nil, flat_keys, query_cache)
+            resolve_enum8(env, body, field, values, value, nil, flat_keys, query_cache)
         } else {
             value
         };
@@ -311,10 +312,12 @@ fn resolve_value<'a>(
 }
 
 /// Resolve Enum8 value: explicit path -> string lookup in enum_values, then inference.
+#[allow(clippy::too_many_arguments)]
 fn resolve_enum8<'a>(
     env: Env<'a>,
     body: Term<'a>,
     field: &CompiledField,
+    outputs: &[Term<'a>],
     resolved_value: Term<'a>,
     nil: Term<'a>,
     flat_keys: bool,
@@ -340,7 +343,9 @@ fn resolve_enum8<'a>(
     }
 
     // Step 2: Try inference rules
-    if let Some(result_val) = evaluate_infer_rules(env, body, enum8_data, nil, flat_keys, cache) {
+    if let Some(result_val) =
+        evaluate_infer_rules(env, body, outputs, enum8_data, nil, flat_keys, cache)
+    {
         return (result_val as i64).encode(env);
     }
 
@@ -820,6 +825,7 @@ fn apply_multiple_elevate_keys_flat<'a>(
 pub fn evaluate_infer_rules<'a>(
     env: Env<'a>,
     body: Term<'a>,
+    outputs: &[Term<'a>],
     enum8_data: &Enum8Data,
     nil: Term<'a>,
     flat_keys: bool,
@@ -831,7 +837,7 @@ pub fn evaluate_infer_rules<'a>(
         } else {
             rule.any
                 .iter()
-                .any(|cond| evaluate_condition(env, body, cond, nil, flat_keys, cache))
+                .any(|cond| evaluate_condition(env, body, outputs, cond, nil, flat_keys, cache))
         };
 
         let all_match = if rule.all.is_empty() {
@@ -839,7 +845,7 @@ pub fn evaluate_infer_rules<'a>(
         } else {
             rule.all
                 .iter()
-                .all(|cond| evaluate_condition(env, body, cond, nil, flat_keys, cache))
+                .all(|cond| evaluate_condition(env, body, outputs, cond, nil, flat_keys, cache))
         };
 
         if any_match && all_match {
@@ -857,12 +863,21 @@ pub fn evaluate_infer_rules<'a>(
 fn evaluate_condition<'a>(
     env: Env<'a>,
     body: Term<'a>,
-    cond: &crate::mapping::InferCondition,
+    outputs: &[Term<'a>],
+    cond: &InferCondition,
     nil: Term<'a>,
     flat_keys: bool,
     cache: &mut query::QueryCache<'a>,
 ) -> bool {
-    let value = query::evaluate(env, body, &cond.path, nil, flat_keys, cache);
+    let value = match &cond.source {
+        ConditionSource::Path(path) => query::evaluate(env, body, path, nil, flat_keys, cache),
+        ConditionSource::Output(index) => outputs.get(*index).copied().unwrap_or(nil),
+        ConditionSource::OutputName(_) => nil,
+    };
+    let compare = Compare {
+        case_insensitive: cond.case_insensitive,
+        lenient_numbers: cond.lenient_numbers,
+    };
 
     match &cond.predicate {
         Predicate::Exists => value != nil,
@@ -895,25 +910,17 @@ fn evaluate_condition<'a>(
             if value == nil {
                 return false;
             }
-            if let Ok(i) = value.decode::<i64>() {
-                (i as f64) > *threshold
-            } else if let Ok(f) = value.decode::<f64>() {
-                f > *threshold
-            } else {
-                false
-            }
+            compare
+                .number(value)
+                .is_some_and(|number| number > *threshold)
         }
         Predicate::LessThan(threshold) => {
             if value == nil {
                 return false;
             }
-            if let Ok(i) = value.decode::<i64>() {
-                (i as f64) < *threshold
-            } else if let Ok(f) = value.decode::<f64>() {
-                f < *threshold
-            } else {
-                false
-            }
+            compare
+                .number(value)
+                .is_some_and(|number| number < *threshold)
         }
         Predicate::NotEmpty => {
             if value == nil {
@@ -943,19 +950,25 @@ fn evaluate_condition<'a>(
             if value == nil {
                 return false;
             }
-            matches_predicate_value(value, expected)
+            compare.matches(value, expected)
         }
         Predicate::NotEquals(expected) => {
             if value == nil {
                 return true;
             }
-            !matches_predicate_value(value, expected)
+            !compare.matches(value, expected)
         }
         Predicate::In(values) => {
             if value == nil {
                 return false;
             }
-            values.iter().any(|v| matches_predicate_value(value, v))
+            values.iter().any(|v| compare.matches(value, v))
+        }
+        Predicate::NotIn(values) => {
+            if value == nil {
+                return true;
+            }
+            !values.iter().any(|v| compare.matches(value, v))
         }
         Predicate::IsString => value != nil && value.is_binary(),
         Predicate::IsNumber => {
@@ -966,37 +979,81 @@ fn evaluate_condition<'a>(
     }
 }
 
-/// Check if a BEAM term matches a predicate value.
-fn matches_predicate_value(term: Term, expected: &PredicateValue) -> bool {
-    match expected {
-        PredicateValue::Str(s) => {
+/// Per-condition comparison options. Both default to off, which keeps the
+/// original exact, type-strict comparisons.
+#[derive(Clone, Copy)]
+struct Compare {
+    case_insensitive: bool,
+    lenient_numbers: bool,
+}
+
+impl Compare {
+    /// The term as a number. With `lenient_numbers`, a binary holding a number
+    /// (surrounding whitespace allowed) also counts.
+    fn number(self, term: Term) -> Option<f64> {
+        if let Ok(i) = term.decode::<i64>() {
+            return Some(i as f64);
+        }
+        if let Ok(f) = term.decode::<f64>() {
+            return Some(f);
+        }
+        if self.lenient_numbers {
             if let Ok(b) = term.decode::<Binary>() {
-                b.as_slice() == s.as_bytes()
-            } else {
-                false
+                return std::str::from_utf8(b.as_slice())
+                    .ok()
+                    .and_then(|s| s.trim().parse::<f64>().ok())
+                    .filter(|f| f.is_finite());
             }
         }
-        PredicateValue::Int(i) => {
-            if let Ok(ti) = term.decode::<i64>() {
-                ti == *i
-            } else {
-                false
+        None
+    }
+
+    /// Check if a BEAM term matches a predicate value.
+    fn matches(self, term: Term, expected: &PredicateValue) -> bool {
+        match expected {
+            PredicateValue::Str(s) => match term.decode::<Binary>() {
+                Ok(b) if self.case_insensitive => eq_ignore_case(b.as_slice(), s),
+                Ok(b) => b.as_slice() == s.as_bytes(),
+                Err(_) => false,
+            },
+            PredicateValue::Int(i) => {
+                if let Ok(ti) = term.decode::<i64>() {
+                    ti == *i
+                } else if self.lenient_numbers {
+                    self.number(term).is_some_and(|n| n == *i as f64)
+                } else {
+                    false
+                }
+            }
+            PredicateValue::Flt(f) => {
+                if let Ok(tf) = term.decode::<f64>() {
+                    (tf - f).abs() < f64::EPSILON
+                } else if self.lenient_numbers {
+                    self.number(term)
+                        .is_some_and(|n| (n - f).abs() < f64::EPSILON)
+                } else {
+                    false
+                }
+            }
+            PredicateValue::Bool(b) => {
+                if let Ok(tb) = term.decode::<bool>() {
+                    tb == *b
+                } else {
+                    false
+                }
             }
         }
-        PredicateValue::Flt(f) => {
-            if let Ok(tf) = term.decode::<f64>() {
-                (tf - f).abs() < f64::EPSILON
-            } else {
-                false
-            }
-        }
-        PredicateValue::Bool(b) => {
-            if let Ok(tb) = term.decode::<bool>() {
-                tb == *b
-            } else {
-                false
-            }
-        }
+    }
+}
+
+/// Unicode case-insensitive equality without allocating.
+fn eq_ignore_case(bytes: &[u8], expected: &str) -> bool {
+    match std::str::from_utf8(bytes) {
+        Ok(actual) => actual
+            .chars()
+            .flat_map(char::to_lowercase)
+            .eq(expected.chars().flat_map(char::to_lowercase)),
+        Err(_) => false,
     }
 }
 

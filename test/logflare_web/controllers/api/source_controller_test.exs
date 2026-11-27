@@ -4,6 +4,7 @@ defmodule LogflareWeb.Api.SourceControllerTest do
 
   alias Logflare.Backends
   alias Logflare.Backends.SourceSup
+  alias Logflare.EnrichmentRules
   alias Logflare.Sources
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.TestUtils
@@ -226,6 +227,130 @@ defmodule LogflareWeb.Api.SourceControllerTest do
         |> json_response(200)
 
       assert response["default_ingest_backend_enabled?"] == true
+    end
+  end
+
+  describe "enrichment_rules" do
+    @debug_rule %{
+      "match" => "all",
+      "conditions" => [
+        %{"path" => "debug_mode", "predicate" => "equals", "value" => "errors_only"},
+        %{"path" => "m.response.status_code", "predicate" => "less_than", "value" => 400}
+      ],
+      "set_fields" => %{"excluded_by_user_config" => true}
+    }
+    @severity_rule %{
+      "match" => "all",
+      "conditions" => [
+        %{"path" => "debug_mode", "predicate" => "equals", "value" => "errors_only"},
+        %{"path" => "@severity_text", "predicate" => "not_in", "value" => ["ERROR", "FATAL"]}
+      ],
+      "set_fields" => %{"excluded_by_user_config" => true}
+    }
+
+    test "PUT replaces the rules in order and every read returns them", %{
+      conn: conn,
+      user: user,
+      sources: [source, other]
+    } do
+      insert(:enrichment_rule, source: source)
+      insert(:enrichment_rule, source: other)
+
+      response =
+        conn
+        |> add_access_token(user, "private")
+        |> put("/api/sources/#{source.token}", %{
+          enrichment_rules: [@debug_rule, @severity_rule]
+        })
+        |> json_response(200)
+
+      assert response["enrichment_rules"] == [@debug_rule, @severity_rule]
+
+      assert conn
+             |> add_access_token(user, "private")
+             |> get("/api/sources/#{source.token}")
+             |> json_response(200)
+             |> Map.get("enrichment_rules") == [@debug_rule, @severity_rule]
+
+      listed =
+        conn
+        |> add_access_token(user, "private")
+        |> get("/api/sources")
+        |> json_response(200)
+        |> Map.new(&{&1["id"], &1["enrichment_rules"]})
+
+      assert listed[source.id] == [@debug_rule, @severity_rule]
+      assert [%{"set_fields" => %{"enriched" => true}}] = listed[other.id]
+    end
+
+    test "PUT without enrichment_rules leaves them unchanged", %{
+      conn: conn,
+      user: user,
+      sources: [source | _]
+    } do
+      insert(:enrichment_rule, source: source)
+
+      response =
+        conn
+        |> add_access_token(user, "private")
+        |> put("/api/sources/#{source.token}", %{description: "changed"})
+        |> json_response(200)
+
+      assert [%{"set_fields" => %{"enriched" => true}}] = response["enrichment_rules"]
+    end
+
+    test "PUT with an empty list removes every rule", %{
+      conn: conn,
+      user: user,
+      sources: [source | _]
+    } do
+      insert(:enrichment_rule, source: source)
+
+      conn
+      |> add_access_token(user, "private")
+      |> put("/api/sources/#{source.token}", %{enrichment_rules: []})
+      |> json_response(200)
+
+      assert EnrichmentRules.list_by_source_id(source.id) == []
+    end
+
+    test "an invalid rule is a 422 and changes neither the source nor its rules", %{
+      conn: conn,
+      user: user,
+      sources: [source | _]
+    } do
+      existing = insert(:enrichment_rule, source: source)
+      invalid = put_in(@debug_rule, ["conditions"], [%{"path" => "a", "predicate" => "nope"}])
+
+      for rules <- [[@debug_rule, invalid], "not a list"] do
+        assert %{"errors" => errors} =
+                 conn
+                 |> add_access_token(user, "private")
+                 |> put("/api/sources/#{source.token}", %{
+                   name: "renamed",
+                   enrichment_rules: rules
+                 })
+                 |> json_response(422)
+
+        assert errors != %{}
+      end
+
+      assert Sources.get(source.id).name == source.name
+      assert [%{id: id}] = EnrichmentRules.list_by_source_id(source.id)
+      assert id == existing.id
+    end
+
+    test "POST creates a source with its rules", %{conn: conn, user: user} do
+      response =
+        conn
+        |> add_access_token(user, "private")
+        |> post("/api/sources", %{
+          name: TestUtils.random_string(),
+          enrichment_rules: [@debug_rule]
+        })
+        |> json_response(201)
+
+      assert response["enrichment_rules"] == [@debug_rule]
     end
   end
 

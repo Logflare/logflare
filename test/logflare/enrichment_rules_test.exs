@@ -17,45 +17,51 @@ defmodule Logflare.EnrichmentRulesTest do
   end
 
   describe "create/2" do
-    test "parses the LQL and stores the fields", %{source: source} do
+    test "stores the conditions and fields", %{source: source} do
+      conditions = [
+        %{"path" => "debug_mode", "predicate" => "equals", "value" => "errors_only"},
+        %{"path" => "m.status", "predicate" => "less_than", "value" => 400}
+      ]
+
       assert {:ok, %EnrichmentRule{} = rule} =
                EnrichmentRules.create(source, %{
-                 "lql_string" => "m.level:error",
+                 "conditions" => conditions,
                  "set_fields" => %{"m.alert" => true}
                })
 
       assert rule.source_id == source.id
-      assert [%{path: "metadata.level", value: "error"}] = rule.lql_filters
+      assert rule.match == :all
       assert rule.set_fields == %{"m.alert" => true}
-      assert [%EnrichmentRule{id: id}] = EnrichmentRules.list_by_source_id(source.id)
+      assert [%EnrichmentRule{id: id} = stored] = EnrichmentRules.list_by_source_id(source.id)
       assert id == rule.id
+      assert stored.conditions == conditions
     end
 
-    test "accepts a filter on a field the source schema does not have yet", %{source: source} do
-      assert {:ok, rule} =
-               EnrichmentRules.create(source, %{
-                 "lql_string" => "debug_mode:errors_only",
-                 "set_fields" => %{"excluded" => true}
-               })
+    test "rejects missing and invalid conditions", %{source: source} do
+      for {conditions, message} <- [
+            {[], "must contain at least one condition"},
+            {[%{"path" => "a", "predicate" => "matches"}], "unknown predicate: matches"},
+            {[%{"path" => "m..a", "predicate" => "exists"}], "invalid field path"},
+            {[%{"path" => "a[0]", "predicate" => "exists"}], "invalid field path"},
+            {[%{"path" => "a", "predicate" => "equals"}], "needs a string, number or boolean"},
+            {[%{"path" => "a", "predicate" => "less_than", "value" => "4"}], "needs a number"},
+            {[%{"path" => "a", "predicate" => "in", "value" => []}], "needs a list of values"},
+            {[%{"path" => "a", "predicate" => "not_in", "value" => "x"}],
+             "needs a list of values"},
+            {[%{"path" => "@bogus", "predicate" => "exists"}], "invalid field path"},
+            {[%{"path" => "a", "predicate" => "exists", "case_insensitive" => "yes"}],
+             "case_insensitive must be true or false"},
+            {[%{"predicate" => "exists"}], "must have a path and a predicate"}
+          ] do
+        assert {:error, changeset} =
+                 EnrichmentRules.create(source, %{
+                   "conditions" => conditions,
+                   "set_fields" => %{"a" => 1}
+                 })
 
-      assert [%{path: "debug_mode", value: "errors_only"}] = rule.lql_filters
-    end
-
-    test "rejects invalid LQL", %{source: source} do
-      assert {:error, changeset} =
-               EnrichmentRules.create(source, %{
-                 "lql_string" => "m.level:(",
-                 "set_fields" => %{"alert" => true}
-               })
-
-      assert %{lql_string: [_]} = errors_on(changeset)
-    end
-
-    test "rejects an empty filter", %{source: source} do
-      assert {:error, changeset} =
-               EnrichmentRules.create(source, %{"lql_string" => "", "set_fields" => %{"a" => 1}})
-
-      assert %{lql_string: _} = errors_on(changeset)
+        assert %{conditions: [error]} = errors_on(changeset)
+        assert error =~ message
+      end
     end
 
     test "rejects empty, reserved and non-scalar set fields", %{source: source} do
@@ -67,7 +73,7 @@ defmodule Logflare.EnrichmentRulesTest do
           ] do
         assert {:error, changeset} =
                  EnrichmentRules.create(source, %{
-                   "lql_string" => "testing",
+                   "conditions" => [%{"path" => "a", "predicate" => "exists"}],
                    "set_fields" => set_fields
                  })
 
@@ -87,7 +93,7 @@ defmodule Logflare.EnrichmentRulesTest do
     test "sets fields on matching events only", %{source: source} do
       insert(:enrichment_rule,
         source: source,
-        lql_string: "m.level:error",
+        conditions: [%{"path" => "m.level", "predicate" => "equals", "value" => "error"}],
         set_fields: %{"alert" => true, "m.team" => "core"}
       )
 
@@ -101,59 +107,150 @@ defmodule Logflare.EnrichmentRulesTest do
       assert unchanged == other
     end
 
-    test "matches on fields set by key-value enrichment and supports negation and comparisons",
+    test "flags non-error events from errors_only projects", %{source: source} do
+      insert(:enrichment_rule,
+        source: source,
+        conditions: [
+          %{"path" => "debug_mode", "predicate" => "equals", "value" => "errors_only"},
+          %{"path" => "m.response.status_code", "predicate" => "less_than", "value" => 400}
+        ],
+        set_fields: %{"excluded_by_user_config" => true}
+      )
+
+      events =
+        for {mode, status} <- [{"errors_only", 200}, {"errors_only", 500}, {"all", 200}] do
+          build(:log_event,
+            source: source,
+            debug_mode: mode,
+            metadata: %{"response" => %{"status_code" => status}}
+          )
+        end
+
+      assert [ok, error, all] = EnrichmentRules.apply_rules(events, source)
+      assert ok.body["excluded_by_user_config"] == true
+      refute Map.has_key?(error.body, "excluded_by_user_config")
+      refute Map.has_key?(all.body, "excluded_by_user_config")
+    end
+
+    test "matches any condition and supports in, not_equals and presence predicates",
          %{source: source} do
       insert(:enrichment_rule,
         source: source,
-        lql_string: ~s{debug_mode:errors_only -m.level:~"^(error|fatal)$"},
+        match: :any,
+        conditions: [
+          %{"path" => "m.level", "predicate" => "in", "value" => ["error", "fatal"]},
+          %{"path" => "m.status", "predicate" => "greater_than", "value" => 499}
+        ],
+        set_fields: %{"page" => true}
+      )
+
+      insert(:enrichment_rule,
+        source: source,
+        conditions: [
+          %{"path" => "m.user_id", "predicate" => "exists"},
+          %{"path" => "m.env", "predicate" => "not_equals", "value" => "prod"}
+        ],
+        set_fields: %{"debug_user" => true}
+      )
+
+      events =
+        for metadata <- [
+              %{"level" => "fatal", "status" => 200},
+              %{"level" => "info", "status" => 503},
+              %{"level" => "info", "status" => 200, "user_id" => 1, "env" => "dev"},
+              %{"level" => "info", "status" => 200, "user_id" => 1, "env" => "prod"}
+            ] do
+          build(:log_event, source: source, metadata: metadata)
+        end
+
+      assert [fatal, unavailable, dev_user, prod_user] =
+               EnrichmentRules.apply_rules(events, source)
+
+      assert fatal.body["page"] == true
+      assert unavailable.body["page"] == true
+      refute Map.has_key?(dev_user.body, "page")
+      assert dev_user.body["debug_user"] == true
+      refute Map.has_key?(prod_user.body, "debug_user")
+    end
+
+    test "not_in with case_insensitive excludes every casing of the listed values",
+         %{source: source} do
+      insert(:enrichment_rule,
+        source: source,
+        conditions: [
+          %{
+            "path" => "m.level",
+            "predicate" => "not_in",
+            "value" => ["error", "fatal"],
+            "case_insensitive" => true
+          }
+        ],
         set_fields: %{"excluded" => true}
       )
 
+      events =
+        for level <- ["ERROR", "eRRor", "Fatal", "info", nil] do
+          build(:log_event, source: source, metadata: %{"level" => level})
+        end
+
+      assert [error, mixed, fatal, info, missing] = EnrichmentRules.apply_rules(events, source)
+      refute Map.has_key?(error.body, "excluded")
+      refute Map.has_key?(mixed.body, "excluded")
+      refute Map.has_key?(fatal.body, "excluded")
+      assert info.body["excluded"] == true
+      assert missing.body["excluded"] == true
+    end
+
+    test "numeric comparisons accept status codes sent as strings", %{source: source} do
       insert(:enrichment_rule,
         source: source,
-        lql_string: "debug_mode:errors_only m.status:<400",
-        set_fields: %{"excluded_status" => true}
+        conditions: [%{"path" => "m.status", "predicate" => "less_than", "value" => 400}],
+        set_fields: %{"excluded" => true}
       )
 
-      info =
-        build(:log_event,
-          source: source,
-          debug_mode: "errors_only",
-          metadata: %{"level" => "info", "status" => 200}
-        )
+      events =
+        for status <- ["200", "500", 200, "abc"] do
+          build(:log_event, source: source, metadata: %{"status" => status})
+        end
 
-      error =
-        build(:log_event,
-          source: source,
-          debug_mode: "errors_only",
-          metadata: %{"level" => "error", "status" => 500}
-        )
-
-      other_project =
-        build(:log_event, source: source, debug_mode: "max", metadata: %{"level" => "info"})
-
-      assert [info, error, other_project] =
-               EnrichmentRules.apply_rules([info, error, other_project], source)
-
-      assert info.body["excluded"] == true
-      assert info.body["excluded_status"] == true
+      assert [ok, error, int_ok, garbage] = EnrichmentRules.apply_rules(events, source)
+      assert ok.body["excluded"] == true
       refute Map.has_key?(error.body, "excluded")
-      refute Map.has_key?(error.body, "excluded_status")
-      refute Map.has_key?(other_project.body, "excluded")
+      assert int_ok.body["excluded"] == true
+      refute Map.has_key?(garbage.body, "excluded")
+    end
+
+    test "@severity_text reads the severity the ClickHouse log mapping derives",
+         %{source: source} do
+      insert(:enrichment_rule,
+        source: source,
+        conditions: [
+          %{"path" => "@severity_text", "predicate" => "not_in", "value" => ["ERROR", "FATAL"]}
+        ],
+        set_fields: %{"excluded" => true}
+      )
+
+      events =
+        for body_fields <- [
+              %{"metadata" => %{"level" => "error"}},
+              %{"severity_text" => "", "metadata" => %{"level" => "error"}},
+              %{"severityText" => "Fatal"},
+              %{"metadata" => %{"parsed" => %{"error_severity" => "ERROR"}}},
+              %{"metadata" => %{"level" => "info"}},
+              %{"severity_text" => "bogus", "metadata" => %{"level" => "error"}},
+              %{}
+            ] do
+          build(:log_event, Map.put(body_fields, :source, source))
+        end
+
+      assert EnrichmentRules.apply_rules(events, source)
+             |> Enum.map(&Map.get(&1.body, "excluded", false)) ==
+               [false, false, false, false, true, true, true]
     end
 
     test "applies matching rules in creation order", %{source: source} do
-      insert(:enrichment_rule,
-        source: source,
-        lql_string: "testing",
-        set_fields: %{"tier" => "first"}
-      )
-
-      insert(:enrichment_rule,
-        source: source,
-        lql_string: "testing",
-        set_fields: %{"tier" => "second"}
-      )
+      insert(:enrichment_rule, source: source, set_fields: %{"tier" => "first"})
+      insert(:enrichment_rule, source: source, set_fields: %{"tier" => "second"})
 
       [event] =
         EnrichmentRules.apply_rules(
@@ -167,7 +264,6 @@ defmodule Logflare.EnrichmentRulesTest do
     test "skips a path that crosses a non-map value", %{source: source} do
       insert(:enrichment_rule,
         source: source,
-        lql_string: "testing",
         set_fields: %{"m.level.nested" => 1, "ok" => 1}
       )
 
@@ -182,14 +278,14 @@ defmodule Logflare.EnrichmentRulesTest do
     end
 
     test "leaves events routed in by another rule unchanged", %{source: source} do
-      insert(:enrichment_rule, source: source, lql_string: "testing")
+      insert(:enrichment_rule, source: source)
       routed = %{build(:log_event, source: source, message: "testing") | via_rule_id: 1}
 
       assert EnrichmentRules.apply_rules([routed], source) == [routed]
     end
 
     test "skips the rules lookup when every event was routed in", %{source: source} do
-      insert(:enrichment_rule, source: source, lql_string: "testing")
+      insert(:enrichment_rule, source: source)
       cache_key = {:compiled_by_source_id, [source.id]}
       routed = %{build(:log_event, source: source, message: "testing") | via_rule_id: 1}
 
@@ -203,7 +299,7 @@ defmodule Logflare.EnrichmentRulesTest do
     end
 
     test "resets cached byte sizes so metering measures the enriched body", %{source: source} do
-      insert(:enrichment_rule, source: source, lql_string: "testing")
+      insert(:enrichment_rule, source: source)
 
       event = LogEvent.cache_sizes(build(:log_event, source: source, message: "testing"))
       [enriched] = EnrichmentRules.apply_rules([event], source)
@@ -220,7 +316,7 @@ defmodule Logflare.EnrichmentRulesTest do
 
       insert(:enrichment_rule,
         source: source,
-        lql_string: "m.level:error",
+        conditions: [%{"path" => "m.level", "predicate" => "equals", "value" => "error"}],
         set_fields: %{"alert" => true}
       )
 

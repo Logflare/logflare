@@ -21,11 +21,6 @@ defmodule Logflare.Sources.SourceRouter.RulesTree do
   @type eq_index() :: %{term() => target() | [target()]}
 
   @type filter_set() :: non_neg_integer()
-  @type buildable_rule() :: %{
-          :id => non_neg_integer(),
-          :lql_filters => [FilterRule.t()],
-          optional(atom()) => any()
-        }
 
   @impl true
   def matching_rules(event, source) do
@@ -212,7 +207,7 @@ defmodule Logflare.Sources.SourceRouter.RulesTree do
 
   You can find more examples by looking at `rules_tree_test.exs`
   """
-  @spec build([buildable_rule()]) :: t()
+  @spec build([Rule.t()]) :: t()
   def build(rules) do
     for rule <- rules,
         filters_num = length(rule.lql_filters),

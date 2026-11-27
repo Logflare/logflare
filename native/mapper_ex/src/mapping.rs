@@ -131,8 +131,22 @@ pub struct InferRule {
 
 #[derive(Debug)]
 pub struct InferCondition {
-    pub path: CompiledPath,
+    pub source: ConditionSource,
     pub predicate: Predicate,
+    /// String comparisons ignore case (`case_insensitive: true`).
+    pub case_insensitive: bool,
+    /// Numeric comparisons also accept binaries holding a number (`coercion: "lenient"`).
+    pub lenient_numbers: bool,
+}
+
+/// Where a condition reads its value: a document path, or the resolved value
+/// of an earlier output field (`from_output`).
+#[derive(Debug)]
+pub enum ConditionSource {
+    Path(CompiledPath),
+    Output(usize),
+    /// Temporary: unresolved field name, converted to `Output(usize)` during compilation.
+    OutputName(String),
 }
 
 #[derive(Debug)]
@@ -148,6 +162,7 @@ pub enum Predicate {
     Equals(PredicateValue),
     NotEquals(PredicateValue),
     In(Vec<PredicateValue>),
+    NotIn(Vec<PredicateValue>),
     IsString,
     IsNumber,
     IsList,
@@ -276,12 +291,16 @@ fn visit_paths(fields: &[CompiledField], mut visitor: impl FnMut(&CompiledPath))
         }
         if let Some(enum8) = &field.enum8_data {
             for rule in &enum8.infer_rules {
-                rule.any
-                    .iter()
-                    .for_each(|condition| visitor(&condition.path));
-                rule.all
-                    .iter()
-                    .for_each(|condition| visitor(&condition.path));
+                rule.any.iter().for_each(|condition| {
+                    if let ConditionSource::Path(path) = &condition.source {
+                        visitor(path)
+                    }
+                });
+                rule.all.iter().for_each(|condition| {
+                    if let ConditionSource::Path(path) = &condition.source {
+                        visitor(path)
+                    }
+                });
             }
         }
     }
@@ -299,12 +318,16 @@ fn visit_paths_mut(fields: &mut [CompiledField], mut visitor: impl FnMut(&mut Co
         }
         if let Some(enum8) = &mut field.enum8_data {
             for rule in &mut enum8.infer_rules {
-                rule.any
-                    .iter_mut()
-                    .for_each(|condition| visitor(&mut condition.path));
-                rule.all
-                    .iter_mut()
-                    .for_each(|condition| visitor(&mut condition.path));
+                rule.any.iter_mut().for_each(|condition| {
+                    if let ConditionSource::Path(path) = &mut condition.source {
+                        visitor(path)
+                    }
+                });
+                rule.all.iter_mut().for_each(|condition| {
+                    if let ConditionSource::Path(path) = &mut condition.source {
+                        visitor(path)
+                    }
+                });
             }
         }
     }
@@ -374,6 +397,8 @@ fn decode_fields<'a>(env: Env<'a>, config: Term<'a>) -> Result<Vec<CompiledField
             })?;
             field.path_source = PathSource::FromOutput(*idx);
         }
+
+        resolve_condition_outputs(&mut field, &name_to_index)?;
 
         let idx = compiled_fields.len();
         name_to_index.insert(field.name.clone(), idx);
@@ -823,6 +848,29 @@ fn decode_filters<'a>(env: Env<'a>, field: Term<'a>) -> Result<Option<StringFilt
 
 // ── Enum8-specific decoders ────────────────────────────────────────────────
 
+fn resolve_condition_outputs(
+    field: &mut CompiledField,
+    name_to_index: &HashMap<String, usize>,
+) -> Result<(), String> {
+    let Some(enum8) = &mut field.enum8_data else {
+        return Ok(());
+    };
+    for rule in &mut enum8.infer_rules {
+        for condition in rule.any.iter_mut().chain(rule.all.iter_mut()) {
+            if let ConditionSource::OutputName(name) = &condition.source {
+                let idx = name_to_index.get(name).ok_or_else(|| {
+                    format!(
+                        "condition from_output '{}' references unknown or later field",
+                        name
+                    )
+                })?;
+                condition.source = ConditionSource::Output(*idx);
+            }
+        }
+    }
+    Ok(())
+}
+
 pub fn decode_enum8_data<'a>(env: Env<'a>, field: Term<'a>) -> Result<Enum8Data, String> {
     let value_map = decode_enum_values(env, field)?;
     if value_map.is_empty() {
@@ -932,18 +980,50 @@ fn decode_conditions<'a>(env: Env<'a>, term: Term<'a>) -> Result<Vec<InferCondit
 }
 
 fn decode_condition<'a>(env: Env<'a>, cond: Term<'a>) -> Result<InferCondition, String> {
-    let path_str =
-        get_string_key(env, cond, "path")?.ok_or_else(|| "condition missing 'path'".to_string())?;
-
-    let path = path::compile(&path_str)
-        .map_err(|e| format!("failed to compile condition path '{}': {}", path_str, e))?;
+    let source = match (
+        get_string_key(env, cond, "path")?,
+        get_string_key(env, cond, "from_output")?,
+    ) {
+        (Some(_), Some(_)) => {
+            return Err("condition must have either 'path' or 'from_output', not both".to_string())
+        }
+        (Some(path_str), None) => ConditionSource::Path(
+            path::compile(&path_str)
+                .map_err(|e| format!("failed to compile condition path '{}': {}", path_str, e))?,
+        ),
+        (None, Some(name)) => ConditionSource::OutputName(name),
+        (None, None) => return Err("condition missing 'path'".to_string()),
+    };
 
     let pred_str = get_string_key(env, cond, "predicate")?
         .ok_or_else(|| "condition missing 'predicate'".to_string())?;
 
     let predicate = parse_predicate(env, cond, &pred_str)?;
 
-    Ok(InferCondition { path, predicate })
+    let case_insensitive = match get_term_key(env, cond, "case_insensitive") {
+        None => false,
+        Some(term) => term
+            .decode::<bool>()
+            .map_err(|_| "case_insensitive must be a boolean".to_string())?,
+    };
+
+    let lenient_numbers = match get_string_key(env, cond, "coercion")?.as_deref() {
+        None | Some("strict") => false,
+        Some("lenient") => true,
+        Some(other) => {
+            return Err(format!(
+                "condition coercion must be 'strict' or 'lenient', got '{}'",
+                other
+            ))
+        }
+    };
+
+    Ok(InferCondition {
+        source,
+        predicate,
+        case_insensitive,
+        lenient_numbers,
+    })
 }
 
 fn parse_predicate<'a>(env: Env<'a>, cond: Term<'a>, pred_str: &str) -> Result<Predicate, String> {
@@ -977,6 +1057,10 @@ fn parse_predicate<'a>(env: Env<'a>, cond: Term<'a>, pred_str: &str) -> Result<P
         "in" => {
             let vals = get_comparison_values(env, cond)?;
             Ok(Predicate::In(vals))
+        }
+        "not_in" => {
+            let vals = get_comparison_values(env, cond)?;
+            Ok(Predicate::NotIn(vals))
         }
         other => Err(format!("unknown predicate: {}", other)),
     }

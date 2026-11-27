@@ -4,6 +4,7 @@ defmodule Logflare.ContextCache.GossipTest do
   alias Logflare.Billing
   alias Logflare.ContextCache
   alias Logflare.ContextCache.Tombstones
+  alias Logflare.EnrichmentRules
   alias Logflare.Sources
   alias Logflare.Sources.Catalog
 
@@ -60,6 +61,15 @@ defmodule Logflare.ContextCache.GossipTest do
 
       assert_receive {[:logflare, :context_cache_gossip, :multicast, :stop], ^telemetry_ref,
                       _measurements, %{action: :ignore, cache: Catalog.Cache, key: :catalog}}
+    end
+
+    test "does not gossip compiled enrichment rules", %{telemetry_ref: telemetry_ref} do
+      cache_key = {:compiled_by_source_id, [123]}
+      ContextCache.Gossip.multicast(EnrichmentRules.Cache, cache_key, %{mapping: make_ref()})
+
+      assert_receive {[:logflare, :context_cache_gossip, :multicast, :stop], ^telemetry_ref,
+                      _measurements,
+                      %{cache: EnrichmentRules.Cache, key: ^cache_key, action: :ignore}}
     end
 
     test "does not multicast derived user plans", %{telemetry_ref: telemetry_ref} do

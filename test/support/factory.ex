@@ -140,12 +140,12 @@ defmodule Logflare.Factory do
   end
 
   def enrichment_rule_factory(attrs) do
-    lql = Map.get(attrs, :lql_string, "testing")
-    {:ok, lql_filters} = Lql.Parser.parse(lql)
-
     %EnrichmentRule{
-      lql_string: lql,
-      lql_filters: lql_filters,
+      match: Map.get(attrs, :match, :all),
+      conditions:
+        Map.get(attrs, :conditions, [
+          %{"path" => "event_message", "predicate" => "equals", "value" => "testing"}
+        ]),
       set_fields: Map.get(attrs, :set_fields, %{"enriched" => true}),
       source_id: attrs[:source_id],
       source: attrs[:source]

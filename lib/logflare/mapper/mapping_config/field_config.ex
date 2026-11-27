@@ -216,10 +216,21 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
   | `"equals"`       | Exact value match                            | `comparison_value`       |
   | `"not_equals"`   | Value doesn't match                          | `comparison_value`       |
   | `"in"`           | Value is one of a set                        | `comparison_values`      |
+  | `"not_in"`       | Value is nil/missing or not in a set         | `comparison_values`      |
   | `"is_string"`    | Value is a binary/string                     |                          |
   | `"is_number"`    | Value is integer or float                    |                          |
   | `"is_list"`      | Value is a list                              |                          |
   | `"is_map"`       | Value is a map                               |                          |
+
+  ### Condition Options
+
+  A condition reads `:path` from the document, or `:from_output`, the resolved value of an
+  earlier field. Two options change how values compare; both default to off:
+
+    * `:case_insensitive` - string comparisons in `equals`, `not_equals`, `in` and `not_in`
+      ignore case.
+    * `:coercion` - `"lenient"` lets numeric comparisons also accept a string holding a
+      number, so `"500"` is greater than `499`. The default `"strict"` only accepts numbers.
   """
 
   use TypedEctoSchema

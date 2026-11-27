@@ -2,9 +2,10 @@ defmodule LogflareWeb.Api.SourceController do
   use LogflareWeb, :controller
   use OpenApiSpex.ControllerSpecs
 
+  alias Logflare.Backends
+  alias Logflare.EnrichmentRules
   alias Logflare.Sources
   alias Logflare.SourceSchemas
-  alias Logflare.Backends
   alias LogflareWeb.OpenApi.Accepted
   alias LogflareWeb.OpenApi.Created
   alias LogflareWeb.OpenApi.List
@@ -27,7 +28,7 @@ defmodule LogflareWeb.Api.SourceController do
 
   def index(%{assigns: %{user: user}} = conn, _) do
     sources = Sources.list_sources_by_user(user.id) |> Sources.preload_for_dashboard()
-    json(conn, sources)
+    json(conn, with_enrichment_rules(sources))
   end
 
   operation(:show,
@@ -42,7 +43,7 @@ defmodule LogflareWeb.Api.SourceController do
   def show(%{assigns: %{user: user}} = conn, %{"token" => token}) do
     with {:ok, source} <- Sources.fetch_source_by(token: token, user_id: user.id) do
       source = Sources.preload_defaults(source)
-      json(conn, source)
+      json(conn, with_enrichment_rules(source))
     end
   end
 
@@ -57,12 +58,14 @@ defmodule LogflareWeb.Api.SourceController do
   )
 
   def create(%{assigns: %{user: user}} = conn, params) do
-    with {:ok, source} <- Sources.create_source(params, user) do
+    with :ok <- validate_enrichment_rules(params),
+         {:ok, source} <- Sources.create_source(params, user),
+         {:ok, _rules} <- replace_enrichment_rules(source, params) do
       source = Sources.preload_defaults(source)
 
       conn
       |> put_status(201)
-      |> json(source)
+      |> json(with_enrichment_rules(source))
     end
   end
 
@@ -80,7 +83,9 @@ defmodule LogflareWeb.Api.SourceController do
 
   def update(%{assigns: %{user: user}} = conn, %{"token" => token} = params) do
     with {:ok, source} <- Sources.fetch_source_by(token: token, user_id: user.id),
-         {:ok, source} <- Sources.update_source_by_user(source, params) do
+         :ok <- validate_enrichment_rules(params),
+         {:ok, source} <- Sources.update_source_by_user(source, params),
+         {:ok, _rules} <- replace_enrichment_rules(source, params) do
       source = Sources.preload_defaults(source)
 
       conn
@@ -91,9 +96,34 @@ defmodule LogflareWeb.Api.SourceController do
         %{method: "PUT"} ->
           conn
           |> put_status(200)
-          |> json(source)
+          |> json(with_enrichment_rules(source))
       end
     end
+  end
+
+  defp validate_enrichment_rules(%{"enrichment_rules" => rules}),
+    do: EnrichmentRules.validate_params(rules)
+
+  defp validate_enrichment_rules(_params), do: :ok
+
+  defp replace_enrichment_rules(source, %{"enrichment_rules" => rules}),
+    do: EnrichmentRules.replace_for_source(source, rules)
+
+  defp replace_enrichment_rules(_source, _params), do: {:ok, :unchanged}
+
+  defp with_enrichment_rules(sources) when is_list(sources) do
+    rules = sources |> Enum.map(& &1.id) |> EnrichmentRules.list_by_source_ids()
+    Enum.map(sources, &put_enrichment_rules(&1, Map.get(rules, &1.id, [])))
+  end
+
+  defp with_enrichment_rules(source),
+    do: put_enrichment_rules(source, EnrichmentRules.list_by_source_id(source.id))
+
+  defp put_enrichment_rules(source, rules) do
+    source
+    |> Jason.encode!()
+    |> Jason.decode!()
+    |> Map.put("enrichment_rules", Enum.map(rules, &EnrichmentRules.to_api/1))
   end
 
   operation(:delete,

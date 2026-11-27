@@ -134,6 +134,9 @@ defmodule Logflare.ContextCache.Gossip do
 
   defp do_multicast(Logflare.Billing.Cache, {:get_plan_by_user, _args}, _value), do: :ignore
 
+  # Compiled mappings hold node-local NIF resources that cannot be used on another node
+  defp do_multicast(Logflare.EnrichmentRules.Cache, _key, _value), do: :ignore
+
   defp do_multicast(cache, key, value) when is_atom(cache) do
     %{enabled: enabled, ratio: ratio, max_nodes: max_nodes} =
       Application.fetch_env!(:logflare, :context_cache_gossip)
