@@ -125,6 +125,9 @@ defmodule Logflare.Mixfile do
       {:uuidv7, "~> 1.0"},
       {:deep_merge, "~> 1.0"},
       {:number, "~> 1.0.0"},
+      # number and poison still declare decimal ~> 2, but only call Decimal functions that 3.x
+      # keeps (new, from_float, round, to_string, to_integer, compare, div).
+      {:decimal, "~> 3.1 and >= 3.1.2", override: true},
       {:timex, "~> 3.1"},
       {:typed_struct, "~> 0.1", runtime: false},
       {:lqueue, "~> 1.1"},
@@ -189,16 +192,16 @@ defmodule Logflare.Mixfile do
       {:google_gax, github: "Logflare/elixir-google-gax", ref: "72d94c9", override: true},
 
       # Ecto
-      {:ecto, "~> 3.13"},
-      {:ecto_sql, "~> 3.13"},
+      {:ecto, "~> 3.14 and >= 3.14.3"},
+      {:ecto_sql, "~> 3.14"},
       {:typed_ecto_schema, "~> 0.4.3", runtime: false},
 
       # ClickHouse
-      {:ch, "~> 0.5"},
+      {:ch, "~> 0.9"},
       {:nimble_pool, "~> 1.0"},
 
       # DataFrames
-      {:explorer, "~> 0.11.1"},
+      {:explorer, "~> 0.13"},
 
       # S3
       {:ex_aws, "~> 2.8"},
@@ -229,7 +232,7 @@ defmodule Logflare.Mixfile do
 
       # Billing
       {:stripity_stripe, "~> 3.3"},
-      {:money, "~> 1.14"},
+      {:money, "~> 1.15"},
 
       # Utils
       {:recase, "~> 0.7.0"},

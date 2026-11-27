@@ -16,8 +16,12 @@ defmodule LogflareWeb.AccessTokensLive.ResourcePermission do
   def changeset(permission, attrs) do
     permission
     |> cast(attrs, [:enabled, :mode, :selected_ids],
-      empty_values: [fn value, type -> type == :integer and value == "" end]
+      trim_values: &blank_integer_to_empty/2,
+      empty_values: [:blank]
     )
     |> validate_required([:enabled, :mode])
   end
+
+  defp blank_integer_to_empty(:integer, ""), do: :blank
+  defp blank_integer_to_empty(_type, value), do: value
 end
