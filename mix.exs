@@ -89,7 +89,7 @@ defmodule Logflare.Mixfile do
       {:phoenix, "~> 1.8.0"},
       {:phoenix_html, "~> 4.0"},
       {:phoenix_html_helpers, "~> 1.0"},
-      {:phoenix_live_view, "~> 1.0.0"},
+      {:phoenix_live_view, "~> 1.1.32"},
       {:phoenix_view, "~> 2.0"},
       {:phoenix_pubsub, "~> 2.1"},
       {:phoenix_ecto, "~> 4.4"},
@@ -160,7 +160,8 @@ defmodule Logflare.Mixfile do
       # Test
       {:mix_test_watch, "~> 1.0", only: [:dev, :test], runtime: false},
       {:phoenix_test, "~> 0.9.1", only: :test, runtime: false},
-      {:phoenix_test_playwright, "~> 0.11.1", only: :test, runtime: false},
+      {:fluffy, "~> 0.9.0-rc.7", only: :test},
+      {:playwright, "~> 1.65.0-rc.6", hex: :playwright_ex, only: :test},
       {:mimic, "~> 2.0", only: [:dev, :test]},
       {:stream_data, "~> 1.2.0", only: [:dev, :test]},
 

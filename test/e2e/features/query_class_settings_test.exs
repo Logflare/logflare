@@ -1,12 +1,13 @@
 defmodule E2e.Features.QueryClassSettingsTest do
   use Logflare.FeatureCase, async: false
 
+  import Fluffy.Playwright, only: [focus: 2, new_page: 1, switch_page: 2]
+
+  alias Fluffy.Event
   alias Logflare.Backends
   alias Logflare.Repo
   alias Logflare.SingleTenant
-  alias PhoenixTest.Playwright
-  alias PlaywrightEx.BrowserContext
-  alias PlaywrightEx.Frame
+  alias Playwright.Dialog
 
   @cache_key "read_from_filesystem_cache_if_exists_otherwise_bypass_cache"
 
@@ -32,31 +33,26 @@ defmodule E2e.Features.QueryClassSettingsTest do
   end
 
   test "backend editor validates, saves and reloads query-class policy", %{
-    conn: conn,
+    session: session,
     backend: backend
   } do
-    session =
-      conn
-      |> visit(~p"/backends/#{backend.id}/edit")
-      |> assert_has(".phx-connected #query-class-settings-form")
-      |> click("#query-class-api_paid-toggle")
-      |> fill_in(policy_input("api_paid", "max_threads"), "Max threads", with: "4.0")
-      |> click_button("Save query-class settings")
-      |> assert_has("#query-class-settings-error", text: "require a default")
-      |> assert_has("#query-class-api_paid-toggle[aria-expanded='true']")
-      |> assert_has("#{policy_input("api_paid", "max_threads")}[value='4.0']")
+    session
+    |> visit(~p"/backends/#{backend.id}/edit")
+    |> click(class_toggle("api_paid"))
+    |> fill(policy_input("api_paid", "max_threads"), "4.0")
+    |> click(save_button())
+    |> assert(contain_text(by_css("#query-class-settings-error"), "require a default"))
+    |> assert(attribute(class_toggle("api_paid"), "aria-expanded", "true"))
+    |> assert(value(policy_input("api_paid", "max_threads"), "4.0"))
 
     assert Backends.get_backend(backend.id).config[:query_class_settings] in [nil, %{}]
 
-    session =
-      session
-      |> fill_in(policy_input("default", "priority"), "Priority", with: "5")
-      |> fill_in(policy_input("default", "max_execution_time"), "Max execution time (seconds)",
-        with: ".5"
-      )
-      |> fill_in(policy_input("api_paid", "priority"), "Priority", with: "10")
-      |> click_button("Save query-class settings")
-      |> assert_has("[role=status]", text: "Query-class settings saved")
+    session
+    |> fill(policy_input("default", "priority"), "5")
+    |> fill(policy_input("default", "max_execution_time"), ".5")
+    |> fill(policy_input("api_paid", "priority"), "10")
+    |> click(save_button())
+    |> assert(contain_text(by_role(:status), "Query-class settings saved"))
 
     assert Backends.get_backend(backend.id).config.query_class_settings == %{
              "default" => %{
@@ -69,14 +65,13 @@ defmodule E2e.Features.QueryClassSettingsTest do
 
     session
     |> visit(~p"/backends/#{backend.id}/edit")
-    |> assert_has(".phx-connected #{policy_input("default", "priority")}[value='5']")
-    |> click("#query-class-api_paid-toggle")
-    |> assert_has("#{policy_input("api_paid", "max_threads")}[value='4']")
+    |> assert(value(policy_input("default", "priority"), "5"))
+    |> click(class_toggle("api_paid"))
+    |> assert(value(policy_input("api_paid", "max_threads"), "4"))
   end
 
-  @tag accept_dialogs: true
   test "backend editor resets a class to defaults and disables query-class policy", %{
-    conn: conn,
+    session: session,
     backend: backend,
     owner: owner
   } do
@@ -86,31 +81,29 @@ defmodule E2e.Features.QueryClassSettingsTest do
                "api_paid" => %{"priority" => 10, "max_threads" => 4, @cache_key => 1}
              })
 
-    session =
-      conn
-      |> visit(~p"/backends/#{backend.id}/edit")
-      |> assert_has(".phx-connected #{policy_input("default", "priority")}[value='5']")
-      |> click("#query-class-api_paid-toggle")
-      |> assert_has("#{policy_input("api_paid", "max_threads")}[value='4']")
-      |> assert_has("#query-class-api_paid-cache-override")
-      |> fill_in(policy_input("default", "priority"), "Priority", with: "0")
-      |> fill_in(policy_input("api_paid", "max_threads"), "Max threads", with: "")
-      |> Playwright.press(policy_input("api_paid", "max_threads"), "-")
-      |> assert_has("#{policy_input("api_paid", "max_threads")}:invalid")
-      |> click_button("#query-class-api_paid button[name=reset_class]", "Reset class to defaults")
-      |> assert_has("[role=status]", text: "Class reset in this draft")
-      |> assert_has("#{policy_input("default", "priority")}[value='0']:invalid")
-      |> assert_has("#{policy_input("api_paid", "max_threads")}:valid")
-      |> refute_has("#query-class-api_paid-cache-override")
+    session
+    |> visit(~p"/backends/#{backend.id}/edit")
+    |> assert(value(policy_input("default", "priority"), "5"))
+    |> click(class_toggle("api_paid"))
+    |> assert(value(policy_input("api_paid", "max_threads"), "4"))
+    |> assert(visible(by_css("#query-class-api_paid-cache-override")))
+    |> fill(policy_input("default", "priority"), "0")
+    |> fill(policy_input("api_paid", "max_threads"), "")
+    |> press(policy_input("api_paid", "max_threads"), "-")
+    |> assert(visible(invalid(policy_input("api_paid", "max_threads"))))
+    |> click(by_role(class_section("api_paid"), :button, name: "Reset class to defaults"))
+    |> assert(contain_text(by_role(:status), "Class reset in this draft"))
+    |> assert(value(invalid(policy_input("default", "priority")), "0"))
+    |> assert(visible(valid(policy_input("api_paid", "max_threads"))))
+    |> refute(visible(by_css("#query-class-api_paid-cache-override")))
 
     assert Backends.get_backend(backend.id).config.query_class_settings["api_paid"][@cache_key] ==
              1
 
-    session =
-      session
-      |> fill_in(policy_input("default", "priority"), "Priority", with: "6")
-      |> click_button("Save query-class settings")
-      |> assert_has("[role=status]", text: "Query-class settings saved")
+    session
+    |> fill(policy_input("default", "priority"), "6")
+    |> click(save_button())
+    |> assert(contain_text(by_role(:status), "Query-class settings saved"))
 
     policy = Backends.get_backend(backend.id).config.query_class_settings
     refute Map.has_key?(policy, "api_paid")
@@ -119,18 +112,19 @@ defmodule E2e.Features.QueryClassSettingsTest do
     priority = policy_input("default", "priority")
 
     session
-    |> fill_in(priority, "Priority", with: "")
-    |> Playwright.press(priority, "-")
-    |> assert_has("#{priority}:invalid")
-    |> click_button("Disable query-class policy")
-    |> assert_has("[role=status]", text: "Query-class policy disabled")
-    |> assert_has("#{priority}:valid")
+    |> fill(priority, "")
+    |> press(priority, "-")
+    |> assert(visible(invalid(priority)))
+    |> once(Event.dialog(), &Dialog.accept!/1)
+    |> click(by_role(:button, name: "Disable query-class policy"))
+    |> assert(contain_text(by_role(:status), "Query-class policy disabled"))
+    |> assert(visible(valid(priority)))
 
     assert Backends.get_backend(backend.id).config.query_class_settings == %{}
   end
 
   test "reconnecting discards a draft based on an older policy", %{
-    conn: conn,
+    session: session,
     backend: backend,
     owner: owner
   } do
@@ -143,38 +137,36 @@ defmodule E2e.Features.QueryClassSettingsTest do
                "default" => %{"priority" => 5, "max_threads" => 12}
              })
 
-    draft =
-      conn
-      |> visit(path)
-      |> assert_has(".phx-connected #{threads}[value='12']")
-      |> fill_in(priority, "Priority", with: "6")
-      |> evaluate("new Promise(resolve => window.liveSocket.disconnect(() => resolve(true)))")
+    session
+    |> visit(path)
+    |> assert(value(threads, "12"))
+    |> fill(priority, "6")
 
-    unwrap(draft, fn %{context_id: context_id} ->
-      assert {:ok, page} = BrowserContext.new_page(context_id, timeout: 5_000)
+    # Nothing in the UI drops the LiveView connection, so the test drives `liveSocket` itself.
+    Fluffy.Playwright.evaluate(
+      session,
+      "new Promise(resolve => window.liveSocket.disconnect(() => resolve(true)))"
+    )
 
-      Playwright.build(%{
-        context_id: context_id,
-        page_id: page.guid,
-        frame_id: page.main_frame.guid,
-        tracing_id: nil,
-        config: []
-      })
-      |> visit(path)
-      |> assert_has(".phx-connected #query-class-settings-form")
-      |> fill_in(threads, "Max threads", with: "4")
-      |> click_button("Save query-class settings")
-      |> assert_has("[role=status]", text: "Query-class settings saved")
-    end)
+    # Another tab saves a newer policy while the draft is offline.
+    session
+    |> switch_page(new_page(session))
+    |> visit(path)
+    |> fill(threads, "4")
+    |> click(save_button())
+    |> assert(contain_text(by_role(:status), "Query-class settings saved"))
 
-    draft
-    |> evaluate("document.querySelector(#{Jason.encode!(threads)}).focus()")
-    |> assert_has("#{threads}:focus")
-    |> evaluate("window.liveSocket.connect()")
-    |> assert_has(".phx-connected #{threads}[value='4']")
-    |> assert_has("#{priority}[value='5']")
-    |> click_button("Save query-class settings")
-    |> assert_has("[role=status]", text: "Query-class settings saved")
+    session
+    |> focus(threads)
+    |> assert(focused(threads))
+
+    Fluffy.Playwright.evaluate(session, "window.liveSocket.connect()")
+
+    session
+    |> assert(value(threads, "4"))
+    |> assert(value(priority, "5"))
+    |> click(save_button())
+    |> assert(contain_text(by_role(:status), "Query-class settings saved"))
 
     assert Backends.get_backend(backend.id).config.query_class_settings == %{
              "default" => %{"priority" => 5, "max_threads" => 4}
@@ -182,34 +174,36 @@ defmodule E2e.Features.QueryClassSettingsTest do
   end
 
   test "saving reveals and focuses an invalid input in a collapsed class", %{
-    conn: conn,
+    session: session,
     backend: backend,
     owner: owner
   } do
     policy = %{"default" => %{"priority" => 5}, "api_paid" => %{"max_threads" => 4}}
     assert {:ok, _} = Backends.configure_query_class_settings(owner, backend, policy)
 
-    conn
+    session
     |> visit(~p"/backends/#{backend.id}/edit")
-    |> assert_has(".phx-connected #query-class-settings-form")
-    |> click("#query-class-api_paid-toggle")
-    |> fill_in(policy_input("api_paid", "max_threads"), "Max threads", with: "0")
-    |> click("#query-class-api_paid-toggle")
-    |> assert_has("#query-class-api_paid-toggle[aria-expanded='false']")
-    |> click_button("Save query-class settings")
-    |> assert_has("#query-class-api_paid-toggle[aria-expanded='true']", timeout: 2_000)
-    |> assert_has("#{policy_input("api_paid", "max_threads")}:invalid:focus")
+    |> click(class_toggle("api_paid"))
+    |> fill(policy_input("api_paid", "max_threads"), "0")
+    |> click(class_toggle("api_paid"))
+    |> assert(attribute(class_toggle("api_paid"), "aria-expanded", "false"))
+    |> click(save_button())
+    |> assert(attribute(class_toggle("api_paid"), "aria-expanded", "true"))
+    |> assert(focused(invalid(policy_input("api_paid", "max_threads"))))
 
     assert Backends.get_backend(backend.id).config.query_class_settings == policy
   end
 
-  @spec policy_input(String.t(), String.t()) :: String.t()
-  defp policy_input(class, key), do: "input[name='query_class_settings[#{class}][#{key}]']"
+  defp class_section(class), do: by_css("#query-class-#{class}")
 
-  @spec evaluate(PhoenixTest.Playwright.t(), String.t()) :: PhoenixTest.Playwright.t()
-  defp evaluate(session, expression) do
-    unwrap(session, fn %{frame_id: frame_id} ->
-      assert {:ok, _} = Frame.evaluate(frame_id, expression: expression, timeout: 5_000)
-    end)
-  end
+  defp class_toggle(class), do: by_css("#query-class-#{class}-toggle")
+
+  defp policy_input(class, key),
+    do: by_css("input[name='query_class_settings[#{class}][#{key}]']")
+
+  defp save_button, do: by_role(:button, name: "Save query-class settings")
+
+  defp invalid(locator), do: and_(locator, by_css(":invalid"))
+
+  defp valid(locator), do: and_(locator, by_css(":valid"))
 end

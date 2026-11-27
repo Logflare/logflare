@@ -109,3 +109,5 @@ flake.lock
 /tmp
 
 .plans/
+
+/test-results/

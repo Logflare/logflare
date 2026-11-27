@@ -6,7 +6,9 @@ defmodule E2e.Features.LogsSearchTest do
   alias Logflare.NaturalLanguageLql.AnthropicClient
   alias Logflare.Repo
   alias Logflare.SingleTenant
-  alias PlaywrightEx.Frame
+
+  import Fluffy.Playwright,
+    only: [bounding_box: 2, dispatch_event: 4, scroll_into_view_if_needed: 2]
 
   setup do
     start_supervised!(Logflare.SystemMetrics.AllLogsLogged)
@@ -58,59 +60,47 @@ defmodule E2e.Features.LogsSearchTest do
     end
 
     test "searches logs from the search page", %{
-      conn: conn,
+      session: session,
       source: source,
       matching_message: matching_message,
       non_matching_message: non_matching_message
     } do
-      conn
-      |> visit(~p"/auth/login/single_tenant")
-      |> assert_path(~p"/dashboard")
+      session
+      |> log_in()
       |> visit(
         ~p"/sources/#{source.id}/search?#{%{querystring: "event_message:#{matching_message}"}}"
       )
-      |> assert_has("#logs-list-container", text: matching_message)
-      |> refute_has("#logs-list-container", text: non_matching_message)
+      |> assert(contain_text(by_css("#logs-list-container"), matching_message))
+      |> refute(contain_text(by_css("#logs-list-container"), non_matching_message))
     end
 
     test "filters timezone options, remembers a selection, and resets to UTC", %{
-      conn: conn,
+      session: session,
       source: source,
       user: user
     } do
-      conn
-      |> visit(~p"/auth/login/single_tenant")
+      session
+      |> log_in()
       |> visit(~p"/sources/#{source.id}/search?#{%{tz: "Etc/UTC"}}")
-      |> assert_has("#results-actions_search_timezone-combobox input",
-        label: "Display timezone",
-        value: "Etc/UTC (+00:00)"
-      )
-      |> fill_in("#results-actions_search_timezone-combobox input", "Display timezone",
-        with: "Brisbane"
-      )
-      |> assert_has("[role='option']", text: "Australia/Brisbane (+10:00)")
-      |> refute_has("[role='option']", text: "Europe/London")
-      |> click("[role='option']", "Australia/Brisbane (+10:00)")
+      |> assert(value(timezone_combobox(), "Etc/UTC (+00:00)"))
+      |> fill(timezone_combobox(), "Brisbane")
+      |> assert(visible(by_role(:option, name: "Australia/Brisbane (+10:00)")))
+      |> refute(visible(by_role(:option, name: "Europe/London")))
+      |> click(by_role(:option, name: "Australia/Brisbane (+10:00)"))
       |> assert_search_timezone("Australia/Brisbane")
-      |> assert_has("#results-actions_search_timezone-combobox input",
-        label: "Display timezone",
-        value: "Australia/Brisbane (+10:00)"
-      )
-      |> check("Remember")
-      |> assert_has("*", text: "Timezone preference saved")
-      |> refute_has("#results-actions_remember_timezone")
-      |> click_button("UTC")
+      |> assert(value(timezone_combobox(), "Australia/Brisbane (+10:00)"))
+      |> check(by_label("Remember"))
+      |> assert(visible(by_text("Timezone preference saved")))
+      |> refute(visible(by_label("Remember")))
+      |> click(by_role(:button, name: "UTC", exact: true))
       |> assert_search_timezone("Etc/UTC")
-      |> assert_has("#results-actions_search_timezone-combobox input",
-        label: "Display timezone",
-        value: "Etc/UTC (+00:00)"
-      )
+      |> assert(value(timezone_combobox(), "Etc/UTC (+00:00)"))
 
       assert Repo.reload!(user).preferences.timezone == "Australia/Brisbane"
     end
 
     test "Cmd/Ctrl+Enter submits the editor value to AI Assist", %{
-      conn: conn,
+      session: session,
       source: source
     } do
       parent = self()
@@ -132,48 +122,42 @@ defmodule E2e.Features.LogsSearchTest do
          }}
       end)
 
-      conn =
-        conn
-        |> visit(~p"/auth/login/single_tenant")
-        |> assert_path(~p"/dashboard")
-        |> visit(~p"/sources/#{source.id}/search?#{%{querystring: "warning"}}")
-        |> assert_has("#ai-search-button")
-        |> fill_in("metadata.level", with: " error ")
-        |> wait_for_selector(".monaco-editor textarea.inputarea")
-
-      conn = press(conn, ".monaco-editor textarea.inputarea", "Control+Enter")
+      session
+      |> log_in()
+      |> visit(~p"/sources/#{source.id}/search?#{%{querystring: "warning"}}")
+      |> assert(visible(ai_assist_button()))
+      |> fill(by_label("metadata.level"), " error ")
+      |> press(editor(), "ControlOrMeta+Enter")
 
       assert_receive {:anthropic_prompt, prompt}, 5_000
       assert prompt =~ "<request>\nwarning"
       assert prompt =~ "\n</request>"
 
-      querystring = wait_for_editor_querystring(conn, ~s|~"(?i)error"|)
-      assert querystring =~ ~s|~"(?i)error"|
-      assert querystring =~ "m.level:error"
+      session
+      |> assert_editor_querystring(~s|~"(?i)error"|)
+      |> assert_editor_querystring("m.level:error")
     end
 
     test "Enter submits a regular search from the editor", %{
-      conn: conn,
+      session: session,
       source: source,
       non_matching_message: non_matching_message
     } do
       stub(AnthropicClient, :configured?, fn -> true end)
       reject(AnthropicClient, :generate, 1)
 
-      conn =
-        conn
-        |> visit(~p"/auth/login/single_tenant")
-        |> assert_path(~p"/dashboard")
-        |> visit(~p"/sources/#{source.id}/search?#{%{querystring: "warning"}}")
-        |> wait_for_selector(".monaco-editor textarea.inputarea")
-        |> fill_editor("event_message:#{non_matching_message}")
-        |> press(".monaco-editor textarea.inputarea", "Enter")
+      query = "event_message:#{non_matching_message}"
 
-      assert wait_for_editor_querystring(conn, non_matching_message) =~ non_matching_message
+      session
+      |> log_in()
+      |> visit(~p"/sources/#{source.id}/search?#{%{querystring: "warning"}}")
+      |> fill(editor(), query)
+      |> press(editor(), "Enter")
+      |> assert_editor_querystring(non_matching_message)
     end
 
     test "Tab focuses the AI Assist button and Enter activates it", %{
-      conn: conn,
+      session: session,
       source: source
     } do
       parent = self()
@@ -184,14 +168,12 @@ defmodule E2e.Features.LogsSearchTest do
         {:error, :unavailable}
       end)
 
-      conn
-      |> visit(~p"/auth/login/single_tenant")
-      |> assert_path(~p"/dashboard")
+      session
+      |> log_in()
       |> visit(~p"/sources/#{source.id}/search?#{%{querystring: "warning"}}")
-      |> wait_for_selector(".monaco-editor textarea.inputarea")
-      |> press(".monaco-editor textarea.inputarea", "Tab")
-      |> wait_for_selector("#ai-search-button:focus")
-      |> press("#ai-search-button", "Enter")
+      |> press(editor(), "Tab")
+      |> assert(focused(ai_assist_button()))
+      |> press(ai_assist_button(), "Enter")
 
       assert_receive {:anthropic_prompt, prompt}, 5_000
       assert prompt =~ "<request>\nwarning"
@@ -199,7 +181,7 @@ defmodule E2e.Features.LogsSearchTest do
     end
 
     test "loads the remaining previous page of search results", %{
-      conn: conn,
+      session: session,
       source: source,
       user: user
     } do
@@ -213,22 +195,21 @@ defmodule E2e.Features.LogsSearchTest do
       assert {:ok, 105} = Backends.ingest_logs(log_events, source)
       assert :ok = TestUtils.wait_for_postgres_events(source, user, pagination_message, 105)
 
-      conn
-      |> visit(~p"/auth/login/single_tenant")
-      |> assert_path(~p"/dashboard")
+      session
+      |> log_in()
       |> visit(
         ~p"/sources/#{source.id}/search?#{%{querystring: ~s|event_message:~\"^#{pagination_message}-\"|, tailing?: false}}"
       )
-      |> assert_has("#logs-list li[data-event-id]", count: 100)
-      |> click("#load-more-events-top")
-      |> assert_has("#logs-list li[data-event-id]", count: 105)
-      |> assert_has("#load-more-events-top:not([disabled])")
+      |> assert(count(log_rows(), 100))
+      |> click(load_more_top_button())
+      |> assert(count(log_rows(), 105))
+      |> assert(enabled(load_more_top_button()))
     end
 
     @scroll_anchor_tail "at Module.handleRequest (/srv/app/lib/handler.js:142:19) -> at Router.dispatch (/srv/app/node_modules/router/index.js:88:7) -> at Layer.handle (/srv/app/node_modules/router/layer.js:95:5)"
 
     test "an older page keeps the row the reader is on in place", %{
-      conn: conn,
+      session: session,
       source: source,
       user: user
     } do
@@ -245,331 +226,136 @@ defmodule E2e.Features.LogsSearchTest do
       assert {:ok, 150} = Backends.ingest_logs(log_events, source)
       assert :ok = TestUtils.wait_for_postgres_events(source, user, prefix, 150)
 
-      conn =
-        conn
-        |> visit(~p"/auth/login/single_tenant")
-        |> assert_path(~p"/dashboard")
-        |> visit(
-          ~p"/sources/#{source.id}/search?#{%{querystring: ~s|event_message:~\"^#{prefix}-\"|, tailing?: false}}"
+      session
+      |> log_in()
+      |> visit(
+        ~p"/sources/#{source.id}/search?#{%{querystring: ~s|event_message:~\"^#{prefix}-\"|, tailing?: false}}"
+      )
+      |> assert(count(log_rows(), 100))
+      |> assert(enabled(load_more_top_button()))
+      |> scroll_into_view_if_needed(load_more_top_button())
+
+      # The oldest row sits right below the button, so it is the first one the reader sees.
+      event_id = get_attribute(session, first(log_rows()), "data-event-id")
+      anchor = by_css(~s|#logs-list li[data-event-id="#{event_id}"]|)
+      before = bounding_box(session, anchor)
+
+      assert before.y > 0, "no row was visible to anchor on"
+
+      session
+      |> click(load_more_top_button())
+      |> assert(count(log_rows(), 150))
+      |> assert(
+        poll(
+          fn session -> round(bounding_box(session, anchor).y - before.y) end,
+          fn drift ->
+            assert abs(drift) <= 4,
+                   "the reader's row moved #{drift}px. An older page must not move the viewport."
+          end
         )
-        |> assert_has("#logs-list li[data-event-id]", count: 100)
-        |> assert_has("#load-more-events-top:not([disabled])")
-        |> scroll_top_button_into_view()
-
-      before = read_anchor(conn)
-
-      assert before.top > 0, "no row was visible to anchor on"
-
-      conn
-      |> click("#load-more-events-top")
-      |> assert_has("#logs-list li[data-event-id]", count: 150)
-      |> settle_scroll()
-
-      after_click = read_anchor(conn, before.id)
-
-      assert after_click.present, "the anchor row left the page"
-
-      drift = round(after_click.top - before.top)
-
-      assert abs(drift) <= 4,
-             "the reader's row moved #{drift}px. An older page must not move the viewport."
+      )
     end
 
-    test "shows a missing field error from the search page", %{conn: conn, source: source} do
-      conn
-      |> visit(~p"/auth/login/single_tenant")
-      |> assert_path(~p"/dashboard")
+    test "shows a missing field error from the search page", %{session: session, source: source} do
+      session
+      |> log_in()
       |> visit(~p"/sources/#{source.id}/search?#{%{querystring: "s:nonexistent"}}")
-      |> wait_for_selector(".message .alert", state: "attached")
-      |> assert_has(".message .alert p", text: "nonexistent")
-      |> assert_has(".message .alert p", text: "does not exist")
+      |> assert(contain_text(by_css(".message .alert p"), "nonexistent"))
+      |> assert(contain_text(by_css(".message .alert p"), "does not exist"))
     end
 
     test "cancelling the datepicker resumes tailing", %{
-      conn: conn,
+      session: session,
       source: source
     } do
-      conn
-      |> visit(~p"/auth/login/single_tenant")
-      |> assert_path(~p"/dashboard")
+      session
+      |> log_in()
       |> visit(~p"/sources/#{source.id}/search")
-      |> assert_has(".live-pause", text: "Pause")
-      |> click("#daterangepicker")
-      |> wait_for_selector(".daterangepicker", state: "attached")
+      |> assert(contain_text(live_pause_button(), "Pause"))
+      |> click(by_css("#daterangepicker"))
       |> click_date_range_cancel()
-      |> assert_has(".live-pause", text: "Pause")
+      |> assert(contain_text(live_pause_button(), "Pause"))
     end
 
     test "applying a preset date range updates the search query", %{
-      conn: conn,
+      session: session,
       source: source
     } do
-      conn =
-        conn
-        |> visit(~p"/auth/login/single_tenant")
-        |> assert_path(~p"/dashboard")
-        |> visit(~p"/sources/#{source.id}/search")
-        |> click("span", "DateTime")
-        |> click_date_range_preset("Last 15 Minutes")
-        |> assert_has(".live-pause", text: "Live")
-
-      querystring =
-        wait_for_editor_querystring(conn, "t:last@15")
-
-      assert querystring =~ "t:last@15"
+      session
+      |> log_in()
+      |> visit(~p"/sources/#{source.id}/search")
+      |> click(by_text("DateTime", exact: true))
+      |> click_date_range_preset("Last 15 Minutes")
+      |> assert(contain_text(live_pause_button(), "Live"))
+      |> assert_editor_querystring("t:last@15")
     end
 
     test "changing chart period updates the search query", %{
-      conn: conn,
+      session: session,
       source: source
     } do
-      conn =
-        conn
-        |> visit(~p"/auth/login/single_tenant")
-        |> assert_path(~p"/dashboard")
-        |> visit(~p"/sources/#{source.id}/search")
-        |> wait_for_selector("#source-logs-search-list")
-
-      wait_for_editor_querystring(conn, "")
-
-      conn
-      |> unwrap(fn %{frame_id: frame_id} ->
-        {:ok, _} =
-          PlaywrightEx.Frame.select_option(frame_id,
-            selector: "#search_chart_period",
-            options: [%{label: "hour"}],
-            timeout: 5_000
-          )
-      end)
-
-      querystring =
-        wait_for_editor_querystring(conn, "t::hour")
-
-      assert querystring =~ "c:group_by(t::hour)"
+      session
+      |> log_in()
+      |> visit(~p"/sources/#{source.id}/search")
+      |> assert(visible(by_css("#source-logs-search-list")))
+      |> assert_editor_querystring(~r/./)
+      |> select_option(by_css("#search_chart_period"), "hour")
+      |> assert_editor_querystring("c:group_by(t::hour)")
     end
 
     test "clicking a rendered chart bar narrows the search datetime", %{
-      conn: conn,
+      session: session,
       source: source,
       user: user,
       matching_message: matching_message
     } do
-      bar_selector = ~s|.recharts-bar-rectangle [height]:not([height="0"])|
-      chart_selector = ".recharts-wrapper"
+      bar = by_css(~s|.recharts-bar-rectangle [height]:not([height="0"])|)
 
       assert :ok = TestUtils.wait_for_postgres_events(source, user, matching_message, 1)
 
-      conn =
-        conn
-        |> visit(~p"/auth/login/single_tenant")
-        |> assert_path(~p"/dashboard")
-        |> visit(~p"/sources/#{source.id}/search")
-        |> wait_for_selector(bar_selector)
-
-      conn
-      |> unwrap(fn %{frame_id: frame_id} ->
-        {:ok, %{"x" => x, "y" => y}} =
-          Frame.evaluate(frame_id,
-            expression: """
-            ({ barSelector, chartSelector }) => {
-              const bar = document.querySelector(barSelector).getBoundingClientRect()
-              const chart = document.querySelector(chartSelector).getBoundingClientRect()
-
-              return {
-                x: bar.left - chart.left + bar.width / 2,
-                y: bar.top - chart.top + bar.height / 2
-              }
-            }
-            """,
-            is_function: true,
-            arg: %{barSelector: bar_selector, chartSelector: chart_selector},
-            timeout: 5_000
-          )
-
-        {:ok, _} =
-          Frame.click(frame_id,
-            selector: chart_selector,
-            position: %{x: x, y: y},
-            timeout: 5_000
-          )
-      end)
-
-      querystring = wait_for_editor_querystring(conn, "..")
-
-      assert querystring =~ ~r/t:\S+\.\.\S+/
+      session
+      |> log_in()
+      |> visit(~p"/sources/#{source.id}/search")
+      # The bars have `pointer-events="none"`; the chart surface under them takes the click.
+      |> click(first(bar), force: true)
+      |> assert_editor_querystring(~r/t:\S+\.\.\S+/)
     end
   end
 
-  @spec assert_search_timezone(map(), String.t()) :: map()
-  defp assert_search_timezone(conn, timezone) do
-    conn
-    |> unwrap(fn %{frame_id: frame_id} ->
-      {:ok, _} =
-        Frame.wait_for_function(frame_id,
-          expression: """
-          (timezone) =>
-            new URL(window.location.href).searchParams.get("tz") === timezone &&
-            document.querySelector("#results-actions_search_timezone").value === timezone
-          """,
-          is_function: true,
-          arg: timezone,
-          timeout: 5_000
-        )
-    end)
+  @spec assert_search_timezone(Fluffy.Session.t(), String.t()) :: Fluffy.Session.t()
+  defp assert_search_timezone(session, timezone) do
+    session
+    |> assert(page_url(&(URI.decode_query(&1.query || "")["tz"] == timezone)))
+    |> assert(value(by_css("#results-actions_search_timezone"), timezone))
   end
 
-  defp scroll_top_button_into_view(conn) do
-    conn
-    |> unwrap(fn %{frame_id: frame_id} ->
-      {:ok, _} =
-        Frame.evaluate(frame_id,
-          expression: """
-          () => {
-            const button = document.getElementById("load-more-events-top")
-            const target = window.scrollY + button.getBoundingClientRect().top - 300
-            window.scrollTo(0, Math.max(0, Math.round(target)))
-          }
-          """,
-          is_function: true,
-          timeout: 5_000
-        )
-    end)
+  defp click_date_range_preset(session, preset) do
+    trigger_click_event(session, ~s|.daterangepicker .ranges li[data-range-key="#{preset}"]|)
   end
 
-  defp settle_scroll(conn) do
-    conn
-    |> unwrap(fn %{frame_id: frame_id} ->
-      {:ok, _} =
-        Frame.wait_for_function(frame_id,
-          expression: """
-          () => {
-            const y = Math.round(window.scrollY)
-            window.__stableFor = window.__lastY === y ? (window.__stableFor || 0) + 1 : 0
-            window.__lastY = y
-            return window.__stableFor >= 8
-          }
-          """,
-          is_function: true,
-          polling: 100,
-          timeout: 20_000
-        )
-    end)
+  defp click_date_range_cancel(session) do
+    trigger_click_event(session, ".daterangepicker .cancelBtn")
   end
 
-  defp read_anchor(conn, id \\ nil) do
-    ref = make_ref()
-
-    conn
-    |> unwrap(fn %{frame_id: frame_id} ->
-      {:ok, anchor} =
-        Frame.evaluate(frame_id,
-          expression: """
-          ({ id }) => {
-            if (id) {
-              const known = document.getElementById(id)
-              return known
-                ? { id, top: known.getBoundingClientRect().top, present: true }
-                : { id, top: 0, present: false }
-            }
-
-            const middle = window.innerHeight / 2
-            const row = [...document.querySelectorAll("#logs-list li[data-event-id]")]
-              .map((element) => ({ element, top: element.getBoundingClientRect().top }))
-              .filter(({ top }) => top > 0 && top < window.innerHeight)
-              .sort((a, b) => Math.abs(a.top - middle) - Math.abs(b.top - middle))[0]
-
-            return row
-              ? { id: row.element.id, top: row.top, present: true }
-              : { id: null, top: 0, present: false }
-          }
-          """,
-          is_function: true,
-          arg: %{id: id},
-          timeout: 5_000
-        )
-
-      send(self(), {ref, anchor})
-    end)
-
-    assert_receive {^ref, anchor}
-
-    %{id: anchor["id"], top: anchor["top"], present: anchor["present"]}
+  defp trigger_click_event(session, selector) do
+    dispatch_event(session, by_css(selector), "click", %{bubbles: true, cancelable: true})
   end
 
-  def wait_for_selector(conn, selector, opts \\ []) do
-    opts = opts |> Keyword.merge(selector: selector, timeout: 10_000)
+  defp assert_editor_querystring(session, expected) do
+    expected = if is_binary(expected), do: ~r/#{Regex.escape(expected)}/, else: expected
 
-    conn
-    |> unwrap(fn %{frame_id: frame_id} ->
-      Frame.wait_for_selector(frame_id, opts)
-    end)
+    assert(session, attribute(by_css("#lql-editor-hook"), "data-querystring", expected))
   end
 
-  defp click_date_range_preset(conn, preset) do
-    trigger_click_event(conn, ~s|.daterangepicker .ranges li[data-range-key="#{preset}"]|)
-  end
+  defp timezone_combobox, do: by_role(:combobox, name: "Display timezone")
 
-  defp click_date_range_cancel(conn) do
-    trigger_click_event(conn, ".daterangepicker .cancelBtn")
-  end
+  defp editor, do: by_css(".monaco-editor textarea.inputarea")
 
-  defp trigger_click_event(conn, selector) do
-    conn
-    |> unwrap(fn %{frame_id: frame_id} ->
-      {:ok, _event} =
-        Frame.dispatch_event(frame_id,
-          selector: selector,
-          type: "click",
-          event_init: %{bubbles: true, cancelable: true},
-          timeout: 5_000
-        )
-    end)
-  end
+  defp ai_assist_button, do: by_role(:button, name: "AI search assistant")
 
-  defp fill_editor(conn, value) do
-    conn
-    |> unwrap(fn %{frame_id: frame_id} ->
-      Frame.fill(frame_id,
-        selector: ".monaco-editor textarea.inputarea",
-        value: value,
-        timeout: 5_000
-      )
-    end)
-  end
+  defp log_rows, do: by_css("#logs-list li[data-event-id]")
 
-  defp wait_for_editor_querystring(conn, expected_fragment, timeout_ms \\ 10_000) do
-    ref = make_ref()
+  defp load_more_top_button, do: by_css("#load-more-events-top")
 
-    conn
-    |> unwrap(fn %{frame_id: frame_id} ->
-      {:ok, _} =
-        Frame.wait_for_function(frame_id,
-          expression: """
-          ({ expectedFragment }) => {
-            const querystring =
-              document.querySelector("#lql-editor-hook")?.dataset.querystring ?? ""
-
-            if (expectedFragment === "") return querystring !== ""
-
-            return querystring.includes(expectedFragment)
-          }
-          """,
-          is_function: true,
-          arg: %{expectedFragment: expected_fragment},
-          timeout: timeout_ms
-        )
-
-      {:ok, querystring} =
-        Frame.evaluate(
-          frame_id,
-          expression: ~S|document.querySelector("#lql-editor-hook")?.dataset.querystring ?? ""|,
-          timeout: 5_000
-        )
-
-      send(self(), {ref, querystring})
-    end)
-
-    assert_receive {^ref, querystring}
-    querystring
-  end
+  defp live_pause_button, do: by_css(".live-pause")
 end

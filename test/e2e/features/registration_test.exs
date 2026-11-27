@@ -10,10 +10,10 @@ defmodule E2e.Features.RegistrationTest do
   describe "single tenant ui" do
     TestUtils.setup_single_tenant(seed_user: true)
 
-    test "redirect to dashboard", %{conn: conn} do
-      conn
+    test "redirect to dashboard", %{session: session} do
+      session
       |> visit(~p"/")
-      |> assert_path(~p"/dashboard")
+      |> assert(page_url(&(&1.path == ~p"/dashboard")))
     end
   end
 end

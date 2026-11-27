@@ -291,10 +291,10 @@ defmodule LogflareWeb.DashboardLiveTest do
       {:ok, view, _html} = live_with_redirect(conn, ~p"/dashboard")
 
       assert view |> has_element?("[id^=source-#{source.token}-inserts]", "0")
-      assert view |> has_element?("span[id=#{source.token}-rate]", "0/s")
-      assert view |> has_element?("span[id=#{source.token}-avg-rate]", "0")
-      assert view |> has_element?("span[id=#{source.token}-max-rate]", "0")
-      assert view |> has_element?("span[id=#{source.token}-rejected]", "0")
+      assert view |> has_element?("span[id='#{source.token}-rate']", "0/s")
+      assert view |> has_element?("span[id='#{source.token}-avg-rate']", "0")
+      assert view |> has_element?("span[id='#{source.token}-max-rate']", "0")
+      assert view |> has_element?("span[id='#{source.token}-rejected']", "0")
 
       assert view |> element("li[id=source-#{source.token}] [data-title^=Pipelines]") |> render =~
                "0"
@@ -342,17 +342,17 @@ defmodule LogflareWeb.DashboardLiveTest do
       assert view |> element("li[id=source-#{source.token}] [data-title^=Pipelines]") |> render =~
                to_string(buffer)
 
-      assert view |> has_element?("span[id=#{source.token}-rate]", "#{last_rate}/s")
+      assert view |> has_element?("span[id='#{source.token}-rate']", "#{last_rate}/s")
 
       assert view
              |> has_element?(
-               "span[id=#{source.token}-avg-rate]",
+               "span[id='#{source.token}-avg-rate']",
                to_string(avg_rate)
              )
 
       assert view
              |> has_element?(
-               "span[id=#{source.token}-max-rate]",
+               "span[id='#{source.token}-max-rate']",
                to_string(max_rate)
              )
 

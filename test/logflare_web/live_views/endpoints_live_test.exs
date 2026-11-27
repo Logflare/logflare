@@ -502,7 +502,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
       # link back to list, removed from endpoints list
       {:ok, view, _html} = live_with_redirect(conn, ~p"/endpoints?t=#{team.id}")
-      refute has_element?(view, endpoint.name)
+      refute has_element?(view, "*", endpoint.name)
 
       {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}")
       assert has_element?(view, "*", "Endpoint Not Found")
@@ -684,7 +684,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
       assert view |> element(~s|input#run_query[value="#{valid_query}]"|)
 
-      assert has_element?(view, "input[name='run[params][id]'][value='']")
+      assert has_element?(view, "input[name='run[params][id]']:not([value])")
 
       # saves the change
       assert view
@@ -1906,7 +1906,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
   defp assert_query_displayed(view, query) do
     {:ok, formatted_query} = Logflare.Sql.format(query)
 
-    assert has_element?(view, "code", formatted_query)
+    assert has_element?(view, "code", String.replace(formatted_query, ~r/\s+/, " "))
   end
 
   @spec submit_sandbox_lql(Plug.Conn.t(), struct(), String.t()) :: String.t()
