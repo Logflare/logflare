@@ -91,7 +91,8 @@ dev-*
 !CLAUDE.md
 !AGENTS.md
 .cursorrules
-.claude
+.claude/*
+!.claude/skills/
 .treq
 
 # Rust binary artifacts
