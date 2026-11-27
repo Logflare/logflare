@@ -73,12 +73,25 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
     {existing_config,
      %{url: :string, headers: :map, http: :string, gzip: :boolean, format: :string}}
     |> Ecto.Changeset.cast(params, [:url, :headers, :http, :gzip, :format])
-    |> unredact_headers(existing_config)
-    |> unredact_url(existing_config)
-    |> normalize_header_keys()
+    |> unredact_credentials(existing_config)
     |> Logflare.Utils.default_field_value(:http, "http2")
     |> Logflare.Utils.default_field_value(:gzip, true)
     |> Logflare.Utils.default_field_value(:format, "json")
+  end
+
+  @doc """
+  Restores the `:url` and `:headers` credentials a client submitted back in their
+  redacted form, then canonicalizes header names to lower case.
+
+  Shared with adaptors that wrap this one and reuse its `:url` and `:headers` config
+  keys together with `redact_config/1`.
+  """
+  @spec unredact_credentials(Ecto.Changeset.t(), map()) :: Ecto.Changeset.t()
+  def unredact_credentials(changeset, existing_config) do
+    changeset
+    |> unredact_headers(existing_config)
+    |> unredact_url(existing_config)
+    |> normalize_header_keys()
   end
 
   # Canonicalizes submitted header names to lower case so the stored config cannot
@@ -157,8 +170,11 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
     |> validate_no_ssrf()
   end
 
+  @doc """
+  Adds a `:url` error when the configured host is private, reserved or unresolvable.
+  """
   @spec validate_no_ssrf(Ecto.Changeset.t()) :: Ecto.Changeset.t()
-  defp validate_no_ssrf(changeset) do
+  def validate_no_ssrf(changeset) do
     case Ecto.Changeset.get_field(changeset, :url) do
       nil ->
         changeset
