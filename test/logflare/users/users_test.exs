@@ -140,6 +140,16 @@ defmodule Logflare.UsersTest do
       assert source_backend_links(backend.id) == 0
     end
 
+    test "stops the consolidated pipeline of deleted backends", %{user: user} do
+      pid = start_clickhouse_pipeline(user)
+      ref = Process.monitor(pid)
+      stub(Adaptor, :on_backend_deleted, fn _ -> :ok end)
+
+      assert {:ok, _} = Users.delete_user(user)
+
+      assert_receive {:DOWN, ^ref, :process, ^pid, _reason}
+    end
+
     test "keeps the backend when the user cannot be deleted", %{
       user: user,
       source: source,
@@ -147,20 +157,7 @@ defmodule Logflare.UsersTest do
     } do
       changeset = Ecto.Changeset.change(user)
 
-      clickhouse_attrs = %{
-        type: :clickhouse,
-        name: "Test ClickHouse",
-        config: %{
-          url: "http://localhost",
-          port: 8123,
-          database: "test_db",
-          username: "user",
-          password: "pass"
-        }
-      }
-
-      {:ok, clickhouse} = Backends.create_backend(user, clickhouse_attrs)
-      {_, pid} = List.keyfind(Backends.ConsolidatedSup.list_pipelines(), clickhouse.id, 0)
+      pid = start_clickhouse_pipeline(user)
 
       stub(Logflare.Repo, :delete, fn %User{} -> {:error, changeset} end)
       reject(&BigQueryAdaptor.update_iam_policy/0)
@@ -231,6 +228,24 @@ defmodule Logflare.UsersTest do
     backend = insert(:backend, user: user, sources: [source])
 
     %{user: user, source: source, backend: backend}
+  end
+
+  defp start_clickhouse_pipeline(user) do
+    attrs = %{
+      type: :clickhouse,
+      name: "Test ClickHouse",
+      config: %{
+        url: "http://localhost",
+        port: 8123,
+        database: "test_db",
+        username: "user",
+        password: "pass"
+      }
+    }
+
+    {:ok, clickhouse} = Backends.create_backend(user, attrs)
+    {_, pid} = List.keyfind(Backends.ConsolidatedSup.list_pipelines(), clickhouse.id, 0)
+    pid
   end
 
   defp source_backend_links(backend_id) do

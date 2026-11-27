@@ -142,10 +142,11 @@ defmodule Logflare.BackendsTest do
       }
 
       assert {:ok, backend} = Backends.create_backend(user, attrs)
-      assert Backends.ConsolidatedSup.pipeline_running?(backend)
+      {_, pid} = List.keyfind(Backends.ConsolidatedSup.list_pipelines(), backend.id, 0)
+      ref = Process.monitor(pid)
 
       assert {:ok, _} = Backends.delete_backend(backend)
-      refute Backends.ConsolidatedSup.pipeline_running?(backend.id)
+      assert_receive {:DOWN, ^ref, :process, ^pid, _reason}
     end
 
     test "delete_user_backends/1 deletes the user's backends and stops their pipelines", %{
