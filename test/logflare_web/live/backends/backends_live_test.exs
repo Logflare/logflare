@@ -612,6 +612,37 @@ defmodule LogflareWeb.BackendsLiveTest do
       assert backend.config.ingestion_key == "some-key"
     end
 
+    test "can create dash0 backend", %{conn: conn, user: user} do
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/new")
+
+      assert view
+             |> element("select#type")
+             |> render_change(%{backend: %{type: "dash0"}}) =~ "Auth Token"
+
+      html =
+        view
+        |> form("form", %{
+          backend: %{
+            name: "my dash0",
+            type: "dash0",
+            config: %{
+              endpoint: "https://ingress.eu-west-1.aws.dash0.com",
+              auth_token: "auth_some-token",
+              dataset: "supabase"
+            }
+          }
+        })
+        |> render_submit()
+
+      assert html =~ "Successfully created backend"
+      assert html =~ "my dash0"
+
+      [backend] = Backends.list_backends_by_user_access(user, type: :dash0)
+      assert backend.config.endpoint == "https://ingress.eu-west-1.aws.dash0.com"
+      assert backend.config.auth_token == "auth_some-token"
+      assert backend.config.dataset == "supabase"
+    end
+
     test "can create a clickhouse backend with a read cluster URL", %{conn: conn, user: user} do
       {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/new")
 

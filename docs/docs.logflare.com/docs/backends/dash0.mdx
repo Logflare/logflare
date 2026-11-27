@@ -1,0 +1,35 @@
+---
+sidebar_position: 13
+---
+
+# Dash0
+
+The Dash0 backend is **ingest-only**, and sends logs to [Dash0](https://www.dash0.com) via OTLP/HTTP.
+
+## Behaviour and configurations
+
+### Configuration
+
+The backend can be configured with the following options:
+
+- `:endpoint` (string, required) - The OTLP/HTTP endpoint of your Dash0 organization, such as `https://ingress.eu-west-1.aws.dash0.com`. The `/v1/logs` path is appended automatically, so it must not be included here.
+- `:auth_token` (string, required) - A Dash0 auth token with permission to ingest telemetry.
+- `:dataset` (string) - The Dash0 dataset to write to. When unset, Dash0 uses the auth token's default ingestion dataset.
+
+You can find your organization's endpoint under **Settings > Endpoints** in Dash0, and create an auth token under **Settings > Auth Tokens**. See the Dash0 docs on [endpoints](https://www.dash0.com/docs/dash0/miscellaneous/glossary/endpoints), [auth tokens](https://www.dash0.com/docs/dash0/miscellaneous/glossary/auth-tokens) and [datasets](https://www.dash0.com/docs/dash0/miscellaneous/glossary/datasets) for details.
+
+### Implementation Details
+
+- The adaptor sends logs to `<endpoint>/v1/logs`.
+- It uses OTLP over HTTP with Protobuf encoding and gzip compression.
+- Authentication is handled via the `Authorization: Bearer <auth_token>` header.
+- The `Dash0-Dataset` header is set when a dataset is configured, and omitted otherwise.
+
+### Log record mapping
+
+The adaptor always sends flattened records:
+
+- `event_message` becomes the record body, so it shows as the log message in Dash0.
+- Every other field is flattened into individual attributes using dotted keys, for example `metadata.parsed.error_severity`, so each one is filterable.
+- Severity is derived from the source's own level fields when the event carries no explicit `severity_number`.
+- The source name is sent as the `service.name` resource attribute.
