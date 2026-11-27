@@ -12,6 +12,7 @@ defmodule Logflare.Lql.BackendTransformer.PostgresTest do
 
   describe "behaviour implementation" do
     test "implements all required callbacks" do
+      Code.ensure_loaded!(Postgres)
       assert function_exported?(Postgres, :transform_filter_rule, 2)
       assert function_exported?(Postgres, :transform_chart_rule, 5)
       assert function_exported?(Postgres, :transform_select_rule, 2)

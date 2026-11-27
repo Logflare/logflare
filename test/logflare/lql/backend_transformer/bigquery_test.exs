@@ -13,6 +13,7 @@ defmodule Logflare.Lql.BackendTransformer.BigQueryTest do
 
   describe "behavior implementation" do
     test "implements all required callbacks" do
+      Code.ensure_loaded!(BigQuery)
       assert function_exported?(BigQuery, :transform_filter_rule, 2)
       assert function_exported?(BigQuery, :transform_chart_rule, 5)
       assert function_exported?(BigQuery, :transform_select_rule, 2)

@@ -11,6 +11,7 @@ defmodule Logflare.Lql.BackendTransformer.ClickHouseTest do
 
   describe "behaviour implementation" do
     test "implements all required callbacks" do
+      Code.ensure_loaded!(ClickHouse)
       assert function_exported?(ClickHouse, :transform_filter_rule, 2)
       assert function_exported?(ClickHouse, :transform_chart_rule, 5)
       assert function_exported?(ClickHouse, :transform_select_rule, 2)
