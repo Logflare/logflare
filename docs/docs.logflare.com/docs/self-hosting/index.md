@@ -295,7 +295,7 @@ The value uses the same format as a `LOGFLARE_READ_REPLICAS` entry. Logflare che
 - An omitted `aws_region` comes from `DB_AWS_REGION`.
 - `ssl=true` verifies the server with the system CA certificates and the RDS CA bundle (see `RDS_CA_CERT_PATH`).
 
-Use the cluster writer endpoint, not an instance endpoint, so the connection follows the writer after a failover. The cache buster uses a temporary replication slot, so no slot setup is necessary.
+Use the cluster writer endpoint, not an instance endpoint, so the connection follows the writer after a failover. The cache buster uses a temporary replication slot, so no slot setup is necessary. Logflare confirms the slot's position every minute, so the slot does not hold back WAL while Logflare's configuration tables are unchanged.
 
 Before you set the variable, make sure that these prerequisites are in place:
 
