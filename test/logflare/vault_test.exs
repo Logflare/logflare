@@ -3,6 +3,24 @@ defmodule Logflare.VaultTest do
   use Logflare.DataCase
   alias Logflare.Repo
 
+  describe "ciphers" do
+    # mix.exs ignores EEF-CVE-2026-95105 (cloak's unauthenticated
+    # AES-CTR cipher, which has no fix) only because Logflare configures
+    # nothing but the authenticated AES-GCM cipher. This test is the
+    # proof. If it fails, a CTR cipher was added and the advisory
+    # applies, so remove the ignore in mix.exs instead of loosening this
+    # test. Removing the test while the ignore exists leaves the ignore
+    # unjustified.
+    test "only the authenticated AES-GCM cipher is configured" do
+      {:ok, config} = Logflare.Vault.get_config()
+      ciphers = Keyword.fetch!(config, :ciphers)
+
+      assert [_ | _] = ciphers
+
+      assert Enum.all?(ciphers, fn {_name, {module, _opts}} -> module == Cloak.Ciphers.AES.GCM end)
+    end
+  end
+
   describe "migrator with retired" do
     setup do
       insert(:backend, config_encrypted: %{some_value: "testing"})
