@@ -1,6 +1,7 @@
 defmodule Logflare.Logs.OtelMetricTest do
   use Logflare.DataCase
 
+  alias Logflare.LogEvent
   alias Logflare.Logs.OtelMetric
 
   describe "handle_batch/2" do
@@ -18,6 +19,32 @@ defmodule Logflare.Logs.OtelMetricTest do
       assert Enum.any?(Map.values(a), &is_number/1)
       assert Enum.any?(Map.values(a), &is_binary/1)
       assert Enum.any?(Map.values(a), &is_boolean/1)
+    end
+
+    test "preserves each scope schema URL through event ingestion", %{
+      resource_metrics: [resource_metrics | _],
+      source: source
+    } do
+      [scope_metrics] = resource_metrics.scope_metrics
+
+      schema_urls = [
+        "https://opentelemetry.io/schemas/1.30.0",
+        "https://opentelemetry.io/schemas/1.31.0"
+      ]
+
+      resource_metrics = %{
+        resource_metrics
+        | schema_url: "https://opentelemetry.io/schemas/1.29.0",
+          scope_metrics: Enum.map(schema_urls, &%{scope_metrics | schema_url: &1})
+      }
+
+      events =
+        [resource_metrics]
+        |> OtelMetric.handle_batch(source)
+        |> Enum.map(&LogEvent.make(&1, %{source: source}))
+
+      assert Enum.all?(events, & &1.valid)
+      assert Enum.uniq(Enum.map(events, & &1.body["scope"]["schema_url"])) == schema_urls
     end
 
     test "creates events with correct metric_type for each metric type", %{
