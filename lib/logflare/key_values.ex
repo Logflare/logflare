@@ -106,6 +106,12 @@ defmodule Logflare.KeyValues do
 
   def extract_value(_value, _accessor_path), do: nil
 
+  @doc """
+  Inserts or updates key-values by key and returns the number of rows inserted or changed.
+
+  A row whose value is unchanged is not written, so it emits no WAL change and its cache
+  entries are not busted.
+  """
   @spec bulk_upsert_key_values(integer(), [map()]) :: {non_neg_integer(), nil | [KeyValue.t()]}
   def bulk_upsert_key_values(user_id, entries) do
     now = DateTime.utc_now()
@@ -121,10 +127,15 @@ defmodule Logflare.KeyValues do
         }
       end)
 
-    Repo.insert_all(KeyValue, rows,
-      on_conflict: {:replace, [:value, :updated_at]},
-      conflict_target: [:user_id, :key]
-    )
+    on_conflict =
+      from(kv in KeyValue,
+        update: [
+          set: [value: fragment("EXCLUDED.value"), updated_at: fragment("EXCLUDED.updated_at")]
+        ],
+        where: fragment("? IS DISTINCT FROM EXCLUDED.value", kv.value)
+      )
+
+    Repo.insert_all(KeyValue, rows, on_conflict: on_conflict, conflict_target: [:user_id, :key])
   end
 
   @spec bump_usages([{integer(), String.t()}], DateTime.t()) :: :ok

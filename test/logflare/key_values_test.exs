@@ -93,6 +93,19 @@ defmodule Logflare.KeyValuesTest do
     assert upserted.inserted_at == inserted_at
   end
 
+  test "bulk_upsert_key_values/2 with unchanged values", %{user: user} do
+    entries = [%{key: "a", value: %{"n" => "1"}}, %{key: "b", value: %{"n" => "2"}}]
+    assert {2, _} = KeyValues.bulk_upsert_key_values(user.id, entries)
+    before = Logflare.Repo.all(KeyValues.KeyValue)
+
+    resent = [%{key: "a", value: %{"n" => "1"}}, %{key: "b", value: %{"n" => "changed"}}]
+    assert {1, _} = KeyValues.bulk_upsert_key_values(user.id, resent)
+
+    assert %{updated_at: unchanged_at} = Enum.find(before, &(&1.key == "a"))
+    assert %{updated_at: ^unchanged_at} = Logflare.Repo.get_by!(KeyValues.KeyValue, key: "a")
+    assert %{"n" => "changed"} = KeyValues.lookup(user.id, "b")
+  end
+
   test "prune_usages/1", %{user: user} do
     insert(:key_value, user: user, key: "stale")
     %{id: fresh_id} = insert(:key_value, user: user, key: "fresh")
