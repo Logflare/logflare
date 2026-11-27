@@ -286,12 +286,18 @@ hooks.SourceLogsSearch = {
   },
 };
 
-/* Listens for a `scrollIntoView` event on the element
+/* Scrolls the target of a bubbling `scrollIntoView` event into view.
+
+  Set `data-scroll-anchor-selector` on the scroll container to preserve the first
+  visible matching descendant's position across LiveView updates. This allows content to be added to a scrollable view without the user losing their place.
 
   Example:
 
-  <div phx-mounted={JS.dispatch("scrollIntoView")}>
-    ...
+  <div id="scroll-container" phx-hook="ScrollIntoView"
+       data-scroll-anchor-selector="[data-scroll-anchor]">
+    <div id="item-1" data-scroll-anchor phx-mounted={JS.dispatch("scrollIntoView")}>
+      ...
+    </div>
   </div>
 */
 hooks.ScrollIntoView = {
@@ -299,6 +305,30 @@ hooks.ScrollIntoView = {
     this.el.addEventListener("scrollIntoView", (event) => {
       event.target.scrollIntoView({ behavior: "instant" });
     });
+  },
+  beforeUpdate() {
+    this.scrollAnchor = null;
+    const selector = this.el.dataset.scrollAnchorSelector;
+    if (!selector) return;
+
+    const bounds = this.el.getBoundingClientRect();
+    const row = [...this.el.querySelectorAll(selector)].find((element) => {
+      const { top, bottom } = element.getBoundingClientRect();
+      return top < bounds.bottom && bottom > bounds.top;
+    });
+
+    this.scrollAnchor = row
+      ? { id: row.id, top: row.getBoundingClientRect().top - bounds.top }
+      : null;
+  },
+  updated() {
+    if (!this.scrollAnchor) return;
+
+    const row = document.getElementById(this.scrollAnchor.id);
+    if (!row || !this.el.contains(row)) return;
+
+    const top = row.getBoundingClientRect().top - this.el.getBoundingClientRect().top;
+    this.el.scrollTop += top - this.scrollAnchor.top;
   },
 };
 

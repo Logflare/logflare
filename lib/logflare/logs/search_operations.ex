@@ -842,10 +842,10 @@ defmodule Logflare.Logs.SearchOperations do
   defp chart_period(%SO{chart_rules: [%{period: period} | _]}), do: period
 
   @spec table_name(SO.t()) :: String.t()
-  defp table_name(%SO{backend_type: :postgres, source: source}),
+  def table_name(%SO{backend_type: :postgres, source: source}),
     do: PostgresAdaptor.table_name(source)
 
-  defp table_name(%SO{source: source}), do: source.bq_table_id
+  def table_name(%SO{source: source}), do: source.bq_table_id
 
   defp postgres_backend(%SO{source: %{user: user}}) when not is_nil(user) do
     Backends.get_default_backend(user)
