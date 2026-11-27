@@ -25,6 +25,7 @@ defmodule Logflare.ContextCache do
   """
 
   alias Logflare.Cache.CachexOps
+  alias Logflare.ContextCache.Tombstones
 
   @doc """
   Returns the keys of the entries to bust for a keyword of values.
@@ -46,6 +47,14 @@ defmodule Logflare.ContextCache do
   """
   @callback update(key :: term(), value :: term()) :: :ok
 
+  @doc """
+  Returns the tombstones to record, each with its time-to-live in ms (`nil` for the default), for
+  a keyword of values of a busted change.
+
+  Defaults to `Logflare.ContextCache.Tombstones.pkey_tombstones/1`.
+  """
+  @callback tombstones(keyword()) :: [{tombstone :: term(), ttl :: non_neg_integer() | nil}]
+
   defmacro __using__(opts) do
     impl = Keyword.get(opts, :impl, CachexOps)
 
@@ -66,7 +75,10 @@ defmodule Logflare.ContextCache do
       @impl Logflare.ContextCache
       def update(key, value), do: unquote(impl).update(__MODULE__, key, value)
 
-      defoverridable keys_to_bust: 1, delete_keys: 1, fetch: 2, update: 2
+      @impl Logflare.ContextCache
+      def tombstones(kw), do: unquote(Tombstones).pkey_tombstones(kw)
+
+      defoverridable keys_to_bust: 1, delete_keys: 1, fetch: 2, update: 2, tombstones: 1
     end
   end
 

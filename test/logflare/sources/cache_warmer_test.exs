@@ -4,7 +4,7 @@ defmodule Logflare.Sources.CacheWarmerTest do
   import ExUnit.CaptureLog
 
   alias Logflare.Billing
-  alias Logflare.ContextCache.Gossip
+  alias Logflare.ContextCache.Tombstones
   alias Logflare.Sources
   alias Logflare.Sources.Cache
   alias Logflare.Sources.CacheWarmer
@@ -116,7 +116,7 @@ defmodule Logflare.Sources.CacheWarmerTest do
 
   test "skips sources invalidated while warming", %{source: source} do
     stub(Billing, :get_plans_by_users, fn users ->
-      Gossip.record_tombstones([{Sources, source.id}])
+      Tombstones.record([{Sources, source.id}])
       call_original(Billing, :get_plans_by_users, [users])
     end)
 

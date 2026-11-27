@@ -5,6 +5,7 @@ defmodule Logflare.KeyValues.Cache do
 
   alias Logflare.Cache.CachexOps
   alias Logflare.ContextCache
+  alias Logflare.ContextCache.Tombstones
   alias Logflare.KeyValues
   alias Logflare.KeyValues.CacheWarmer
   alias Logflare.Repo
@@ -40,6 +41,16 @@ defmodule Logflare.KeyValues.Cache do
     lookup(user_id, key, nil)
   end
 
+  @doc """
+  Returns the value of a key-value, or the value at `accessor_path` within it.
+
+  A value read before a change to the key-value, from a lagging replica or from a cached full
+  value, is returned but not kept. The change records a `{user_id, key}` tombstone before its
+  bust deletes the entries, and a fill is deleted again if its key-value is tombstoned after
+  the write, so no interleaving with the bust leaves a stale entry. A fill that starts while its
+  key-value is tombstoned is not kept either. A tombstone lasts for the `:tombstone_ttl` setting,
+  which must outlast the replica lag plus the duration of a fill.
+  """
   @spec lookup(integer(), String.t(), String.t() | nil) :: term() | nil
   def lookup(user_id, key, accessor_path) do
     key_args = [user_id, key, accessor_path]
@@ -49,20 +60,44 @@ defmodule Logflare.KeyValues.Cache do
       Cachex.fetch(worker, cache_key, fn _key -> lookup_fallback(worker, key_args) end)
     end)
     |> case do
-      {:commit, {:cached, v}} -> v
+      {:ignore, {:cached, v}} -> v
       {:ok, {:cached, v}} -> v
     end
   end
 
   defp lookup_fallback(worker, [user_id, key, accessor_path] = key_args) do
-    case Cachex.get(worker, {:lookup, [user_id, key, nil]}) do
-      {:ok, {:cached, full_value}} ->
-        {:commit, {:cached, KeyValues.extract_value(full_value, accessor_path)}}
+    tombstoned_before_read? = tombstoned?(user_id, key)
 
-      {:ok, nil} ->
-        {:commit, {:cached, Repo.apply_with_replica(KeyValues, :lookup, key_args)}}
+    value =
+      case Cachex.get(worker, {:lookup, [user_id, key, nil]}) do
+        {:ok, {:cached, full_value}} -> KeyValues.extract_value(full_value, accessor_path)
+        {:ok, nil} -> Repo.apply_with_replica(KeyValues, :lookup, key_args)
+      end
+
+    if not tombstoned_before_read? do
+      cache_key = {:lookup, key_args}
+      Cachex.put(worker, cache_key, {:cached, value})
+      drop_if_tombstoned(worker, cache_key)
     end
+
+    {:ignore, {:cached, value}}
   end
+
+  @doc """
+  Writes lookup entries, then deletes those whose key-value is tombstoned by then, so a change
+  busted between reading the values and this write leaves no stale entry.
+  """
+  @spec put_unless_tombstoned([{{:lookup, list()}, {:cached, term()}}]) :: :ok
+  def put_unless_tombstoned(entries) do
+    Cachex.put_many(__MODULE__, entries)
+    Enum.each(entries, fn {cache_key, _value} -> drop_if_tombstoned(__MODULE__, cache_key) end)
+  end
+
+  defp drop_if_tombstoned(cache, {:lookup, [user_id, key | _accessor_path]} = cache_key) do
+    if tombstoned?(user_id, key), do: Cachex.del(cache, cache_key)
+  end
+
+  defp tombstoned?(user_id, key), do: Tombstones.Cache.tombstoned?(__MODULE__, {user_id, key})
 
   @doc """
   Records which key-values were recently in use so the next full warm can
@@ -115,6 +150,22 @@ defmodule Logflare.KeyValues.Cache do
     else
       entries
     end
+  end
+
+  @impl ContextCache
+  def tombstones(kw) do
+    with {:ok, user_id} <- Keyword.fetch(kw, :user_id),
+         {:ok, key} <- Keyword.fetch(kw, :key) do
+      [{{user_id, key}, tombstone_ttl()}]
+    else
+      :error -> []
+    end
+  end
+
+  defp tombstone_ttl do
+    :logflare
+    |> Application.fetch_env!(__MODULE__)
+    |> Keyword.fetch!(:tombstone_ttl)
   end
 
   defp find_lookup_keys(user_id, key) do
