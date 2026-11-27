@@ -110,7 +110,7 @@ defmodule Logflare.Mixfile do
       {:ueberauth_google, "~> 0.8"},
       {:ueberauth_github, github: "Logflare/ueberauth_github"},
       {:ueberauth_slack_v2, "~> 1.0"},
-      {:oauth2, "~> 2.0.0", override: true},
+      {:oauth2, "~> 2.1", override: true},
 
       # Oauth2 provider
       {:phoenix_oauth2_provider,
@@ -151,13 +151,16 @@ defmodule Logflare.Mixfile do
       # Outbound Requests
       {:inet_cidr, "~> 1.0"},
       {:castore, "~> 1.0"},
-      {:finch, "~> 0.20.0"},
+      # Stay on 0.21 until Logflare.Networking.FinchHttpClient stops
+      # passing ExAws's http_opts (follow_redirect, recv_timeout) to
+      # Finch.request/3: Finch 0.22 validates request options. 0.22 also
+      # changed error structs and pool metrics used by ClickHouse.
+      {:finch, "~> 0.21.0"},
       {:mint, "~> 1.0"},
-      {:httpoison, "~> 1.4"},
       {:poison, "~> 5.0.0", override: true},
       {:swoosh, "~> 1.0"},
       {:ex_twilio, "~> 0.8.1"},
-      {:tesla, "~> 1.6"},
+      {:tesla, "~> 1.18 and >= 1.18.3"},
 
       # Concurrency and pipelines
       {:broadway, "~> 1.3"},
@@ -183,7 +186,7 @@ defmodule Logflare.Mixfile do
       {:google_api_storage, "~> 0.46"},
       {:google_api_pub_sub, "~> 0.42"},
       {:goth, github: "Logflare/goth", branch: "feat/service-account-impersonation"},
-      {:google_gax, github: "Logflare/elixir-google-gax", ref: "6772193", override: true},
+      {:google_gax, github: "Logflare/elixir-google-gax", ref: "72d94c9", override: true},
 
       # Ecto
       {:ecto, "~> 3.13"},
@@ -198,9 +201,9 @@ defmodule Logflare.Mixfile do
       {:explorer, "~> 0.11.1"},
 
       # S3
-      {:ex_aws, "~> 2.5"},
-      {:ex_aws_s3, "~> 2.5"},
-      {:ex_aws_sqs, "~> 3.4"},
+      {:ex_aws, "~> 2.8"},
+      {:ex_aws_s3, "~> 2.6"},
+      {:ex_aws_sqs, "~> 3.5"},
       {:sweet_xml, "~> 0.7"},
 
       # Telemetry & logging
@@ -225,13 +228,13 @@ defmodule Logflare.Mixfile do
       {:dialyxir, "~> 1.1", only: [:dev, :test], runtime: false},
 
       # Billing
-      {:stripity_stripe, "~> 3.2.0"},
+      {:stripity_stripe, "~> 3.3"},
       {:money, "~> 1.14"},
 
       # Utils
       {:recase, "~> 0.7.0"},
       {:unicode, "~> 1.20"},
-      {:configcat, "~> 4.0.0"},
+      {:configcat, "~> 5.0"},
       {:ex2ms, "~> 1.7"},
 
       # Code quality
@@ -273,6 +276,10 @@ defmodule Logflare.Mixfile do
       {:opentelemetry, "~> 1.3"},
       {:opentelemetry_api, "~> 1.2"},
       {:opentelemetry_exporter, "~> 1.6"},
+      # Drop the pin once the PR lands
+      # https://github.com/tsloughter/grpcbox/pull/120
+      {:grpcbox, github: "benoitc/grpcbox", ref: "468e460", override: true},
+      {:h2, "~> 0.18.3", override: true},
       {:opentelemetry_phoenix, "~> 2.0.0-rc.2"},
       {:opentelemetry_bandit, "~> 0.2.0-rc.1"},
       {:otel_metric_exporter,

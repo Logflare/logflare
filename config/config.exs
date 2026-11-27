@@ -164,6 +164,11 @@ config :tesla, GoogleApi.Storage.V1.Connection,
 config :tesla, GoogleApi.PubSub.V1.Connection,
   adapter: {Tesla.Adapter.Finch, name: Logflare.FinchSpool, receive_timeout: 60_000}
 
+# oauth2 builds its own Tesla client and defaults to
+# Tesla.Adapter.Httpc, ignoring the global `config :tesla, :adapter`, so
+# point it at the same Finch pool as the rest of the app.
+config :oauth2, adapter: {Tesla.Adapter.Finch, name: Logflare.FinchDefault}
+
 config :number,
   delimit: [
     precision: 0,
