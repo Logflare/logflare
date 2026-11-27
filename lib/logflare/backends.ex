@@ -671,7 +671,9 @@ defmodule Logflare.Backends do
   end
 
   @doc """
-  Deletes all backends owned by a user, along with every source link to the user's backends or sources.
+  Deletes all backends owned by a user, along with their source links.
+
+  Must run inside a transaction: the user and backend rows are locked with `FOR UPDATE`, and the links and backends are deleted in separate statements.
   """
   @spec delete_user_backends(User.t()) :: {non_neg_integer(), [Backend.t()]}
   def delete_user_backends(%User{id: user_id}) do
