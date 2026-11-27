@@ -1,6 +1,6 @@
 defmodule Logflare.RecordUsages.SyncWorker do
   @moduledoc """
-  Flushes th node's usage on a jittered timer. A failed flush restarts the worker and leaves the buffer intact.
+  Flushes the node's usage on a jittered timer. A failed flush restarts the worker and retains unacknowledged usage.
   """
 
   use GenServer

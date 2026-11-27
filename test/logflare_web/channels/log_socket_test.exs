@@ -40,7 +40,9 @@ defmodule LogflareWeb.LogSocketTest do
 
       {:ok, socket} = Phoenix.ChannelTest.connect(LogSocket, %{"access_token" => token.token})
 
-      timestamp = Cache.snapshot() |> Map.new() |> Map.fetch!({OauthAccessToken, token.id})
+      timestamp =
+        Cache.stream() |> Map.new() |> Map.fetch!({OauthAccessToken, token.id})
+
       assert timestamp >= before_connect
       assert timestamp <= System.system_time(:second)
 
@@ -135,7 +137,7 @@ defmodule LogflareWeb.LogSocketTest do
 
       {:ok, socket} = Phoenix.ChannelTest.connect(LogSocket, %{"api_key" => user.api_key})
 
-      timestamp = Cache.snapshot() |> Map.new() |> Map.fetch!({User, user.id})
+      timestamp = Cache.stream() |> Map.new() |> Map.fetch!({User, user.id})
       assert timestamp >= before_connect
       assert timestamp <= System.system_time(:second)
 
@@ -157,9 +159,9 @@ defmodule LogflareWeb.LogSocketTest do
     end
 
     test "invalid legacy API keys do not record usage" do
-      snapshot = Cache.snapshot()
+      snapshot = Cache.stream() |> Enum.to_list()
       assert :error = Phoenix.ChannelTest.connect(LogSocket, %{"api_key" => "invalid-key"})
-      assert Cache.snapshot() == snapshot
+      assert Cache.stream() |> Enum.to_list() == snapshot
     end
 
     test "legacy log socket api key cannot ingest into another user's source" do

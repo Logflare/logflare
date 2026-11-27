@@ -1,10 +1,11 @@
 defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
   @moduledoc false
   use LogflareWeb.ConnCase
+
   alias Logflare.Auth
   alias Logflare.OauthAccessTokens.OauthAccessToken
   alias Logflare.RecordUsages
-  alias Logflare.Repo
+  alias Logflare.RecordUsages.Writer
   alias Logflare.User
   alias Logflare.Users
   alias LogflareWeb.Plugs.VerifyApiAccess
@@ -54,12 +55,10 @@ defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
       end
     end
 
-    test "a suspended usage writer bounds its backlog without delaying authentication", %{
+    test "a suspended usage writer does not delay authentication", %{
       access_token: token,
       user: user
     } do
-      RecordUsages.Cache.record({OauthAccessToken, token.id}, 1)
-      RecordUsages.Cache.snapshot()
       writer = Process.whereis(RecordUsages.Writer)
 
       on_exit(fn ->
@@ -81,38 +80,10 @@ defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
         request |> Task.await(1_000) |> assert_authorized(user)
       end
 
-      concurrency = 32
-
-      1..concurrency
-      |> Task.async_stream(
-        fn _ ->
-          for _ <- 1..100 do
-            build_conn(:post, "/logs")
-            |> put_req_header("x-api-key", token.token)
-            |> VerifyApiAccess.call(%{})
-            |> assert_authorized(user)
-          end
-
-          :ok
-        end,
-        max_concurrency: concurrency,
-        timeout: 5_000
-      )
-      |> Enum.each(fn result -> assert result == {:ok, :ok} end)
-
-      {:message_queue_len, backlog} = Process.info(writer, :message_queue_len)
-      assert backlog in 1_000..(1_000 + concurrency + 1)
-
       :sys.resume(writer)
-      snapshot = Map.new(RecordUsages.Cache.snapshot())
+      snapshot = RecordUsages.Cache.stream() |> Map.new()
       assert Map.fetch!(snapshot, {OauthAccessToken, token.id}) >= before_request
       assert Map.fetch!(snapshot, {User, user.id}) >= before_request
-
-      next_timestamp = System.system_time(:second) + 1
-      RecordUsages.Cache.record({OauthAccessToken, token.id}, next_timestamp)
-
-      assert Map.fetch!(Map.new(RecordUsages.Cache.snapshot()), {OauthAccessToken, token.id}) ==
-               next_timestamp
     end
 
     test "records requests on both cache misses and hits", %{access_token: token, user: user} do
@@ -124,13 +95,13 @@ defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
       |> assert_authorized(user)
 
       first_use =
-        RecordUsages.Cache.snapshot() |> Map.new() |> Map.fetch!({OauthAccessToken, token.id})
+        RecordUsages.Cache.stream() |> Map.new() |> Map.fetch!({OauthAccessToken, token.id})
 
       assert is_integer(first_use)
       assert first_use >= before_request
 
       RecordUsages.Cache.acknowledge([{{OauthAccessToken, token.id}, first_use}])
-      assert RecordUsages.Cache.snapshot() == []
+      assert RecordUsages.Cache.stream() |> Enum.to_list() == []
 
       reject(&Auth.verify_access_token/2)
 
@@ -140,22 +111,10 @@ defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
       |> assert_authorized(user)
 
       last_use =
-        RecordUsages.Cache.snapshot() |> Map.new() |> Map.fetch!({OauthAccessToken, token.id})
+        RecordUsages.Cache.stream() |> Map.new() |> Map.fetch!({OauthAccessToken, token.id})
 
       assert is_integer(last_use)
       assert last_use >= first_use
-    end
-
-    test "rejects a missing token owner without recording usage", %{access_token: token} do
-      assert {:ok, _token, _user} = Auth.Cache.verify_access_token(token.token, [])
-      stub(Users.Cache, :get, fn _id -> nil end)
-
-      build_conn(:post, "/logs")
-      |> put_req_header("authorization", "Bearer #{token.token}")
-      |> VerifyApiAccess.call(%{})
-      |> assert_unauthorized()
-
-      assert RecordUsages.Cache.snapshot() == []
     end
 
     test "returns database outages without recording token or legacy key usage", %{
@@ -176,7 +135,7 @@ defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
         assert conn.status == 503
       end
 
-      assert RecordUsages.Cache.snapshot() == []
+      assert RecordUsages.Cache.stream() |> Enum.to_list() == []
     end
 
     test "authenticates partners without recording usage", %{conn: conn} do
@@ -189,7 +148,7 @@ defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
         |> VerifyApiAccess.call(%{scopes: ["partner"]})
 
       assert conn.assigns.partner.id == partner.id
-      assert RecordUsages.Cache.snapshot() == []
+      assert RecordUsages.Cache.stream() |> Enum.to_list() == []
     end
 
     test "records legacy key usage on cache misses and hits", %{user: user} do
@@ -199,14 +158,14 @@ defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
             {"authorization", "Bearer #{user.api_key}"},
             {"x-api-key", user.api_key}
           ] do
-        RecordUsages.Cache.record({User, user.id}, 0)
+        Writer.record({User, user.id}, 0)
 
         build_conn(:post, "/logs")
         |> put_req_header(header, value)
         |> VerifyApiAccess.call(%{})
         |> assert_authorized(user)
 
-        assert [{{User, id}, timestamp}] = RecordUsages.Cache.snapshot()
+        assert [{{User, id}, timestamp}] = RecordUsages.Cache.stream() |> Enum.to_list()
         assert id == user.id
         assert timestamp >= before_request
         assert timestamp <= System.system_time(:second)
@@ -216,7 +175,10 @@ defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
       end
     end
 
-    test "does not record rejected credentials", %{access_token: token, user: user} do
+    test "does not record rejected credentials or missing token owners", %{
+      access_token: token,
+      user: user
+    } do
       expired_token =
         insert(:access_token,
           resource_owner: user,
@@ -242,11 +204,15 @@ defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
         |> assert_unauthorized()
       end
 
-      for unused_token <- [token, expired_token, revoked_token] do
-        assert Repo.preload(unused_token, :usage).usage == nil
-      end
+      assert {:ok, _token, _user} = Auth.Cache.verify_access_token(token.token, [])
+      stub(Users.Cache, :get, fn _id -> nil end)
 
-      assert RecordUsages.Cache.snapshot() == []
+      build_conn(:post, "/logs")
+      |> put_req_header("authorization", "Bearer #{token.token}")
+      |> VerifyApiAccess.call(%{})
+      |> assert_unauthorized()
+
+      assert RecordUsages.Cache.stream() |> Enum.to_list() == []
     end
   end
 

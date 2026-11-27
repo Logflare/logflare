@@ -2,10 +2,7 @@ defmodule Logflare.RecordUsages.Cache do
   @moduledoc """
   Buffers usage timestamps in Cachex on this node. Timestamps are UTC Unix seconds.
 
-  A writer queues up timestamps and periodically writes to Cachex.
-  Restarting the node loses pending samples. Values already in Cachex remain.
-
-  Cachex timestamps are periodically persited to the database.
+  The writer calls `put_if_newer/2` for each timestamp, skipping already-fresh values. Cachex timestamps are periodically persited to the database.
   """
 
   use Logflare.Cache
@@ -16,7 +13,7 @@ defmodule Logflare.RecordUsages.Cache do
   alias Logflare.RecordUsages.Writer
 
   @type key :: {module(), pos_integer()}
-  @type snapshot :: [{key(), integer()}]
+  @type entries :: [{key(), integer()}]
 
   @spec child_spec(term()) :: Supervisor.child_spec()
   def child_spec(_options) do
@@ -25,34 +22,34 @@ defmodule Logflare.RecordUsages.Cache do
     Supervisor.child_spec({Cachex, name: __MODULE__, ordered: true, hooks: hooks}, id: __MODULE__)
   end
 
-  @spec record(key(), integer()) :: :ok
-  def record(key, timestamp) do
-    case Cachex.get(__MODULE__, key) do
-      {:ok, previous} when is_integer(previous) and previous >= timestamp ->
-        :ok
+  @spec put_if_newer(key(), integer()) :: {:ok, term()} | {:error, term()}
+  def put_if_newer(key, timestamp) do
+    update_timestamp = fn cache ->
+      previous = Cachex.get!(cache, key)
 
-      {:ok, _} ->
-        Writer.record(key, timestamp)
-
-      {:error, _reason} ->
-        :ok
+      if is_nil(previous) or previous < timestamp do
+        Cachex.put!(cache, key, timestamp)
+      end
     end
 
-    :ok
-  rescue
-    ArgumentError -> :ok
+    case Cachex.get(__MODULE__, key) do
+      {:ok, previous} when is_nil(previous) or previous < timestamp ->
+        Cachex.transaction(__MODULE__, [], update_timestamp)
+
+      result ->
+        result
+    end
   end
 
-  @spec snapshot(drain: boolean()) :: snapshot()
-  def snapshot(opts \\ []) do
+  @spec stream(drain: boolean()) :: Enumerable.t()
+  def stream(opts \\ []) do
     if Keyword.get(opts, :drain, true), do: Writer.drain()
 
     __MODULE__
     |> Cachex.stream!(Cachex.Query.build(output: {:key, :value}))
-    |> Enum.to_list()
   end
 
-  @spec acknowledge(snapshot()) :: :ok
+  @spec acknowledge(entries()) :: :ok
   def acknowledge(entries) do
     Enum.each(entries, &acknowledge_entry/1)
   end
@@ -67,7 +64,7 @@ defmodule Logflare.RecordUsages.Cache do
   @spec acknowledge_entry({key(), integer()}) :: :ok
   defp acknowledge_entry({key, timestamp}) do
     {:ok, _} =
-      Cachex.transaction(__MODULE__, [key], fn cache ->
+      Cachex.transaction(__MODULE__, [], fn cache ->
         case Cachex.get!(cache, key) do
           ^timestamp -> Cachex.del!(cache, key)
           _ -> false
