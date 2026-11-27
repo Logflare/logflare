@@ -273,6 +273,10 @@ defmodule Logflare.Mixfile do
       {:opentelemetry, "~> 1.3"},
       {:opentelemetry_api, "~> 1.2"},
       {:opentelemetry_exporter, "~> 1.6"},
+      # Drop the pin once the PR lands
+      # https://github.com/tsloughter/grpcbox/pull/120
+      {:grpcbox, github: "benoitc/grpcbox", ref: "468e460", override: true},
+      {:h2, "~> 0.18.3", override: true},
       {:opentelemetry_phoenix, "~> 2.0.0-rc.2"},
       {:opentelemetry_bandit, "~> 0.2.0-rc.1"},
       {:otel_metric_exporter,
