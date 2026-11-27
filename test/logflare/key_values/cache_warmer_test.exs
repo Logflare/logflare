@@ -161,7 +161,7 @@ defmodule Logflare.KeyValues.CacheWarmerTest do
       insert(:key_value, user: user, key: "after_peer_warm", value: %{"v" => "new"})
       peer_warmed_at = DateTime.add(DateTime.utc_now(), -30, :minute)
 
-      stub(PeerWarmer, :copy_from_peer, fn Cache ->
+      stub(PeerWarmer, :copy_from_peer, fn Cache, _max_entries ->
         {:ok, %{node: :peer@host, warmed_at: peer_warmed_at, count: 10}}
       end)
 
@@ -180,7 +180,7 @@ defmodule Logflare.KeyValues.CacheWarmerTest do
     end
 
     test "records when the warm completed, so copied entries don't count as usage" do
-      stub(PeerWarmer, :copy_from_peer, fn Cache ->
+      stub(PeerWarmer, :copy_from_peer, fn Cache, _max_entries ->
         {:ok, %{node: :peer@host, warmed_at: DateTime.utc_now(), count: 10}}
       end)
 
@@ -197,7 +197,7 @@ defmodule Logflare.KeyValues.CacheWarmerTest do
       peer_warmed_at = DateTime.utc_now()
       insert_key_value_updated_at(user, "in_margin", DateTime.add(peer_warmed_at, -30, :second))
 
-      stub(PeerWarmer, :copy_from_peer, fn Cache ->
+      stub(PeerWarmer, :copy_from_peer, fn Cache, _max_entries ->
         {:ok, %{node: :peer@host, warmed_at: peer_warmed_at, count: 10}}
       end)
 
@@ -207,9 +207,23 @@ defmodule Logflare.KeyValues.CacheWarmerTest do
                Cachex.get!(Cache, {:lookup, [user.id, "in_margin", nil]})
     end
 
+    test "copies at most warm_limit entries, as many as the database warm loads" do
+      test_pid = self()
+      warm_limit = Application.fetch_env!(:logflare, CacheWarmer)[:warm_limit]
+
+      stub(PeerWarmer, :copy_from_peer, fn Cache, max_entries ->
+        send(test_pid, {:max_entries, max_entries})
+        :fallback
+      end)
+
+      CacheWarmer.execute(nil)
+
+      assert_received {:max_entries, ^warm_limit}
+    end
+
     test "falls back to the top-N database warm when no peer can be copied", %{user: user} do
       insert(:key_value, user: user, key: "k1", value: %{"v" => "1"})
-      stub(PeerWarmer, :copy_from_peer, fn Cache -> :fallback end)
+      stub(PeerWarmer, :copy_from_peer, fn Cache, _max_entries -> :fallback end)
 
       CacheWarmer.execute(nil)
 

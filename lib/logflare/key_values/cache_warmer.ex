@@ -38,7 +38,7 @@ defmodule Logflare.KeyValues.CacheWarmer do
     PeerWarmer.mark_warming(Cache)
 
     warmed_at =
-      case PeerWarmer.copy_from_peer(Cache) do
+      case PeerWarmer.copy_from_peer(Cache, @warm_limit) do
         {:ok, %{warmed_at: peer_warmed_at}} -> catch_up_since(peer_warmed_at)
         :fallback -> warm_top_n_from_db()
       end

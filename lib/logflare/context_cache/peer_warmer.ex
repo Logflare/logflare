@@ -10,7 +10,7 @@ defmodule Logflare.ContextCache.PeerWarmer do
 
   Each supported cache publishes a status on every node: whether it is warm and when its data
   was last loaded from the database (`warmed_at`). On startup, a cache warmer calls
-  `copy_from_peer/1`, which:
+  `copy_from_peer/2`, which:
 
     1. Waits up to `:peer_wait` for cluster peers and the local `CacheBuster`. Without a running
        `CacheBuster`, invalidations during the copy would be missed, so it does not copy.
@@ -18,7 +18,8 @@ defmodule Logflare.ContextCache.PeerWarmer do
        decides itself with `source_status/2` whether it may serve the copy: it must be ready, run
        the same release, hold at least one entry and have data younger than the cache's max age.
        Picking peers randomly spreads the copy load.
-    3. Copies `c:Logflare.ContextCache.entries/0` in acknowledged chunks, skipping negative
+    3. Copies up to `max_entries` of `c:Logflare.ContextCache.entries/0` in acknowledged chunks,
+       the same number the cache's database warm would load. It skips negative
        lookups, entries for which `c:Logflare.ContextCache.stale_entry?/2` holds and keys already
        cached locally. All attempts share one `:copy_timeout`.
     4. Checks written entries against `c:Logflare.ContextCache.stale_entry?/2` again and deletes
@@ -31,6 +32,8 @@ defmodule Logflare.ContextCache.PeerWarmer do
   database as before. A copy inherits the peer's `warmed_at`, so a copy of a copy never looks
   fresher than the data it holds.
   """
+
+  import Logflare.Utils.Guards
 
   require Logger
 
@@ -64,11 +67,12 @@ defmodule Logflare.ContextCache.PeerWarmer do
           | :peer_down
           | :crashed
 
-  @spec copy_from_peer(module()) :: {:ok, copy_result()} | :fallback
-  def copy_from_peer(cache) when is_map_key(@max_age_config, cache) do
+  @spec copy_from_peer(module(), pos_integer()) :: {:ok, copy_result()} | :fallback
+  def copy_from_peer(cache, max_entries)
+      when is_map_key(@max_age_config, cache) and is_pos_integer(max_entries) do
     if config(:enabled) do
       :telemetry.span([:logflare, :context_cache, :peer_warm], %{cache: cache}, fn ->
-        traced_copy(cache)
+        traced_copy(cache, max_entries)
       end)
     else
       :fallback
@@ -115,17 +119,17 @@ defmodule Logflare.ContextCache.PeerWarmer do
     end
   end
 
-  defp traced_copy(cache) do
-    result = run_isolated(fn -> do_copy(cache) end)
+  defp traced_copy(cache, max_entries) do
+    result = run_isolated(fn -> do_copy(cache, max_entries) end)
     {public_result(result), %{cache: cache, outcome: outcome(result)}}
   end
 
-  defp do_copy(cache) do
+  defp do_copy(cache, max_entries) do
     await_ready(System.monotonic_time(:millisecond) + config(:peer_wait))
 
     with :ok <- ensure_cache_buster_started(),
          {:ok, peers} <- pick_peers(),
-         {:ok, node, count, warmed_at} <- copy_from_first_available(peers, cache) do
+         {:ok, node, count, warmed_at} <- copy_from_first_available(peers, cache, max_entries) do
       Logger.info("Warmed #{inspect(cache)} with #{count} entries copied from #{node}")
       {:ok, %{node: node, warmed_at: warmed_at, count: count}}
     else
@@ -188,7 +192,7 @@ defmodule Logflare.ContextCache.PeerWarmer do
     end
   end
 
-  defp copy_from_first_available(peers, cache) do
+  defp copy_from_first_available(peers, cache, max_entries) do
     deadline = System.monotonic_time(:millisecond) + config(:copy_timeout)
     guard = {__MODULE__, :source_status, [cache, release_version()]}
 
@@ -196,7 +200,7 @@ defmodule Logflare.ContextCache.PeerWarmer do
       case deadline - System.monotonic_time(:millisecond) do
         remaining when remaining > 0 ->
           node
-          |> copy_attempt(cache, guard, remaining)
+          |> copy_attempt(cache, max_entries, guard, remaining)
           |> attempt_result(node, last_error)
 
         _deadline_passed ->
@@ -205,9 +209,9 @@ defmodule Logflare.ContextCache.PeerWarmer do
     end)
   end
 
-  defp copy_attempt(node, cache, guard, timeout) do
+  defp copy_attempt(node, cache, max_entries, guard, timeout) do
     Process.put(@written_keys, [])
-    result = Transfer.run(node, cache, guard, &import_entries(cache, &1), timeout)
+    result = Transfer.run(node, cache, max_entries, guard, &import_entries(cache, &1), timeout)
     written = Process.delete(@written_keys)
     discard_unless_copied(result, cache, written)
   end

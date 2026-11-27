@@ -14,6 +14,7 @@ defmodule Logflare.ContextCache.PeerWarmerTest do
 
   @stop_event [:logflare, :context_cache, :peer_warm, :stop]
   @user_id 1
+  @max_entries 10_000
 
   setup do
     original_config = Application.fetch_env!(:logflare, PeerWarmer)
@@ -39,7 +40,7 @@ defmodule Logflare.ContextCache.PeerWarmerTest do
     [telemetry_ref: telemetry_ref]
   end
 
-  describe "copy_from_peer/1 peer selection" do
+  describe "copy_from_peer/2 peer selection" do
     test "falls back without contacting peers when disabled" do
       Application.put_env(
         :logflare,
@@ -49,13 +50,13 @@ defmodule Logflare.ContextCache.PeerWarmerTest do
 
       reject(ClusterUtils, :peer_list_partial, 2)
 
-      assert :fallback = PeerWarmer.copy_from_peer(KeyValues.Cache)
+      assert :fallback = PeerWarmer.copy_from_peer(KeyValues.Cache, @max_entries)
     end
 
     test "falls back when there are no peers", %{telemetry_ref: ref} do
       stub(ClusterUtils, :peer_list_partial, fn _ratio, _max_nodes -> [] end)
 
-      assert :fallback = PeerWarmer.copy_from_peer(KeyValues.Cache)
+      assert :fallback = PeerWarmer.copy_from_peer(KeyValues.Cache, @max_entries)
       assert_outcome(ref, :no_peers)
     end
 
@@ -71,7 +72,7 @@ defmodule Logflare.ContextCache.PeerWarmerTest do
       refute Process.whereis(Logflare.ContextCache.CacheBuster)
       reject(ClusterUtils, :peer_list_partial, 2)
 
-      assert :fallback = PeerWarmer.copy_from_peer(KeyValues.Cache)
+      assert :fallback = PeerWarmer.copy_from_peer(KeyValues.Cache, @max_entries)
       assert_outcome(ref, :cache_buster_not_started)
     end
 
@@ -88,7 +89,7 @@ defmodule Logflare.ContextCache.PeerWarmerTest do
       )
 
       assert {:ok, %{node: :accepting@host, warmed_at: ^warmed_at, count: 5}} =
-               PeerWarmer.copy_from_peer(KeyValues.Cache)
+               PeerWarmer.copy_from_peer(KeyValues.Cache, @max_entries)
 
       assert_received {:asked, :refusing@host, ^expected_guard}
       assert_received {:asked, :accepting@host, ^expected_guard}
@@ -102,20 +103,21 @@ defmodule Logflare.ContextCache.PeerWarmerTest do
         accepting@host: {:ok, 1, %{warmed_at: DateTime.utc_now()}}
       )
 
-      assert {:ok, %{node: :accepting@host}} = PeerWarmer.copy_from_peer(KeyValues.Cache)
+      assert {:ok, %{node: :accepting@host}} =
+               PeerWarmer.copy_from_peer(KeyValues.Cache, @max_entries)
     end
 
     test "falls back when every peer refuses", %{telemetry_ref: ref} do
       stub_attempts(a@host: {:error, :not_eligible}, b@host: {:error, :not_eligible})
 
-      assert :fallback = PeerWarmer.copy_from_peer(KeyValues.Cache)
+      assert :fallback = PeerWarmer.copy_from_peer(KeyValues.Cache, @max_entries)
       assert_outcome(ref, :no_eligible_peer)
     end
 
     test "reports the last transfer failure when no peer could be copied", %{telemetry_ref: ref} do
       stub_attempts(down@host: {:error, :peer_down}, refusing@host: {:error, :not_eligible})
 
-      assert :fallback = PeerWarmer.copy_from_peer(KeyValues.Cache)
+      assert :fallback = PeerWarmer.copy_from_peer(KeyValues.Cache, @max_entries)
       assert_outcome(ref, :peer_down)
     end
 
@@ -129,13 +131,13 @@ defmodule Logflare.ContextCache.PeerWarmerTest do
       stub(ClusterUtils, :peer_list_partial, fn 1.0, _max_nodes -> [:slow@host, :next@host] end)
       test_pid = self()
 
-      stub(Transfer, :run, fn node, _cache, _guard, _import_fun, timeout ->
+      stub(Transfer, :run, fn node, _cache, _max_entries, _guard, _import_fun, timeout ->
         send(test_pid, {:asked, node, timeout})
         Process.sleep(60)
         {:error, :timeout}
       end)
 
-      assert :fallback = PeerWarmer.copy_from_peer(KeyValues.Cache)
+      assert :fallback = PeerWarmer.copy_from_peer(KeyValues.Cache, @max_entries)
       assert_received {:asked, :slow@host, timeout} when timeout <= 50
       refute_received {:asked, :next@host, _timeout}
       assert_outcome(ref, :timeout)
@@ -148,7 +150,7 @@ defmodule Logflare.ContextCache.PeerWarmerTest do
       )
 
       assert {:ok, %{node: :accepting@host, count: 3}} =
-               PeerWarmer.copy_from_peer(KeyValues.Cache)
+               PeerWarmer.copy_from_peer(KeyValues.Cache, @max_entries)
     end
 
     test "falls back when no transfer copies any entries", %{telemetry_ref: ref} do
@@ -157,16 +159,19 @@ defmodule Logflare.ContextCache.PeerWarmerTest do
         b@host: {:ok, 0, %{warmed_at: DateTime.utc_now()}}
       )
 
-      assert :fallback = PeerWarmer.copy_from_peer(KeyValues.Cache)
+      assert :fallback = PeerWarmer.copy_from_peer(KeyValues.Cache, @max_entries)
       assert_outcome(ref, :no_entries)
     end
 
     test "falls back when the copy crashes", %{telemetry_ref: ref} do
       stub(ClusterUtils, :peer_list_partial, fn 1.0, _max_nodes -> [:peer@host] end)
-      stub(Transfer, :run, fn _node, _cache, _guard, _import_fun, _timeout -> raise "boom" end)
+
+      stub(Transfer, :run, fn _node, _cache, _max_entries, _guard, _import_fun, _timeout ->
+        raise "boom"
+      end)
 
       capture_log(fn ->
-        assert :fallback = PeerWarmer.copy_from_peer(KeyValues.Cache)
+        assert :fallback = PeerWarmer.copy_from_peer(KeyValues.Cache, @max_entries)
       end)
 
       assert_outcome(ref, :crashed)
@@ -227,12 +232,25 @@ defmodule Logflare.ContextCache.PeerWarmerTest do
     end
   end
 
-  describe "copy_from_peer/1 importing across attempts" do
+  test "asks peers for at most max_entries entries" do
+    test_pid = self()
+    stub(ClusterUtils, :peer_list_partial, fn 1.0, _max_nodes -> [:peer@host] end)
+
+    stub(Transfer, :run, fn _node, _cache, max_entries, _guard, _import_fun, _timeout ->
+      send(test_pid, {:max_entries, max_entries})
+      {:error, :not_eligible}
+    end)
+
+    assert :fallback = PeerWarmer.copy_from_peer(KeyValues.Cache, 42)
+    assert_received {:max_entries, 42}
+  end
+
+  describe "copy_from_peer/2 importing across attempts" do
     test "discards what a failed attempt wrote, so the next peer's values are kept" do
       stub(ClusterUtils, :peer_list_partial, fn 1.0, _max_nodes -> [:failing@host, :next@host] end)
 
       stub(Transfer, :run, fn
-        :failing@host, _cache, _guard, import_fun, _timeout ->
+        :failing@host, _cache, _max_entries, _guard, import_fun, _timeout ->
           import_fun.([
             {lookup("shared"), %{"from" => "failing"}, nil},
             {lookup("failed_only"), %{"v" => 1}, nil}
@@ -240,12 +258,14 @@ defmodule Logflare.ContextCache.PeerWarmerTest do
 
           {:error, :timeout}
 
-        :next@host, _cache, _guard, import_fun, _timeout ->
+        :next@host, _cache, _max_entries, _guard, import_fun, _timeout ->
           count = import_fun.([{lookup("shared"), %{"from" => "next"}, nil}])
           {:ok, count, %{warmed_at: DateTime.utc_now()}}
       end)
 
-      assert {:ok, %{node: :next@host, count: 1}} = PeerWarmer.copy_from_peer(KeyValues.Cache)
+      assert {:ok, %{node: :next@host, count: 1}} =
+               PeerWarmer.copy_from_peer(KeyValues.Cache, @max_entries)
+
       assert Cachex.get!(KeyValues.Cache, lookup("shared")) == {:cached, %{"from" => "next"}}
       refute KeyValues.Cache.cached?(lookup("failed_only"))
     end
@@ -253,12 +273,12 @@ defmodule Logflare.ContextCache.PeerWarmerTest do
     test "discards what a failed attempt wrote before falling back to the database" do
       stub(ClusterUtils, :peer_list_partial, fn 1.0, _max_nodes -> [:failing@host] end)
 
-      stub(Transfer, :run, fn _node, _cache, _guard, import_fun, _timeout ->
+      stub(Transfer, :run, fn _node, _cache, _max_entries, _guard, import_fun, _timeout ->
         import_fun.([{lookup("written"), %{"v" => 1}, nil}])
         {:error, :peer_down}
       end)
 
-      assert :fallback = PeerWarmer.copy_from_peer(KeyValues.Cache)
+      assert :fallback = PeerWarmer.copy_from_peer(KeyValues.Cache, @max_entries)
       refute KeyValues.Cache.cached?(lookup("written"))
     end
 
@@ -266,17 +286,17 @@ defmodule Logflare.ContextCache.PeerWarmerTest do
       put_cached(lookup("local"), %{"from" => "local"})
       stub(ClusterUtils, :peer_list_partial, fn 1.0, _max_nodes -> [:failing@host] end)
 
-      stub(Transfer, :run, fn _node, _cache, _guard, import_fun, _timeout ->
+      stub(Transfer, :run, fn _node, _cache, _max_entries, _guard, import_fun, _timeout ->
         import_fun.([{lookup("local"), %{"from" => "peer"}, nil}])
         {:error, :peer_down}
       end)
 
-      assert :fallback = PeerWarmer.copy_from_peer(KeyValues.Cache)
+      assert :fallback = PeerWarmer.copy_from_peer(KeyValues.Cache, @max_entries)
       assert Cachex.get!(KeyValues.Cache, lookup("local")) == {:cached, %{"from" => "local"}}
     end
   end
 
-  describe "copy_from_peer/1 importing" do
+  describe "copy_from_peer/2 importing" do
     test "imports entries except negative, invalidated and already cached ones" do
       other_user_id = 2
       Gossip.record_tombstones([{KeyValues, [user_id: @user_id, key: "invalidated"]}])
@@ -291,7 +311,7 @@ defmodule Logflare.ContextCache.PeerWarmerTest do
         {{:count, other_user_id}, 4, nil}
       ])
 
-      assert {:ok, %{count: 2}} = PeerWarmer.copy_from_peer(KeyValues.Cache)
+      assert {:ok, %{count: 2}} = PeerWarmer.copy_from_peer(KeyValues.Cache, @max_entries)
 
       assert Cachex.get!(KeyValues.Cache, lookup("fresh")) == {:cached, %{"v" => 1}}
       assert Cachex.get!(KeyValues.Cache, {:count, other_user_id}) == {:cached, 4}
@@ -314,7 +334,7 @@ defmodule Logflare.ContextCache.PeerWarmerTest do
         call_original(KeyValues.Cache, :put_entries, [entries])
       end)
 
-      result = PeerWarmer.copy_from_peer(KeyValues.Cache)
+      result = PeerWarmer.copy_from_peer(KeyValues.Cache, @max_entries)
 
       refute KeyValues.Cache.cached?(lookup("invalidated"))
       assert Cachex.get!(KeyValues.Cache, lookup("unchanged")) == {:cached, %{"v" => 2}}
@@ -324,7 +344,7 @@ defmodule Logflare.ContextCache.PeerWarmerTest do
     test "keeps the remaining ttl of copied entries" do
       stub_transfer_of([{lookup("key"), %{"v" => 1}, to_timeout(minute: 6)}])
 
-      assert {:ok, %{count: 1}} = PeerWarmer.copy_from_peer(KeyValues.Cache)
+      assert {:ok, %{count: 1}} = PeerWarmer.copy_from_peer(KeyValues.Cache, @max_entries)
 
       assert {:ok, remaining} = Cachex.ttl(KeyValues.Cache, lookup("key"))
       assert remaining <= to_timeout(minute: 6)
@@ -360,14 +380,16 @@ defmodule Logflare.ContextCache.PeerWarmerTest do
   end
 
   test "Sources are not copied from peers" do
-    assert_raise FunctionClauseError, fn -> PeerWarmer.copy_from_peer(Sources.Cache) end
+    assert_raise FunctionClauseError, fn ->
+      PeerWarmer.copy_from_peer(Sources.Cache, @max_entries)
+    end
   end
 
   defp stub_attempts(attempts) do
     test_pid = self()
     stub(ClusterUtils, :peer_list_partial, fn 1.0, _max_nodes -> Keyword.keys(attempts) end)
 
-    stub(Transfer, :run, fn node, _cache, guard, _import_fun, _timeout ->
+    stub(Transfer, :run, fn node, _cache, _max_entries, guard, _import_fun, _timeout ->
       send(test_pid, {:asked, node, guard})
       Keyword.fetch!(attempts, node)
     end)
@@ -376,7 +398,7 @@ defmodule Logflare.ContextCache.PeerWarmerTest do
   defp stub_transfer_of(entries) do
     stub(ClusterUtils, :peer_list_partial, fn 1.0, _max_nodes -> [:peer@host] end)
 
-    stub(Transfer, :run, fn _node, _cache, _guard, import_fun, _timeout ->
+    stub(Transfer, :run, fn _node, _cache, _max_entries, _guard, import_fun, _timeout ->
       {:ok, import_fun.(entries), %{warmed_at: DateTime.utc_now()}}
     end)
   end

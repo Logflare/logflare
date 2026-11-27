@@ -7,6 +7,7 @@ defmodule Logflare.ContextCache.PeerWarmer.TransferTest do
   alias Logflare.ContextCache.PeerWarmer.Transfer
 
   @accept {__MODULE__, :accept, [:meta]}
+  @max_entries 10_000
 
   defmodule TestCache do
     use Logflare.ContextCache
@@ -45,11 +46,28 @@ defmodule Logflare.ContextCache.PeerWarmer.TransferTest do
       length(entries)
     end
 
-    assert {:ok, 1_201, :meta} = Transfer.run(node(), TestCache, @accept, import_fun, 5_000)
+    assert {:ok, 1_201, :meta} =
+             Transfer.run(node(), TestCache, @max_entries, @accept, import_fun, 5_000)
 
     assert_received {:chunk, 500}
     assert_received {:chunk, 500}
     assert_received {:chunk, 201}
+    refute_received {:chunk, _size}
+  end
+
+  test "sends at most max_entries entries" do
+    put_entries(1..1_201)
+    test_pid = self()
+
+    import_fun = fn entries ->
+      send(test_pid, {:chunk, length(entries)})
+      length(entries)
+    end
+
+    assert {:ok, 600, :meta} = Transfer.run(node(), TestCache, 600, @accept, import_fun, 5_000)
+
+    assert_received {:chunk, 500}
+    assert_received {:chunk, 100}
     refute_received {:chunk, _size}
   end
 
@@ -62,7 +80,9 @@ defmodule Logflare.ContextCache.PeerWarmer.TransferTest do
       length(entries)
     end
 
-    assert {:ok, 1, :meta} = Transfer.run(node(), TestCache, @accept, import_fun, 5_000)
+    assert {:ok, 1, :meta} =
+             Transfer.run(node(), TestCache, @max_entries, @accept, import_fun, 5_000)
+
     assert_received {:entries, [{1, 1, ttl}]}
     assert is_integer(ttl)
   end
@@ -72,17 +92,26 @@ defmodule Logflare.ContextCache.PeerWarmer.TransferTest do
     refuse = {__MODULE__, :refuse, [:not_eligible]}
 
     assert {:error, :not_eligible} =
-             Transfer.run(node(), TestCache, refuse, fn _entries -> flunk("sent") end, 5_000)
+             Transfer.run(
+               node(),
+               TestCache,
+               @max_entries,
+               refuse,
+               fn _entries -> flunk("sent") end,
+               5_000
+             )
   end
 
   test "counts the entries the importer kept" do
     put_entries(1..10)
 
-    assert {:ok, 0, :meta} = Transfer.run(node(), TestCache, @accept, fn _entries -> 0 end, 5_000)
+    assert {:ok, 0, :meta} =
+             Transfer.run(node(), TestCache, @max_entries, @accept, fn _entries -> 0 end, 5_000)
   end
 
   test "completes with no entries for an empty cache" do
-    assert {:ok, 0, :meta} = Transfer.run(node(), TestCache, @accept, &length/1, 5_000)
+    assert {:ok, 0, :meta} =
+             Transfer.run(node(), TestCache, @max_entries, @accept, &length/1, 5_000)
   end
 
   test "gives up at the deadline" do
@@ -93,26 +122,41 @@ defmodule Logflare.ContextCache.PeerWarmer.TransferTest do
       length(entries)
     end
 
-    assert {:error, :timeout} = Transfer.run(node(), TestCache, @accept, slow_import, 100)
+    assert {:error, :timeout} =
+             Transfer.run(node(), TestCache, @max_entries, @accept, slow_import, 100)
   end
 
   test "fails when the peer can't be reached" do
     assert {:error, :rpc_failed} =
-             Transfer.run(:"missing@127.0.0.1", TestCache, @accept, &length/1, 5_000)
+             Transfer.run(
+               :"missing@127.0.0.1",
+               TestCache,
+               @max_entries,
+               @accept,
+               &length/1,
+               5_000
+             )
   end
 
   test "fails when the peer doesn't have the guard function" do
     missing_guard = {__MODULE__, :missing_guard, []}
 
     assert {:error, :rpc_failed} =
-             Transfer.run(node(), TestCache, missing_guard, &length/1, 5_000)
+             Transfer.run(node(), TestCache, @max_entries, missing_guard, &length/1, 5_000)
   end
 
   test "gives up when the exporter stalls, well before the deadline" do
     started_at = System.monotonic_time(:millisecond)
 
     assert {:error, :timeout} =
-             Transfer.run(node(), StallingCache, @accept, &length/1, to_timeout(second: 30))
+             Transfer.run(
+               node(),
+               StallingCache,
+               @max_entries,
+               @accept,
+               &length/1,
+               to_timeout(second: 30)
+             )
 
     assert System.monotonic_time(:millisecond) - started_at < to_timeout(second: 3)
   end
@@ -121,7 +165,9 @@ defmodule Logflare.ContextCache.PeerWarmer.TransferTest do
     put_entries(1..1_000)
     ref = make_ref()
 
-    assert {:ok, exporter, :meta} = Transfer.start_export(TestCache, @accept, self(), ref)
+    assert {:ok, exporter, :meta} =
+             Transfer.start_export(TestCache, @max_entries, @accept, self(), ref)
+
     monitor = Process.monitor(exporter)
 
     assert_receive {^ref, :chunk, _entries}
@@ -132,7 +178,7 @@ defmodule Logflare.ContextCache.PeerWarmer.TransferTest do
   test "fails when the exporter goes down" do
     capture_log(fn ->
       assert {:error, :peer_down} =
-               Transfer.run(node(), NotStartedCache, @accept, &length/1, 5_000)
+               Transfer.run(node(), NotStartedCache, @max_entries, @accept, &length/1, 5_000)
     end)
   end
 

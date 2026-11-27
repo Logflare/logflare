@@ -4,8 +4,8 @@ defmodule Logflare.ContextCache.PeerWarmer.Transfer do
 
   The requesting process asks the peer to start an exporter. The peer first applies the `guard`
   MFA, which decides whether it may serve the copy and returns metadata for the requester. The
-  exporter then streams `c:Logflare.ContextCache.entries/0` and sends one chunk at a time, waiting
-  for an ack before sending the next. Neither side waits long for the other: the exporter stops
+  exporter then streams up to `max_entries` of `c:Logflare.ContextCache.entries/0` and sends one
+  chunk at a time, waiting for an ack before sending the next. Neither side waits long for the other: the exporter stops
   when the requester goes down or doesn't ack a chunk within 2 seconds, and the requester gives
   up when no chunk arrives within 2 seconds or at the deadline.
   """
@@ -30,12 +30,12 @@ defmodule Logflare.ContextCache.PeerWarmer.Transfer do
   Copies `cache` from `node`, returning the number of imported entries and the guard's metadata.
   A guard refusal is returned as is.
   """
-  @spec run(node(), module(), guard(), import_fun(), timeout()) ::
+  @spec run(node(), module(), pos_integer(), guard(), import_fun(), timeout()) ::
           {:ok, non_neg_integer(), term()} | {:error, error()}
-  def run(node, cache, guard, import_fun, timeout) do
+  def run(node, cache, max_entries, guard, import_fun, timeout) do
     ref = make_ref()
     deadline = System.monotonic_time(:millisecond) + timeout
-    args = [cache, guard, self(), ref]
+    args = [cache, max_entries, guard, self(), ref]
 
     case ClusterUtils.erpc_call(node, __MODULE__, :start_export, args, @rpc_timeout) do
       {:ok, {:ok, exporter, meta}} ->
@@ -53,19 +53,21 @@ defmodule Logflare.ContextCache.PeerWarmer.Transfer do
   end
 
   @doc false
-  @spec start_export(module(), guard(), pid(), reference()) ::
+  @spec start_export(module(), pos_integer(), guard(), pid(), reference()) ::
           {:ok, pid(), term()} | {:error, term()}
-  def start_export(cache, {module, fun, args}, requester, ref) do
+  def start_export(cache, max_entries, {module, fun, args}, requester, ref) do
     with {:ok, meta} <- apply(module, fun, args),
-         {:ok, exporter} <- Tasks.start_child(fn -> export(cache, requester, ref) end) do
+         {:ok, exporter} <-
+           Tasks.start_child(fn -> export(cache, max_entries, requester, ref) end) do
       {:ok, exporter, meta}
     end
   end
 
-  defp export(cache, requester, ref) do
+  defp export(cache, max_entries, requester, ref) do
     monitor = Process.monitor(requester)
 
     cache.entries()
+    |> Stream.take(max_entries)
     |> Stream.chunk_every(@chunk_size)
     |> Enum.reduce_while(:ok, fn chunk, :ok ->
       send(requester, {ref, :chunk, chunk})

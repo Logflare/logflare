@@ -48,7 +48,7 @@ defmodule Logflare.ContextCache.PeerWarmer.DistributedTest do
     assert %{"v" => 1} = :erpc.call(peer, KeyValues.Cache, :lookup, [user.id, "k"])
     assert %{state: :ready} = :erpc.call(peer, PeerWarmer, :status, [KeyValues.Cache])
 
-    assert {:ok, %{node: ^peer, count: count}} = PeerWarmer.copy_from_peer(KeyValues.Cache)
+    assert {:ok, %{node: ^peer, count: count}} = PeerWarmer.copy_from_peer(KeyValues.Cache, 10)
     assert count >= 1
     assert {:cached, %{"v" => 1}} = Cachex.get!(KeyValues.Cache, cache_key)
   end
@@ -64,27 +64,28 @@ defmodule Logflare.ContextCache.PeerWarmer.DistributedTest do
     true = Node.connect(node)
 
     :erpc.call(node, :code, :add_paths, [:code.get_path()])
-
-    for {app, _, _} <- Application.loaded_applications() do
-      for {key, val} <- Application.get_all_env(app) do
-        :erpc.call(node, Application, :put_env, [app, key, val, [persistent: true]])
-      end
-    end
-
-    :erpc.call(node, Application, :put_env, [:logflare, LogflareWeb.Endpoint, [server: false]])
-    :erpc.call(node, Application, :put_env, [:logflare, :enable_cainophile, false])
-
-    :erpc.call(node, Application, :put_env, [
-      :logflare,
-      :context_cache_gossip,
-      %{enabled: false, ratio: 0.0, max_nodes: 1},
-      [persistent: true]
-    ])
-
+    :erpc.call(node, Application, :put_all_env, [peer_config(), [persistent: true]])
     :erpc.call(node, Application, :ensure_all_started, [:logflare])
 
     node
   end
+
+  defp peer_config do
+    for {app, _description, _vsn} <- Application.loaded_applications() do
+      {app, Keyword.merge(Application.get_all_env(app), peer_overrides(app))}
+    end
+  end
+
+  defp peer_overrides(:logflare) do
+    [
+      {LogflareWeb.Endpoint,
+       Keyword.put(Application.fetch_env!(:logflare, LogflareWeb.Endpoint), :server, false)},
+      enable_cainophile: false,
+      context_cache_gossip: %{enabled: false, ratio: 0.0, max_nodes: 1}
+    ]
+  end
+
+  defp peer_overrides(_app), do: []
 
   defp unboxed_insert_then_delete_on_exit(kind, options \\ []) do
     record = EctoSandbox.unboxed_run(Logflare.Repo, fn -> insert(kind, options) end)
