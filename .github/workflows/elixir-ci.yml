@@ -390,8 +390,36 @@ jobs:
       - name: Install dependencies
         run: mix do deps.get + deps.compile
 
+      - name: Start Toxiproxy
+        run: |
+          curl --fail --silent --show-error --location \
+            https://github.com/Shopify/toxiproxy/releases/download/v2.12.0/toxiproxy-server-linux-amd64 \
+            --output "$RUNNER_TEMP/toxiproxy-server"
+          printf '%s  %s\n' \
+            556d891134a3c582dc1e1a3f7335fd55142e5965769855a00b944e13e48302fc \
+            "$RUNNER_TEMP/toxiproxy-server" | sha256sum --check
+          chmod +x "$RUNNER_TEMP/toxiproxy-server"
+          LOG_LEVEL=info "$RUNNER_TEMP/toxiproxy-server" -host 127.0.0.1 \
+            > "$RUNNER_TEMP/toxiproxy.log" 2>&1 &
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent --max-time 1 http://127.0.0.1:8474/version > /dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/toxiproxy.log"
+          exit 1
+
       - name: Run tests
-        run: epmd -daemon; mix do ecto.create + ecto.migrate + test.coverage.ci
+        run: epmd -daemon; mix do ecto.create + ecto.migrate + test.coverage.ci --include toxiproxy
+
+      - name: Upload Toxiproxy log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: toxiproxy-log
+          path: ${{ runner.temp }}/toxiproxy.log
+          if-no-files-found: ignore
 
       - name: Upload coverage
         uses: coverallsapp/github-action@v2
