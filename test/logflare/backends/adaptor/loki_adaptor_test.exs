@@ -148,7 +148,7 @@ defmodule Logflare.Backends.Adaptor.LokiAdaptorTest do
       @client
       |> expect(:send, fn _req ->
         send(this, ref)
-        %Tesla.Env{status: 200, body: ""}
+        {:ok, %Tesla.Env{status: 200, body: ""}}
       end)
 
       le = build(:log_event, source: source)
@@ -164,7 +164,7 @@ defmodule Logflare.Backends.Adaptor.LokiAdaptorTest do
       @client
       |> expect(:send, fn req ->
         send(this, {ref, req[:body]})
-        %Tesla.Env{status: 200, body: ""}
+        {:ok, %Tesla.Env{status: 200, body: ""}}
       end)
 
       le = build(:log_event, source: source)
@@ -182,7 +182,7 @@ defmodule Logflare.Backends.Adaptor.LokiAdaptorTest do
       @client
       |> expect(:send, fn req ->
         send(this, {ref, req[:body]})
-        %Tesla.Env{status: 200, body: ""}
+        {:ok, %Tesla.Env{status: 200, body: ""}}
       end)
 
       le = build(:log_event, source: source)
