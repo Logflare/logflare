@@ -7,6 +7,7 @@ defmodule Logflare.KeyValues.Cache do
   alias Logflare.ContextCache
   alias Logflare.KeyValues
   alias Logflare.KeyValues.CacheWarmer
+  alias Logflare.KeyValues.KeyFilter
   alias Logflare.Repo
 
   @usage_touch_window :timer.minutes(20)
@@ -35,6 +36,12 @@ defmodule Logflare.KeyValues.Cache do
     end
   end
 
+  @doc """
+  Returns the value for a key, or `nil` when it has none.
+
+  Only keys the `KeyFilter` reports may exist reach the database on a miss; other misses return
+  `nil` without a query or a cache entry.
+  """
   @spec lookup(integer(), String.t()) :: map() | nil
   def lookup(user_id, key) do
     lookup(user_id, key, nil)
@@ -45,12 +52,18 @@ defmodule Logflare.KeyValues.Cache do
     key_args = [user_id, key, accessor_path]
     cache_key = {:lookup, key_args}
 
-    Cachex.execute!(__MODULE__, fn worker ->
-      Cachex.fetch(worker, cache_key, fn _key -> lookup_fallback(worker, key_args) end)
-    end)
+    Cachex.execute!(__MODULE__, &get_or_fetch(&1, cache_key, key_args))
     |> case do
       {:commit, {:cached, v}} -> v
       {:ok, {:cached, v}} -> v
+      false -> nil
+    end
+  end
+
+  defp get_or_fetch(worker, cache_key, [user_id, key, _accessor_path] = key_args) do
+    with {:ok, nil} <- Cachex.get(worker, cache_key),
+         true <- KeyFilter.maybe_exists?(user_id, key) do
+      Cachex.fetch(worker, cache_key, fn _key -> lookup_fallback(worker, key_args) end)
     end
   end
 
@@ -101,6 +114,21 @@ defmodule Logflare.KeyValues.Cache do
       warmed_at -> max(window_start, DateTime.to_unix(warmed_at, :millisecond) + 1)
     end
   end
+
+  @doc """
+  Deletes the cached entries for a key. With `exists: true`, from a WAL insert or update, it first
+  adds the key to the `KeyFilter`.
+  """
+  @impl ContextCache
+  def bust_by(kw) do
+    maybe_add_to_filter(kw[:user_id], kw[:key], kw[:exists])
+    delete_keys(keys_to_bust(kw))
+  end
+
+  defp maybe_add_to_filter(user_id, key, true) when is_integer(user_id) and is_binary(key),
+    do: KeyFilter.add(user_id, key)
+
+  defp maybe_add_to_filter(_user_id, _key, _exists), do: :ok
 
   @impl ContextCache
   def keys_to_bust(kw) do

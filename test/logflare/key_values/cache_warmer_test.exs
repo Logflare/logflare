@@ -6,11 +6,17 @@ defmodule Logflare.KeyValues.CacheWarmerTest do
 
   alias Logflare.KeyValues.Cache
   alias Logflare.KeyValues.CacheWarmer
+  alias Logflare.KeyValues.KeyFilter
+  alias Logflare.KeyValues.KeyValue
 
   @pt_key {CacheWarmer, :initialized}
+  @pt_warmed_at {CacheWarmer, :warmed_at}
 
   setup do
     :persistent_term.erase(@pt_key)
+    :persistent_term.erase(@pt_warmed_at)
+    KeyFilter.clear()
+    on_exit(&KeyFilter.clear/0)
     user = insert(:user)
     [user: user]
   end
@@ -54,7 +60,7 @@ defmodule Logflare.KeyValues.CacheWarmerTest do
     end
 
     test "if cache warmer fails, does not mark itself as initialized" do
-      stub(Logflare.KeyValues.CacheWarmer, :warm_top_n, fn ->
+      stub(Logflare.KeyValues.CacheWarmer, :warm_all, fn ->
         raise RuntimeError, "test"
       end)
 
@@ -78,6 +84,70 @@ defmodule Logflare.KeyValues.CacheWarmerTest do
     end
   end
 
+  describe "filter and sweep" do
+    test "the filter holds every key, including keys beyond the warm limit", %{user: user} do
+      insert_keys(user, [{"a", used: 1}, {"b", []}])
+
+      assert {:ok, 2} = CacheWarmer.rebuild_filter()
+      assert {:ok, :ok} = CacheWarmer.warm_top_n(1)
+
+      assert cached_keys(user, [{"a", []}, {"b", []}]) == ["a"]
+      assert KeyFilter.maybe_exists?(user.id, "a")
+      assert KeyFilter.maybe_exists?(user.id, "b")
+      refute KeyFilter.maybe_exists?(user.id, "missing")
+    end
+
+    test "the filter rebuild pages through more keys than one page", %{user: user} do
+      now = DateTime.utc_now()
+
+      rows =
+        for i <- 1..10_001 do
+          %{user_id: user.id, key: "k#{i}", value: %{}, inserted_at: now, updated_at: now}
+        end
+
+      for chunk <- Enum.chunk_every(rows, 5_000), do: Repo.insert_all(KeyValue, chunk)
+
+      assert {:ok, 10_001} = CacheWarmer.rebuild_filter()
+      assert KeyFilter.maybe_exists?(user.id, "k1")
+      assert KeyFilter.maybe_exists?(user.id, "k10001")
+      assert %{size: 10_001} = KeyFilter.info()
+    end
+
+    test "sweep deletes cached lookups for keys missing from the filter only", %{user: user} do
+      insert(:key_value, user: user, key: "kept")
+      CacheWarmer.rebuild_filter()
+      Cachex.put!(Cache, {:lookup, [user.id, "kept", nil]}, {:cached, %{}})
+      Cachex.put!(Cache, {:lookup, [user.id, "kept", "a"]}, {:cached, 1})
+      Cachex.put!(Cache, {:lookup, [user.id, "gone", nil]}, {:cached, %{}})
+      Cachex.put!(Cache, {:lookup, [user.id, "gone", "a"]}, {:cached, 1})
+      Cachex.put!(Cache, {:count, user.id}, {:cached, 1})
+
+      assert CacheWarmer.sweep() >= 2
+
+      assert {:cached, %{}} == Cachex.get!(Cache, {:lookup, [user.id, "kept", nil]})
+      assert {:cached, 1} == Cachex.get!(Cache, {:lookup, [user.id, "kept", "a"]})
+      assert Cachex.get!(Cache, {:lookup, [user.id, "gone", nil]}) == nil
+      assert Cachex.get!(Cache, {:lookup, [user.id, "gone", "a"]}) == nil
+      assert {:cached, 1} == Cachex.get!(Cache, {:count, user.id})
+    end
+
+    test "a full warm runs again once 12 hours have passed", %{user: user} do
+      CacheWarmer.execute(nil)
+      kv = insert(:key_value, user: user, key: "late", updated_at: minutes_ago(120))
+      Cachex.put!(Cache, {:lookup, [user.id, "gone", nil]}, {:cached, %{}})
+
+      CacheWarmer.execute(nil)
+      assert Cachex.get!(Cache, {:lookup, [user.id, "late", nil]}) == nil
+
+      :persistent_term.put(@pt_warmed_at, DateTime.add(DateTime.utc_now(), -13, :hour))
+      CacheWarmer.execute(nil)
+
+      assert {:cached, kv.value} == Cachex.get!(Cache, {:lookup, [user.id, "late", nil]})
+      assert Cachex.get!(Cache, {:lookup, [user.id, "gone", nil]}) == nil
+      assert KeyFilter.maybe_exists?(user.id, "late")
+    end
+  end
+
   describe "subsequent warm (recent records only)" do
     test "caches only recently inserted records", %{user: user} do
       old_time = DateTime.add(DateTime.utc_now(), -2, :hour)
@@ -94,6 +164,8 @@ defmodule Logflare.KeyValues.CacheWarmerTest do
 
       # Mark as initialized to simulate subsequent warm
       :persistent_term.put(@pt_key, true)
+      :persistent_term.put(@pt_warmed_at, DateTime.utc_now())
+      KeyFilter.rebuild(0, fn _filter -> :ok end)
 
       CacheWarmer.execute(nil)
 
@@ -101,10 +173,13 @@ defmodule Logflare.KeyValues.CacheWarmerTest do
                Cachex.get!(Cache, {:lookup, [user.id, "new_key", nil]})
 
       assert is_nil(Cachex.get!(Cache, {:lookup, [user.id, "old_key", nil]}))
+      assert KeyFilter.maybe_exists?(user.id, "new_key")
+      refute KeyFilter.maybe_exists?(user.id, "old_key")
     end
 
     test "no-ops when no recent records exist" do
       :persistent_term.put(@pt_key, true)
+      :persistent_term.put(@pt_warmed_at, DateTime.utc_now())
 
       assert :ignore = CacheWarmer.execute(nil)
     end

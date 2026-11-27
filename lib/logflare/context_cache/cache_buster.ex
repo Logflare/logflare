@@ -486,7 +486,7 @@ defmodule Logflare.ContextCache.CacheBuster do
          record: %{"user_id" => uid, "key" => key}
        })
        when is_binary(uid) and is_binary(key) do
-    {KeyValues, [user_id: String.to_integer(uid), key: key]}
+    {KeyValues, [user_id: String.to_integer(uid), key: key, exists: true]}
   end
 
   defp handle_record(%NewRecord{
@@ -494,7 +494,7 @@ defmodule Logflare.ContextCache.CacheBuster do
          record: %{"user_id" => uid, "key" => key}
        })
        when is_binary(uid) and is_binary(key) do
-    {KeyValues, [user_id: String.to_integer(uid), key: key]}
+    {KeyValues, [user_id: String.to_integer(uid), key: key, exists: true]}
   end
 
   defp handle_record(%DeletedRecord{

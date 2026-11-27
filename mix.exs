@@ -122,6 +122,7 @@ defmodule Logflare.Mixfile do
       {:typed_struct, "~> 0.1", runtime: false},
       {:lqueue, "~> 1.1"},
       {:cachex, "~> 4.0"},
+      {:cuckoo_filter, "~> 1.0"},
       {:ex_machina, "~> 2.3", only: [:dev, :test]},
       {:iteraptor, "~> 1.15"},
       {:decorator, "~> 1.3"},

@@ -4,6 +4,7 @@ defmodule Logflare.KeyValues.CacheWarmer do
   use Cachex.Warmer
 
   alias Logflare.KeyValues.Cache
+  alias Logflare.KeyValues.KeyFilter
   alias Logflare.KeyValues.KeyValue
   alias Logflare.KeyValues.KeyValueUsage
   alias Logflare.Repo
@@ -14,14 +15,17 @@ defmodule Logflare.KeyValues.CacheWarmer do
   @pt_key {__MODULE__, :initialized}
   @pt_warmed_at {__MODULE__, :warmed_at}
   @warm_limit Application.compile_env!(:logflare, [__MODULE__, :warm_limit])
+  @full_warm_interval to_timeout(hour: 12)
+  @filter_page_size 10_000
 
   @impl true
   def execute(_state) do
-    if initialized?() do
+    if initialized?() and not full_warm_due?() do
       Repo.apply_with_replica(__MODULE__, :warm_recent, [])
     else
       try do
-        Repo.apply_with_replica(__MODULE__, :warm_top_n, [])
+        {:ok, :ok} = Repo.apply_with_replica(__MODULE__, :warm_all, [])
+        sweep()
         :persistent_term.put(@pt_warmed_at, DateTime.utc_now())
         :persistent_term.put(@pt_key, true)
       rescue
@@ -31,6 +35,62 @@ defmodule Logflare.KeyValues.CacheWarmer do
     end
 
     :ignore
+  end
+
+  @doc """
+  Rebuilds the `KeyFilter` from every key, then warms values with `warm_top_n/1`.
+  """
+  @spec warm_all() :: {:ok, :ok} | {:error, term()}
+  def warm_all do
+    {:ok, _count} = rebuild_filter()
+    warm_top_n()
+  end
+
+  @doc """
+  Rebuilds the `KeyFilter` from every key.
+  """
+  @spec rebuild_filter() :: {:ok, non_neg_integer()}
+  def rebuild_filter do
+    count =
+      KeyValue
+      |> Repo.aggregate(:count)
+      |> KeyFilter.rebuild(&add_keys_after(&1, 0, 0))
+
+    {:ok, count}
+  end
+
+  defp add_keys_after(filter, last_id, count) do
+    rows =
+      KeyValue
+      |> where([kv], kv.id > ^last_id)
+      |> order_by(:id)
+      |> limit(@filter_page_size)
+      |> select([kv], {kv.id, kv.user_id, kv.key})
+      |> Repo.all()
+
+    KeyFilter.add_all(filter, for({_id, user_id, key} <- rows, do: {user_id, key}))
+
+    case List.last(rows) do
+      nil -> count
+      {id, _user_id, _key} -> add_keys_after(filter, id, count + length(rows))
+    end
+  end
+
+  @doc """
+  Deletes cached lookups for keys the `KeyFilter` reports do not exist.
+  """
+  @spec sweep() :: non_neg_integer()
+  def sweep do
+    Cache
+    |> Cachex.stream!(Cachex.Query.build(output: :key))
+    |> Stream.filter(fn
+      {:lookup, [user_id, key, _accessor_path]} -> not KeyFilter.maybe_exists?(user_id, key)
+      _key -> false
+    end)
+    |> Enum.reduce(0, fn key, count ->
+      {:ok, _} = Cachex.del(Cache, key)
+      count + 1
+    end)
   end
 
   @doc """
@@ -75,13 +135,13 @@ defmodule Logflare.KeyValues.CacheWarmer do
   end
 
   def warm_recent do
-    entries =
+    key_values =
       KeyValue
       |> where([kv], kv.updated_at >= ago(1, "hour"))
       |> Repo.all()
-      |> Enum.map(&to_cache_entry/1)
 
-    if entries != [], do: Cachex.put_many(Cache, entries)
+    Enum.each(key_values, &KeyFilter.add(&1.user_id, &1.key))
+    if key_values != [], do: Cachex.put_many(Cache, Enum.map(key_values, &to_cache_entry/1))
   end
 
   defp to_cache_entry(%KeyValue{} = kv) do
@@ -102,5 +162,15 @@ defmodule Logflare.KeyValues.CacheWarmer do
 
   defp initialized? do
     :persistent_term.get(@pt_key, false)
+  end
+
+  defp full_warm_due? do
+    case warmed_at() do
+      nil ->
+        true
+
+      warmed_at ->
+        DateTime.diff(DateTime.utc_now(), warmed_at, :millisecond) >= @full_warm_interval
+    end
   end
 end

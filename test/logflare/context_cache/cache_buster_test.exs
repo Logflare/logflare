@@ -162,6 +162,8 @@ defmodule Logflare.ContextCache.CacheBusterTest do
   test "key_values WAL deletes bust every cached lookup for the key", %{user: user} do
     kv = insert(:key_value, user: user, key: "proj", value: %{"org" => "a"})
     other = insert(:key_value, user: user, key: "other", value: %{"org" => "b"})
+    {:ok, _} = KeyValues.CacheWarmer.warm_all()
+    on_exit(&KeyValues.KeyFilter.clear/0)
 
     assert KeyValues.Cache.lookup(user.id, "proj") == %{"org" => "a"}
     assert KeyValues.Cache.lookup(user.id, "proj", "org") == "a"
@@ -182,6 +184,15 @@ defmodule Logflare.ContextCache.CacheBusterTest do
 
     assert Cachex.get!(KeyValues.Cache, {:lookup, [user.id, "other", nil]}) ==
              {:cached, other.value}
+  end
+
+  test "key_values WAL inserts and updates mark the key as existing", %{user: user} do
+    row = %{"id" => "1", "user_id" => Integer.to_string(user.id), "key" => "proj"}
+
+    for change <- [NewRecord, UpdatedRecord] do
+      assert [{KeyValues, [user_id: user.id, key: "proj", exists: true]}] ==
+               bust_records(struct(change, relation: {"public", "key_values"}, record: row))
+    end
   end
 
   test "query-context invalidation runs in a worker without blocking WAL intake", %{user: user} do
