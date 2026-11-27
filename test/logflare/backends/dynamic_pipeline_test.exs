@@ -212,11 +212,7 @@ defmodule Logflare.Backends.DynamicPipelineTest do
 
       refute new_id == ctx.old_id
       assert DynamicPipeline.get_state(name).pipeline_args == new_args
-
-      {:ok, %{start: {Pipeline, :start_link, [started_args]}}} =
-        :supervisor.get_childspec(name, new_id)
-
-      assert Keyword.fetch!(started_args, :backend).name == "replaced"
+      assert %{name: "replaced"} = started_backend(name, new_id)
 
       assert IngestEventQueue.total_pending({source.id, backend.id, producer_pid(new_id)}) == 2
       assert IngestEventQueue.total_pending(sid_bid) == 2
@@ -226,8 +222,10 @@ defmodule Logflare.Backends.DynamicPipelineTest do
          %{name: name, pipeline_args: pipeline_args, source: source, backend: backend} = ctx do
       assert :ok = IngestEventQueue.add_to_table(ctx.old_key, [build(:log_event, source: source)])
 
-      assert :ok = DynamicPipeline.replace_pipelines(name, pipeline_args)
-      assert :ok = DynamicPipeline.replace_pipelines(name, pipeline_args)
+      for backend_name <- ["first", "second"] do
+        new_args = Keyword.put(pipeline_args, :backend, %{backend | name: backend_name})
+        assert :ok = DynamicPipeline.replace_pipelines(name, new_args)
+      end
 
       TestUtils.retry_assert(fn ->
         assert [_new_id] = DynamicPipeline.list_pipelines(name)
@@ -256,19 +254,40 @@ defmodule Logflare.Backends.DynamicPipelineTest do
       refute IngestEventQueue.draining?(ctx.old_key)
     end
 
-    test "keeps the old pipeline and returns an error when a replacement fails to start",
-         %{name: name, pipeline_args: pipeline_args} = ctx do
-      stub(Broadway, :start_link, fn _module, _opts -> {:error, :boom} end)
+    test "args every pipeline was started with",
+         %{name: name, pipeline_args: pipeline_args, old_id: old_id} = ctx do
+      assert :ok = DynamicPipeline.replace_pipelines(name, pipeline_args)
 
-      capture_log(fn ->
-        assert {:error, [{old_id, :boom}]} =
-                 DynamicPipeline.replace_pipelines(name, pipeline_args)
-
-        assert old_id == ctx.old_id
-      end)
-
-      assert DynamicPipeline.list_pipelines(name) == [ctx.old_id]
+      assert [^old_id] = DynamicPipeline.list_pipelines(name)
       refute IngestEventQueue.draining?(ctx.old_key)
+    end
+
+    for {scenario, restart_coordinator?} <- [
+          {"until a later scaling check", false},
+          {"followed by a coordinator restart", true}
+        ] do
+      test "replacement that fails to start #{scenario}",
+           %{name: name, pipeline_args: pipeline_args, backend: backend, old_id: old_id} = ctx do
+        stub(Broadway, :start_link, fn _module, _opts -> {:error, :boom} end)
+        new_args = Keyword.put(pipeline_args, :backend, %{backend | name: "replaced"})
+
+        capture_log(fn ->
+          assert {:error, [{^old_id, :boom}]} = DynamicPipeline.replace_pipelines(name, new_args)
+        end)
+
+        assert [^old_id] = DynamicPipeline.list_pipelines(name)
+        refute IngestEventQueue.draining?(ctx.old_key)
+        assert %{pipeline_args: ^new_args} = DynamicPipeline.get_state(name)
+
+        if unquote(restart_coordinator?), do: restart_coordinator(name)
+        stub(Broadway, :start_link, &call_original(Broadway, :start_link, [&1, &2]))
+
+        TestUtils.retry_assert(fn ->
+          refute Process.alive?(elem(ctx.old_key, 2))
+          assert [new_id] = DynamicPipeline.list_pipelines(name)
+          assert %{name: "replaced"} = started_backend(name, new_id)
+        end)
+      end
     end
   end
 
@@ -575,5 +594,24 @@ defmodule Logflare.Backends.DynamicPipelineTest do
 
   defp producer_pid(pipeline_id) do
     pipeline_id |> Broadway.producer_names() |> hd() |> GenServer.whereis()
+  end
+
+  defp restart_coordinator(name) do
+    coordinator = DynamicPipeline.find_coordinator_name(name)
+    monitor_ref = Process.monitor(coordinator)
+    Process.exit(coordinator, :kill)
+    assert_receive {:DOWN, ^monitor_ref, :process, _pid, :killed}
+
+    TestUtils.retry_assert(fn ->
+      assert restarted = DynamicPipeline.find_coordinator_name(name)
+      assert is_pid(restarted) and restarted != coordinator
+    end)
+  end
+
+  defp started_backend(name, pipeline_id) do
+    {:ok, %{start: {Pipeline, :start_link, [started_args]}}} =
+      :supervisor.get_childspec(name, pipeline_id)
+
+    Keyword.fetch!(started_args, :backend)
   end
 end

@@ -1495,7 +1495,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
       refute conn.halted
 
       assert_received {:queried_pool, pool}
-      assert pool == ClickHouseAdaptor.connection_pool_via(backend, "api")
+      assert pool == ConnectionManager.get_pool_pid(backend, "api")
       assert ConnectionManager.read_host(backend, "api") == "api-read.local"
     end
 
@@ -1517,7 +1517,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
       refute conn.halted
 
       assert_received {:queried_pool, pool}
-      assert pool == ClickHouseAdaptor.connection_pool_via(backend, "dashboard_logs")
+      assert pool == ConnectionManager.get_pool_pid(backend, "dashboard_logs")
       assert ConnectionManager.read_host(backend, "dashboard_logs") == "logs-read.local"
     end
 
@@ -1541,7 +1541,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
       assert json_response(conn, 200)
 
       assert_received {:queried_pool, pool}
-      assert pool == ClickHouseAdaptor.connection_pool_via(backend, "dashboard_logs")
+      assert pool == ConnectionManager.get_pool_pid(backend, "dashboard_logs")
     end
   end
 end

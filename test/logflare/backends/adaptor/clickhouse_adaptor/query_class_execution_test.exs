@@ -5,6 +5,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryClassExecutionTest do
 
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager
   alias Logflare.Backends.QueryError
   alias Logflare.Endpoints
 
@@ -180,14 +181,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryClassExecutionTest do
                }
              })
 
-    api_pool = ClickHouseAdaptor.connection_pool_via(backend, "api_paid")
-
-    stub(Ch, :query, fn
-      ^api_pool, _sql, _params, _opts ->
+    stub(Ch, :query, fn pool, sql, params, opts ->
+      if pool == ConnectionManager.get_pool_pid(backend, "api_paid") do
         {:error, %DBConnection.ConnectionError{message: "unreachable"}}
-
-      pool, sql, params, opts ->
+      else
         Mimic.call_original(Ch, :query, [pool, sql, params, opts])
+      end
     end)
 
     log =
@@ -240,8 +239,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryClassExecutionTest do
 
     policy = Map.put(@policy, "api_paid", %{"priority" => 12, "max_threads" => 2})
 
-    pool_via = ClickHouseAdaptor.connection_pool_via(context.backend, "dashboard_logs_paid")
-    pool_pid = GenServer.whereis(pool_via)
+    pool_pid = ConnectionManager.get_pool_pid(context.backend, "dashboard_logs_paid")
     assert is_pid(pool_pid)
     assert Backends.Cache.get_backend(context.backend.id).config.query_class_settings == @policy
 
@@ -249,7 +247,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryClassExecutionTest do
              Backends.configure_query_class_settings(context.admin, context.backend, policy)
 
     assert Backends.Cache.get_backend(context.backend.id).config.query_class_settings == policy
-    assert GenServer.whereis(pool_via) == pool_pid
+    assert ConnectionManager.get_pool_pid(context.backend, "dashboard_logs_paid") == pool_pid
     send(pid, :refresh)
     assert_receive {:executed, refreshed_sql}, 5_000
     assert refreshed_sql =~ "priority = 12"

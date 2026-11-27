@@ -17,7 +17,10 @@ defmodule Logflare.DataCase do
   alias Ecto.Adapters.SQL
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
+  alias Logflare.Backends.Backend
   alias Logflare.Backends.ConsolidatedSup
+  alias Logflare.ContextCache
+  alias Logflare.Repo
 
   using do
     quote do
@@ -173,6 +176,21 @@ defmodule Logflare.DataCase do
     {source, backend}
   end
 
+  @doc """
+  Merges `changes` into the saved config of `backend` and evicts its cached entry,
+  without the side effects of `Logflare.Backends.update_backend/2`. Returns the saved
+  backend.
+  """
+  @spec save_backend_config!(Backend.t(), map()) :: Backend.t()
+  def save_backend_config!(%Backend{} = backend, changes) do
+    backend
+    |> Backend.changeset(%{config: Map.merge(backend.config, changes)})
+    |> Repo.update!()
+
+    {:ok, _busted} = ContextCache.bust_keys([{Backends, backend.id}])
+    Backends.get_backend(backend.id)
+  end
+
   @spec ensure_clickhouse_reachable!() :: :ok
   defp ensure_clickhouse_reachable! do
     case :gen_tcp.connect(~c"localhost", 8123, [:binary, active: false], 500) do
@@ -188,7 +206,7 @@ defmodule Logflare.DataCase do
   @doc """
   Builds ClickHouse connection options for testing.
   """
-  def build_clickhouse_connection_opts(source, backend, type) when type in [:ingest, :query] do
+  def build_clickhouse_connection_opts(_source, _backend, type) when type in [:ingest, :query] do
     base_opts = [
       scheme: "http",
       hostname: "localhost",
@@ -204,15 +222,7 @@ defmodule Logflare.DataCase do
         :query -> [pool_size: 3, timeout: 60_000]
       end
 
-    connection_name =
-      case type do
-        :ingest -> ClickHouseAdaptor.connection_pool_via({source, backend})
-        :query -> ClickHouseAdaptor.connection_pool_via(backend)
-      end
-
-    base_opts
-    |> Keyword.merge(type_specific_opts)
-    |> Keyword.put(:name, connection_name)
+    Keyword.merge(base_opts, type_specific_opts)
   end
 
   @doc """

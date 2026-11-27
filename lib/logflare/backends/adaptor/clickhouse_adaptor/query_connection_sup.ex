@@ -39,8 +39,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup do
   `recycle_backend/1` triggers an immediate connection recycle of a backend's read pool
   on every node in the cluster. Useful after scaling an upstream ClickHouse service.
 
-  `refresh_backend/1` stops a backend's read pool on every node so the pools restart
-  with freshly loaded backend configuration.
+  `refresh_backend/1` drains, on every node, a backend's read pools whose connection
+  options changed, so new queries run on pools with the current backend configuration.
 
   `terminate_backend/1` terminates a backend's read `ConnectionManager` on every node,
   e.g. after a backend is deleted.
@@ -118,31 +118,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup do
   end
 
   @doc """
-  Returns every currently running read pool on this node as
-  `{backend_id, label, pool_pid, pool_size}`.
-
-  Only started pools are listed; a `ConnectionManager` whose pool has been stopped for
-  inactivity or refresh is not included. The label is `nil` for the unlabeled pool.
-  `pool_size` is the size the pool was started with, read from its registry value, so
-  it reflects the running pool rather than whatever the backend config says now.
+  Returns every read pool on this node that new queries are routed to, as
+  `{backend_id, label, pool_pid, pool_size}`. See `ConnectionManager.list_pools/0`.
   """
   @spec list_read_pools() :: [
           {backend_id :: pos_integer(), String.t() | nil, pid(), pos_integer()}
         ]
-  def list_read_pools do
-    pool = CHReadPool
-
-    ms =
-      Ex2ms.fun do
-        {{^pool, backend_id}, pid, %{pool_size: pool_size}} ->
-          {backend_id, nil, pid, pool_size}
-
-        {{^pool, backend_id, label}, pid, %{pool_size: pool_size}} ->
-          {backend_id, label, pid, pool_size}
-      end
-
-    Registry.select(BackendRegistry, ms)
-  end
+  defdelegate list_read_pools, to: ConnectionManager, as: :list_pools
 
   @doc """
   Recycles the read connection pool for a backend on every node in the cluster.
@@ -206,10 +188,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup do
   end
 
   @doc """
-  Stops the read connection pool for a backend on every node in the cluster so that
-  each node's next query restarts it with freshly loaded backend configuration.
+  Drains, on every node, the backend's read pools whose connection options differ
+  from the saved backend. Each node starts new pools on its next query.
 
-  Pools restart lazily on demand.
+  Returns without waiting for the nodes to finish. See
+  `ConnectionManager.refresh_pool/2`.
   """
   @spec refresh_backend(Backend.t() | pos_integer()) :: :ok
   def refresh_backend(%Backend{id: backend_id}), do: refresh_backend(backend_id)
@@ -224,24 +207,29 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup do
   end
 
   @doc """
-  Busts the local backend cache and stops the backend's read pool on the local node.
+  Busts the local backend cache and drains each of the backend's read pools on the local
+  node whose connection options differ from the saved backend.
 
-  Invoked on each node by `refresh_backend/1`.
+  The saved backend is read from the primary database, since a read replica can still
+  hold the row from before the change.
   """
   @spec refresh_backend_local(pos_integer()) :: :ok
   def refresh_backend_local(backend_id) when is_pos_integer(backend_id) do
     ContextCache.bust_keys([{Backends, backend_id}])
 
-    backend_id
-    |> lookup_managers()
-    |> Enum.each(&safe_refresh/1)
+    case lookup_managers(backend_id) do
+      [] ->
+        :ok
 
-    :ok
+      manager_pids ->
+        backend = Backends.get_backend(backend_id)
+        Enum.each(manager_pids, &safe_refresh(&1, backend))
+    end
   end
 
-  @spec safe_refresh(pid()) :: :ok
-  defp safe_refresh(manager_pid) do
-    ConnectionManager.refresh_pool(manager_pid)
+  @spec safe_refresh(pid(), Backend.t() | nil) :: :ok
+  defp safe_refresh(manager_pid, backend) do
+    ConnectionManager.refresh_manager_pool(manager_pid, backend)
   catch
     :exit, _reason -> :ok
   end
