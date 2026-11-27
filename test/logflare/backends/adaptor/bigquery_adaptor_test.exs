@@ -5,10 +5,12 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptorTest do
   import Ecto.Query
 
   alias GoogleApi.BigQuery.V2.Api.Jobs, as: BqJobs
+  alias GoogleApi.BigQuery.V2.Model.GetQueryResultsResponse
   alias Logflare.Backends.Backend
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Backends.QueryError
+  alias Logflare.Endpoints.EndpointQuery
 
   # Characters illegal in a BigQuery dataset identifier: SQL delimiters,
   # identifier-quoting characters, whitespace, and shell metacharacters.
@@ -20,6 +22,11 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptorTest do
             suffix <- string(:alphanumeric) do
       prefix <> <<bad_char>> <> suffix
     end
+  end
+
+  defp get_query_results_response(rows) do
+    response = TestUtils.gen_bq_response(rows)
+    struct(GetQueryResultsResponse, Map.from_struct(response))
   end
 
   describe "validate_config/1" do
@@ -545,6 +552,104 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptorTest do
       )
 
       assert_received {:timeouts, 25_000, 25_000}
+    end
+  end
+
+  describe "execute_query/3 pagination" do
+    setup do
+      insert(:plan, name: "Free", type: "standard")
+      user = insert(:user, bigquery_dataset_id: "test_dataset")
+      backend = %Backend{user_id: user.id, config: %{}}
+
+      [user: user, backend: backend]
+    end
+
+    test "requests a page of page_size rows and returns a next_page_token", %{backend: backend} do
+      pid = self()
+
+      expect(BqJobs, :bigquery_jobs_query, fn _conn, _proj_id, opts ->
+        send(pid, {:request, opts[:body]})
+        {:ok, %{TestUtils.gen_bq_response([%{"a" => "1"}]) | pageToken: "bq-token"}}
+      end)
+
+      assert {:ok, %QueryResult{rows: [_], next_page_token: token}} =
+               BigQueryAdaptor.execute_query(backend, "select 1", page_size: 1)
+
+      assert is_binary(token)
+      assert_received {:request, %{maxResults: 1, jobCreationMode: "JOB_CREATION_REQUIRED"}}
+    end
+
+    test "page_size overrides the endpoint max_limit", %{backend: backend} do
+      pid = self()
+
+      expect(BqJobs, :bigquery_jobs_query, fn _conn, _proj_id, opts ->
+        send(pid, {:max_results, opts[:body].maxResults})
+        {:ok, TestUtils.gen_bq_response([%{"a" => "1"}])}
+      end)
+
+      BigQueryAdaptor.execute_query(
+        backend,
+        {"select 1", [], %{}, %EndpointQuery{id: 1, max_limit: 1_000}},
+        page_size: 10
+      )
+
+      assert_received {:max_results, 10}
+    end
+
+    test "returns a nil next_page_token on the last page", %{backend: backend} do
+      expect(BqJobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
+        {:ok, TestUtils.gen_bq_response([%{"a" => "1"}])}
+      end)
+
+      assert {:ok, %QueryResult{next_page_token: nil}} =
+               BigQueryAdaptor.execute_query(backend, "select 1", page_size: 1)
+    end
+
+    test "fetches the next page from the job without running the query again", %{
+      backend: backend
+    } do
+      pid = self()
+
+      expect(BqJobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
+        {:ok, %{TestUtils.gen_bq_response([%{"a" => "1"}]) | pageToken: "bq-token"}}
+      end)
+
+      expect(BqJobs, :bigquery_jobs_get_query_results, fn _conn, proj_id, job_id, params ->
+        send(pid, {:get_query_results, proj_id, job_id, params})
+        {:ok, get_query_results_response([%{"a" => "2"}])}
+      end)
+
+      {:ok, %QueryResult{next_page_token: token}} =
+        BigQueryAdaptor.execute_query(backend, "select 1", page_size: 1)
+
+      reject(BqJobs, :bigquery_jobs_query, 3)
+
+      assert {:ok, %QueryResult{rows: [%{"a" => "2"}], next_page_token: nil}} =
+               BigQueryAdaptor.execute_query(backend, "select 1", page_size: 1, page_token: token)
+
+      assert_received {:get_query_results, "logflare-dev-238720",
+                       "job_eoaOXgp9U0VFOPiOHbX6fIT3z3KU", params}
+
+      assert params[:pageToken] == "bq-token"
+      assert params[:maxResults] == 1
+      assert params[:location] == "US"
+    end
+
+    test "rejects a page_token issued to another user", %{backend: backend} do
+      other_user = insert(:user)
+      other_backend = %Backend{user_id: other_user.id, config: %{}}
+
+      stub(BqJobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
+        {:ok, %{TestUtils.gen_bq_response([%{"a" => "1"}]) | pageToken: "bq-token"}}
+      end)
+
+      {:ok, %QueryResult{next_page_token: token}} =
+        BigQueryAdaptor.execute_query(other_backend, "select 1", page_size: 1)
+
+      reject(BqJobs, :bigquery_jobs_get_query_results, 4)
+
+      assert {:error, %QueryError{kind: :invalid_query}} =
+               BigQueryAdaptor.execute_query(backend, "select 1", page_size: 1, page_token: token)
     end
   end
 

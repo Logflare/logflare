@@ -1160,6 +1160,21 @@ defmodule Logflare.EndpointsTest do
                Endpoints.run_query_string(user, {:bq_sql, query_string})
     end
 
+    test "run_query_string/3 returns a next_page_token when page_size is set" do
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, opts ->
+        assert opts[:body].maxResults == 1
+        {:ok, %{TestUtils.gen_bq_response([%{"testing" => "123"}]) | pageToken: "bq-token"}}
+      end)
+
+      user = insert(:user)
+      query_string = "select current_datetime() as testing"
+
+      assert {:ok, %{rows: [_], next_page_token: token}} =
+               Endpoints.run_query_string(user, {:bq_sql, query_string}, page_size: 1)
+
+      assert is_binary(token)
+    end
+
     test "run_query_string/3 uses specified backend_id when provided" do
       user = insert(:user)
       insert(:source, user: user, name: "c")

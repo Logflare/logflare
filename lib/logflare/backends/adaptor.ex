@@ -301,6 +301,13 @@ defmodule Logflare.Backends.Adaptor do
   Queries the backend using an endpoint query.
 
   The `opts` parameter can be used to include backend-specific options.
+
+  Adaptors that support pagination accept:
+    * `:page_size` - maximum rows to return for this page
+    * `:page_token` - the `next_page_token` of a previous `QueryResult`, to fetch the following page
+
+  The returned `QueryResult` has a `next_page_token` when more rows are available.
+  Adaptors without pagination ignore these options and return a `nil` `next_page_token`.
   """
   @callback execute_query(query_identifier(), query(), opts :: Keyword.t()) ::
               {:ok, QueryResult.t()} | {:error, :not_implemented} | {:error, term()}
