@@ -5,10 +5,18 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptorTest do
   import Ecto.Query
 
   alias GoogleApi.BigQuery.V2.Api.Jobs, as: BqJobs
+  alias GoogleApi.BigQuery.V2.Api.Tabledata, as: BqTabledata
+  alias GoogleApi.BigQuery.V2.Api.Tables, as: BqTables
+  alias GoogleApi.BigQuery.V2.Model
   alias Logflare.Backends.Backend
+  alias Logflare.Backends
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient
   alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Backends.QueryError
+  alias Logflare.Google
+
+  @connection_test_message "Logflare BigQuery connection test. No action required."
 
   # Characters illegal in a BigQuery dataset identifier: SQL delimiters,
   # identifier-quoting characters, whitespace, and shell metacharacters.
@@ -57,6 +65,205 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptorTest do
     test "allows nil dataset_id and project_id" do
       changeset = BigQueryAdaptor.cast_config(%{})
       assert BigQueryAdaptor.validate_config(changeset).valid?
+    end
+  end
+
+  describe "test_connection/1" do
+    setup do
+      insert(:plan)
+      user = insert(:user)
+      source = insert(:source, user: user, bq_storage_write_api: true)
+
+      backend =
+        insert(:backend,
+          type: :bigquery,
+          user: user,
+          sources: [source],
+          config: %{project_id: "test-project", dataset_id: "test_dataset"}
+        )
+
+      [backend: Backends.get_backend(backend.id), source: source, user: user]
+    end
+
+    test "writes one labeled event to the attached source table through REST", %{
+      backend: backend,
+      source: source
+    } do
+      Mimic.reject(BqTables, :bigquery_tables_get, 4)
+      Mimic.reject(Google.BigQuery, :create_table, 4)
+      Mimic.reject(GoogleApiClient, :append_rows, 3)
+
+      BqTabledata
+      |> expect(:bigquery_tabledata_insert_all, fn _conn,
+                                                   project_id,
+                                                   dataset_id,
+                                                   table_name,
+                                                   opts ->
+        assert project_id == "test-project"
+        assert dataset_id == "test_dataset"
+        assert table_name == BigQueryAdaptor.format_table_name(source.token)
+
+        assert %Model.TableDataInsertAllRequest{
+                 ignoreUnknownValues: true,
+                 skipInvalidRows: true,
+                 rows: [%Model.TableDataInsertAllRequestRows{} = row]
+               } = opts[:body]
+
+        assert row.insertId == row.json["id"]
+        assert is_binary(row.insertId)
+        assert %DateTime{} = row.json["timestamp"]
+        assert row.json["event_message"] == @connection_test_message
+
+        {:ok, %Model.TableDataInsertAllResponse{insertErrors: nil}}
+      end)
+
+      assert :ok = BigQueryAdaptor.test_connection(backend)
+    end
+
+    test "uses a rule source when no source is attached directly", %{user: user} do
+      source = insert(:source, user: user)
+
+      backend =
+        insert(:backend,
+          type: :bigquery,
+          user: user,
+          config: %{project_id: "rule-project", dataset_id: "rule_dataset"}
+        )
+
+      insert(:rule, backend: backend, source: source)
+
+      Google.BigQuery
+      |> expect(:stream_batch!, fn context, [_row] ->
+        assert context == %{
+                 bigquery_project_id: "rule-project",
+                 bigquery_dataset_id: "rule_dataset",
+                 source_token: source.token
+               }
+
+        {:ok, %Model.TableDataInsertAllResponse{insertErrors: nil}}
+      end)
+
+      assert :ok = BigQueryAdaptor.test_connection(Backends.get_backend(backend.id))
+    end
+
+    test "prefers a direct source over an older rule source", %{user: user} do
+      rule_source = insert(:source, user: user)
+      direct_source = insert(:source, user: user)
+
+      backend =
+        insert(:backend,
+          type: :bigquery,
+          user: user,
+          sources: [direct_source],
+          config: %{project_id: "test-project", dataset_id: "test_dataset"}
+        )
+
+      insert(:rule, backend: backend, source: rule_source)
+
+      Google.BigQuery
+      |> expect(:stream_batch!, fn %{source_token: source_token}, [_row] ->
+        assert source_token == direct_source.token
+        {:ok, %Model.TableDataInsertAllResponse{insertErrors: nil}}
+      end)
+
+      assert rule_source.id < direct_source.id
+      assert :ok = BigQueryAdaptor.test_connection(Backends.get_backend(backend.id))
+    end
+
+    test "selects the oldest directly attached source deterministically", %{user: user} do
+      first_source = insert(:source, user: user)
+      second_source = insert(:source, user: user)
+
+      backend =
+        insert(:backend,
+          type: :bigquery,
+          user: user,
+          sources: [second_source, first_source],
+          config: %{project_id: "test-project", dataset_id: "test_dataset"}
+        )
+
+      Google.BigQuery
+      |> expect(:stream_batch!, fn %{source_token: source_token}, [_row] ->
+        assert source_token == first_source.token
+        {:ok, %Model.TableDataInsertAllResponse{insertErrors: nil}}
+      end)
+
+      assert first_source.id < second_source.id
+      assert :ok = BigQueryAdaptor.test_connection(Backends.get_backend(backend.id))
+    end
+
+    test "requires an attached direct or rule source", %{user: user} do
+      backend =
+        insert(:backend,
+          type: :bigquery,
+          user: user,
+          config: %{project_id: "test-project", dataset_id: "test_dataset"}
+        )
+
+      Mimic.reject(BqTables, :bigquery_tables_get, 4)
+      Mimic.reject(Google.BigQuery, :create_table, 4)
+      Mimic.reject(Google.BigQuery, :stream_batch!, 2)
+
+      assert {:error, :source_required} =
+               BigQueryAdaptor.test_connection(Backends.get_backend(backend.id))
+    end
+
+    test "ignores source associations owned by another user", %{user: user} do
+      other_user = insert(:user)
+      direct_source = insert(:source, user: other_user)
+      rule_source = insert(:source, user: other_user)
+
+      backend =
+        insert(:backend,
+          type: :bigquery,
+          user: user,
+          sources: [direct_source],
+          config: %{project_id: "test-project", dataset_id: "test_dataset"}
+        )
+
+      insert(:rule, backend: backend, source: rule_source)
+
+      Mimic.reject(Google.BigQuery, :stream_batch!, 2)
+
+      assert {:error, :source_required} =
+               BigQueryAdaptor.test_connection(Backends.get_backend(backend.id))
+    end
+
+    test "normalizes REST insert responses to atom reasons", %{backend: backend} do
+      responses = [
+        {{:ok, %Model.TableDataInsertAllResponse{insertErrors: []}}, :ok},
+        {{:ok, %Model.TableDataInsertAllResponse{insertErrors: [%{index: 0}]}}, :insert_error},
+        {{:error, %Tesla.Env{status: 404, body: %{"error" => "not found"}}}, :http_client_error},
+        {{:error, %Tesla.Env{status: 403, body: %{"error" => "forbidden"}}}, :http_client_error},
+        {{:error, %Tesla.Env{status: 503, body: %{"error" => "unavailable"}}},
+         :http_server_error},
+        {{:error, :timeout}, :connection_error},
+        {{:error, :unexpected}, :unknown_error},
+        {{:ok, :unexpected}, :unknown_error}
+      ]
+
+      for {response, expected_reason} <- responses do
+        Google.BigQuery
+        |> expect(:stream_batch!, fn _context, [_row] -> response end)
+
+        expected = if expected_reason == :ok, do: :ok, else: {:error, expected_reason}
+        assert BigQueryAdaptor.test_connection(backend) == expected
+      end
+    end
+
+    test "rejects incomplete configuration without making a request", %{backend: backend} do
+      Mimic.reject(BqTables, :bigquery_tables_get, 4)
+      Mimic.reject(Google.BigQuery, :create_table, 4)
+      Mimic.reject(Google.BigQuery, :stream_batch!, 2)
+
+      for config <- [
+            %{},
+            %{project_id: "", dataset_id: "test_dataset"},
+            %{project_id: "test-project", dataset_id: nil}
+          ] do
+        assert {:error, :invalid_config} =
+                 BigQueryAdaptor.test_connection(%{backend | config: config})
+      end
     end
   end
 
