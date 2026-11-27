@@ -8,6 +8,7 @@ defmodule Logflare.Backends.DynamicPipelineTest do
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.Spool.Queue.PubSub, as: QueueMod
   alias Logflare.Backends.Spool.SpoolAck
+  alias Logflare.ShutdownDrain
 
   import ExUnit.CaptureLog
 
@@ -290,6 +291,7 @@ defmodule Logflare.Backends.DynamicPipelineTest do
         sid_bid_pid = {source.id, backend.id, producer_pid}
         handle = "spool-handle-#{System.unique_integer([:positive])}"
         SpoolAck.register(handle, QueueMod, "queue-url")
+        on_exit(fn -> :ets.delete(:spool_ack, handle) end)
         le = %{build(:log_event, source: source) | spool_handle: handle}
         assert :ok = IngestEventQueue.add_to_table(sid_bid_pid, [le])
         {id, sid_bid_pid, handle}
@@ -439,7 +441,7 @@ defmodule Logflare.Backends.DynamicPipelineTest do
     end)
   end
 
-  test "error in resolve_count does not crash everything",
+  test "a failing resolve_count keeps an empty pipeline at zero",
        %{name: name, pipeline_args: pipeline_args} do
     assert capture_log(fn ->
              pid =
@@ -457,7 +459,49 @@ defmodule Logflare.Backends.DynamicPipelineTest do
              coordinator = DynamicPipeline.find_coordinator_name(name)
              TestUtils.send_and_wait_for_handling(coordinator, :check)
              assert Process.alive?(pid)
+             assert DynamicPipeline.pipeline_count(name) == 0
            end) =~ "some error"
+  end
+
+  test "shutdown drains startup events at zero pipelines even when the resolver raises", %{
+    name: name,
+    pipeline_args: pipeline_args
+  } do
+    source = pipeline_args[:source]
+    startup_key = {source.id, pipeline_args[:backend].id, nil}
+    event = build(:log_event, source: source)
+    handle = "shutdown-#{event.id}"
+    parent = self()
+
+    stub(QueueMod, :ack, fn _url, _handle -> :ok end)
+    assert :ok = SpoolAck.register(handle, QueueMod, "queue-url")
+    on_exit(fn -> :ets.delete(:spool_ack, handle) end)
+
+    expect(Logflare.Google.BigQuery, :stream_batch!, fn _, _ ->
+      send(parent, :delivered)
+      {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
+    end)
+
+    start_supervised!(
+      {DynamicPipeline,
+       name: name,
+       pipeline: Pipeline,
+       pipeline_args: pipeline_args,
+       min_pipelines: 0,
+       resolve_interval: 500,
+       resolve_count: fn _ -> raise "resolver unavailable" end}
+    )
+
+    assert DynamicPipeline.pipeline_count(name) == 0
+    assert :ok = IngestEventQueue.add_to_table(startup_key, [%{event | spool_handle: handle}])
+    assert IngestEventQueue.total_pending(startup_key) == 1
+
+    now = System.monotonic_time(:millisecond)
+    budget = %{queues: {now + 4_000, 4_000}, sync: nil, cleanup: {now + 5_000, 1_000}}
+
+    assert ShutdownDrain.run(budget, :ok, nil, poll_interval_ms: 10) == :drained
+    assert_received :delivered
+    assert DynamicPipeline.pipeline_count(name) == 1
   end
 
   test "pulls events from startup queue with bigquery pipeline", %{
