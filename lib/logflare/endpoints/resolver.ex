@@ -48,7 +48,7 @@ defmodule Logflare.Endpoints.Resolver do
       "endpoint.user_id" => query.user_id
     }
 
-    ResultsCache.name(query, params)
+    ResultsCache.name(query, params, opts)
     |> GenServer.whereis()
     |> case do
       pid when is_pid(pid) ->
