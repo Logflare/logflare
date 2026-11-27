@@ -10,6 +10,7 @@ defmodule Logflare.Backends.Spool.Queue.PubSub do
   alias GoogleApi.PubSub.V1.Model.PublishRequest
   alias GoogleApi.PubSub.V1.Model.PubsubMessage
   alias GoogleApi.PubSub.V1.Model.PullRequest
+  alias Logflare.Backends.Spool.Queue
 
   # For PubSub, the queue_name IS the full resource path:
   # - Consumer (subscription): "projects/PROJECT/subscriptions/NAME"
@@ -26,6 +27,10 @@ defmodule Logflare.Backends.Spool.Queue.PubSub do
 
   @impl Logflare.Backends.Spool.Queue
   def receive(subscription, _opts) do
+    Queue.track_health(do_receive(subscription))
+  end
+
+  defp do_receive(subscription) do
     with {:ok, conn} <- build_conn(),
          {:ok, %{receivedMessages: messages}} <-
            Projects.pubsub_projects_subscriptions_pull(conn, subscription,
@@ -43,6 +48,10 @@ defmodule Logflare.Backends.Spool.Queue.PubSub do
 
   @impl Logflare.Backends.Spool.Queue
   def ack(subscription, ack_id) do
+    Queue.track_health(do_ack(subscription, ack_id))
+  end
+
+  defp do_ack(subscription, ack_id) do
     with {:ok, conn} <- build_conn() do
       case Projects.pubsub_projects_subscriptions_acknowledge(conn, subscription,
              body: %AcknowledgeRequest{ackIds: [ack_id]}
@@ -55,6 +64,10 @@ defmodule Logflare.Backends.Spool.Queue.PubSub do
 
   @impl Logflare.Backends.Spool.Queue
   def nack(subscription, ack_id) do
+    Queue.track_health(do_nack(subscription, ack_id))
+  end
+
+  defp do_nack(subscription, ack_id) do
     with {:ok, conn} <- build_conn() do
       case Projects.pubsub_projects_subscriptions_modify_ack_deadline(conn, subscription,
              body: %ModifyAckDeadlineRequest{ackIds: [ack_id], ackDeadlineSeconds: 0}
@@ -67,6 +80,10 @@ defmodule Logflare.Backends.Spool.Queue.PubSub do
 
   @impl Logflare.Backends.Spool.Queue
   def publish(topic, body) do
+    Queue.track_health(do_publish(topic, body))
+  end
+
+  defp do_publish(topic, body) do
     with {:ok, conn} <- build_conn() do
       case Projects.pubsub_projects_topics_publish(conn, topic,
              body: %PublishRequest{messages: [%PubsubMessage{data: Base.encode64(body)}]}
