@@ -471,6 +471,37 @@ defmodule Logflare.Lql.ParserTest do
                Parser.parse("t:171068322200000", @default_schema)
     end
 
+    test "last days match equivalent hours" do
+      now = ~U[2026-03-01 14:37:25Z]
+      stub(Timex, :now, fn -> now end)
+
+      for {days, queries} <- [
+            {1, ["t:last@1day", "t:last@24hours"]},
+            {2, ["t:last@2days", "t:last@48hours"]}
+          ] do
+        expected_start = DateTime.add(%{now | minute: 0, second: 0}, -days * 86_400)
+
+        for query <- queries do
+          assert {:ok, [%FilterRule{values: [start_time, end_time]}]} =
+                   Parser.parse(query, @default_schema)
+
+          assert NaiveDateTime.compare(to_naive(start_time), to_naive(expected_start)) == :eq
+          assert NaiveDateTime.compare(to_naive(end_time), to_naive(now)) == :eq
+        end
+      end
+    end
+
+    test "this day keeps its midnight boundary" do
+      now = ~U[2026-03-01 14:37:25Z]
+      stub(Timex, :now, fn -> now end)
+
+      assert {:ok, [%FilterRule{values: [start_time, end_time]}]} =
+               Parser.parse("t:this@day", @default_schema)
+
+      assert to_naive(start_time) == ~N[2026-03-01 00:00:00]
+      assert to_naive(end_time) == to_naive(now)
+    end
+
     test "timestamp shorthands" do
       assert {:ok,
               [
@@ -534,8 +565,8 @@ defmodule Logflare.Lql.ParserTest do
             },
             {"t:last@100h", "last@100hour",
              Timex.shift(%{now_udt_zero_sec() | minute: 0}, hours: -100), now_ndt()},
-            {"t:last@7d", "last@7day",
-             Timex.shift(%{now_udt_zero_sec() | minute: 0, hour: 0}, days: -7), now_ndt()},
+            {"t:last@7d", "last@7day", Timex.shift(%{now_udt_zero_sec() | minute: 0}, days: -7),
+             now_ndt()},
             {"t:last@2w", "last@2week",
              Timex.shift(%{now_udt_zero_sec() | minute: 0, hour: 0}, weeks: -2), now_ndt()},
             {"t:last@1mm", "last@1month",

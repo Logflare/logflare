@@ -58,6 +58,12 @@ Timestamps will be automatically converted to UTC if Logflare is set to display 
 | Timestamp | offset ISO 8601 datetime       | `t:>2026-03-17T14:47:02+02:00` <br/> `t:<2026-03-17T14:47:02-02:00` |
 | Timestamp | Unix timestamp                 | `t:1710683222..1710684222` <br/> `t:1710683222000..1710684222000` <br/> `t:1710683222000000` _(microseconds are truncated to milliseconds; only 10, 13, and 16 digit Unix timestamps are accepted)_ |
 
+For `last@` filters, days match the equivalent number of hours: `t:last@1day`
+matches `t:last@24hours`.
+Both round the start down to the hour and end at the current time. For example,
+at 14:37 UTC, `t:last@1day` starts at 14:00 UTC yesterday.
+Use `t:yesterday` for the previous calendar day or `t:this@day` for today so far.
+
 #### Chart Aggregations
 
 Chart aggregations rules will display the aggregated trends in the chart. Chart rules use the special prefix `c`

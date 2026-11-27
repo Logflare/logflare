@@ -341,7 +341,7 @@ defmodule Logflare.Lql.Parser.Helpers do
           DateTimeUtils.truncate(now_ndt, :hour)
 
         :days ->
-          DateTimeUtils.truncate(now_ndt, :day)
+          DateTimeUtils.truncate(now_ndt, :hour)
 
         :weeks ->
           DateTimeUtils.truncate(now_ndt, :day)
