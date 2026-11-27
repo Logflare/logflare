@@ -1,9 +1,11 @@
 defmodule Logflare.Google.CloudResourceManagerTest do
   use Logflare.DataCase
 
-  alias Logflare.Google.CloudResourceManager
+  alias GoogleApi.CloudResourceManager.V1.Api.Projects
   alias GoogleApi.CloudResourceManager.V1.Model
   alias GoogleApi.CloudResourceManager.V1.Model.Binding
+  alias GoogleApi.CloudResourceManager.V1.Model.Policy
+  alias Logflare.Google.CloudResourceManager
 
   setup do
     google_configs = Map.new(Application.get_env(:logflare, Logflare.Google))
@@ -21,7 +23,6 @@ defmodule Logflare.Google.CloudResourceManagerTest do
 
   describe "set_iam_policy/0" do
     setup do
-      # Mock IAM API calls for listing existing service accounts
       stub(GoogleApi.IAM.V1.Api.Projects, :iam_projects_service_accounts_list, fn
         _conn, "projects/" <> _project_id, _opts ->
           {:ok, %{accounts: [], nextPageToken: nil}}
@@ -30,49 +31,90 @@ defmodule Logflare.Google.CloudResourceManagerTest do
       :ok
     end
 
-    test "request body sends expected roles for paying users, paying team users and service accounts",
-         %{
-           google_configs: google_configs,
-           expected_members: expected_members
-         } do
-      pid = self()
+    test "appends roles for paying users, paying team users and service accounts", %{
+      google_configs: google_configs,
+      expected_members: expected_members
+    } do
+      fake_iam(%Policy{bindings: [], etag: "etag-0"})
 
-      stub(
-        GoogleApi.CloudResourceManager.V1.Api.Projects,
-        :cloudresourcemanager_projects_set_iam_policy,
-        fn _, project_number, [body: body] ->
-          assert project_number == google_configs.project_number
-          send(pid, body.policy.bindings)
-          {:ok, ""}
-        end
-      )
+      assert :ok = CloudResourceManager.set_iam_policy(async: false)
 
-      CloudResourceManager.set_iam_policy(async: false)
+      bindings = current_policy().bindings
+      assert Enum.all?(bindings, &match?(%Binding{members: [_ | _], role: "" <> _}, &1))
 
-      assert_received [_ | _] = bindings
-
-      assert Enum.all?(bindings, fn binding ->
-               %Binding{members: [_ | _], role: "" <> _} = binding
-             end)
-
-      members_list = Enum.flat_map(bindings, & &1.members)
+      job_user_members = members_for(bindings, "roles/bigquery.jobUser")
 
       for member <- expected_members do
-        assert Enum.member?(members_list, member)
+        assert member in job_user_members
       end
 
-      viewer_binding =
-        Enum.find(bindings, fn %Binding{role: role} -> role == "roles/viewer" end)
+      assert ("user:" <> google_configs.project_viewer) in members_for(bindings, "roles/viewer")
 
-      assert viewer_binding
-      assert ("user:" <> google_configs.project_viewer) in viewer_binding.members
+      assert ("serviceAccount:" <> google_configs.cloud_sql_client_sa) in members_for(
+               bindings,
+               "roles/cloudsql.client"
+             )
+    end
 
-      cloud_sql_client_binding =
-        Enum.find(bindings, fn %Binding{role: role} -> role == "roles/cloudsql.client" end)
+    test "preserves bindings and members added outside of logflare", %{
+      expected_members: [first_member | _]
+    } do
+      fake_iam(%Policy{
+        etag: "etag-0",
+        bindings: [
+          %Binding{role: "roles/cloudsql.client", members: ["serviceAccount:proxy@x.com"]},
+          %Binding{role: "roles/owner", members: ["user:owner@x.com"]},
+          %Binding{role: "roles/bigquery.jobUser", members: ["user:manual@x.com"]}
+        ]
+      })
 
-      assert cloud_sql_client_binding
+      assert :ok = CloudResourceManager.set_iam_policy(async: false)
 
-      assert ("serviceAccount:" <> google_configs.cloud_sql_client_sa) in cloud_sql_client_binding.members
+      bindings = current_policy().bindings
+      assert "serviceAccount:proxy@x.com" in members_for(bindings, "roles/cloudsql.client")
+      assert "user:owner@x.com" in members_for(bindings, "roles/owner")
+      assert "user:manual@x.com" in members_for(bindings, "roles/bigquery.jobUser")
+      assert first_member in members_for(bindings, "roles/bigquery.jobUser")
+
+      assert bindings
+             |> Enum.map(& &1.role)
+             |> Enum.frequencies()
+             |> Map.values()
+             |> Enum.all?(&(&1 == 1))
+    end
+
+    test "sends the fetched etag with each write" do
+      fake_iam(%Policy{bindings: [], etag: "etag-0"})
+
+      assert :ok = CloudResourceManager.set_iam_policy(async: false)
+
+      assert_received {:set_policy, %Policy{etag: "etag-0"}}
+    end
+
+    test "does not write when every binding is already present" do
+      fake_iam(%Policy{bindings: [], etag: "etag-0"})
+      assert :ok = CloudResourceManager.set_iam_policy(async: false)
+      flush_set_policies()
+
+      assert :ok = CloudResourceManager.set_iam_policy(async: false)
+
+      refute_received {:set_policy, _}
+    end
+
+    test "does not write when the policy cannot be fetched" do
+      stub(Projects, :cloudresourcemanager_projects_get_iam_policy, fn _, _, _ ->
+        {:error, %Tesla.Env{status: 500, body: Jason.encode!(%{error: %{message: "boom"}})}}
+      end)
+
+      reject(&Projects.cloudresourcemanager_projects_set_iam_policy/3)
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:error, _} = CloudResourceManager.set_iam_policy(async: false)
+        end)
+
+      assert log =~ "[error]"
+      refute log =~ "successful"
     end
 
     test "uses group: prefix as-is for project viewer binding", %{
@@ -84,27 +126,12 @@ defmodule Logflare.Google.CloudResourceManagerTest do
         Map.to_list(%{google_configs | project_viewer: "group:support@mile.cloud"})
       )
 
-      pid = self()
-
-      stub(
-        GoogleApi.CloudResourceManager.V1.Api.Projects,
-        :cloudresourcemanager_projects_set_iam_policy,
-        fn _, _project_number, [body: body] ->
-          send(pid, body.policy.bindings)
-          {:ok, ""}
-        end
-      )
-
+      fake_iam(%Policy{bindings: []})
       CloudResourceManager.set_iam_policy(async: false)
 
-      assert_received [_ | _] = bindings
-
-      viewer_binding =
-        Enum.find(bindings, fn %Binding{role: role} -> role == "roles/viewer" end)
-
-      assert viewer_binding
-      assert "group:support@mile.cloud" in viewer_binding.members
-      refute "user:support@mile.cloud" in viewer_binding.members
+      viewers = members_for(current_policy().bindings, "roles/viewer")
+      assert "group:support@mile.cloud" in viewers
+      refute "user:support@mile.cloud" in viewers
     end
 
     test "omits cloudsql.client binding when cloud_sql_client_sa is not configured", %{
@@ -116,96 +143,73 @@ defmodule Logflare.Google.CloudResourceManagerTest do
         Map.to_list(%{google_configs | cloud_sql_client_sa: nil})
       )
 
-      pid = self()
-
-      stub(
-        GoogleApi.CloudResourceManager.V1.Api.Projects,
-        :cloudresourcemanager_projects_set_iam_policy,
-        fn _, _project_number, [body: body] ->
-          send(pid, body.policy.bindings)
-          {:ok, ""}
-        end
-      )
-
+      fake_iam(%Policy{bindings: []})
       CloudResourceManager.set_iam_policy(async: false)
 
-      assert_received [_ | _] = bindings
-
-      refute Enum.any?(bindings, fn %Binding{role: role} -> role == "roles/cloudsql.client" end)
+      assert members_for(current_policy().bindings, "roles/cloudsql.client") == []
     end
 
-    test "sets user as invalid google account if user does not exist" do
-      user = insert(:user, valid_google_account: true)
-
-      expect(
-        GoogleApi.CloudResourceManager.V1.Api.Projects,
-        :cloudresourcemanager_projects_set_iam_policy,
-        fn _, _project_number, [body: _body] ->
-          {:error,
-           %Tesla.Env{
-             status: 404,
-             body: Jason.encode!(%{error: %{message: "User #{user.email} does not exist."}})
-           }}
-        end
-      )
-
-      assert ExUnit.CaptureLog.capture_log(fn ->
-               CloudResourceManager.set_iam_policy(async: false)
-             end) =~ "marked as invalid"
-
-      user = Logflare.Repo.get!(Logflare.User, user.id)
-      refute user.valid_google_account
-
-      expect(
-        GoogleApi.CloudResourceManager.V1.Api.Projects,
-        :cloudresourcemanager_projects_set_iam_policy,
-        fn _, _project_number, [body: _body] ->
-          {:ok,
-           %Tesla.Env{
-             status: 200,
-             body: ""
-           }}
-        end
-      )
-
-      refute ExUnit.CaptureLog.capture_log(fn ->
-               CloudResourceManager.set_iam_policy(async: false)
-             end) =~ "marked as invalid"
-    end
-
-    test "sets team_user as invalid google account if user does not exist" do
-      team_user = insert(:team_user, valid_google_account: true)
-
-      GoogleApi.CloudResourceManager.V1.Api.Projects
-      |> expect(
-        :cloudresourcemanager_projects_set_iam_policy,
-        fn _, _project_number, [body: _body] ->
-          {:error,
-           %Tesla.Env{
-             status: 404,
-             body: Jason.encode!(%{error: %{message: "User #{team_user.email} does not exist."}})
-           }}
-        end
-      )
-      |> stub(:cloudresourcemanager_projects_set_iam_policy, fn conn, project_number, opts ->
-        call_original(
-          GoogleApi.CloudResourceManager.V1.Api.Projects,
-          :cloudresourcemanager_projects_set_iam_policy,
-          [conn, project_number, opts]
+    test "excludes a deleted user, keeps adding the rest, and does not retry it", %{
+      expected_members: expected_members
+    } do
+      user =
+        insert(:user,
+          provider: "google",
+          valid_google_account: true,
+          billing_account: insert(:billing_account, lifetime_plan: true),
+          team: insert(:team)
         )
-      end)
 
-      assert ExUnit.CaptureLog.capture_log(fn ->
-               CloudResourceManager.set_iam_policy(async: false)
-             end) =~ "marked as invalid"
+      team_user =
+        insert(:team_user, email: user.email, provider: "google", valid_google_account: true)
 
-      team_user = Logflare.Repo.get!(Logflare.TeamUsers.TeamUser, team_user.id)
-      refute team_user.valid_google_account
+      fake_iam(%Policy{bindings: []}, %{
+        ("user:" <> user.email) => "User #{user.email} does not exist."
+      })
 
-      # attempting to re-set the policy should not raise an error
-      refute ExUnit.CaptureLog.capture_log(fn ->
-               CloudResourceManager.set_iam_policy(async: false)
-             end) =~ "marked as invalid"
+      log =
+        ExUnit.CaptureLog.capture_log(fn -> CloudResourceManager.set_iam_policy(async: false) end)
+
+      assert log =~ "[error]"
+      assert log =~ "marked 2 account(s) as invalid"
+      refute log =~ "successful"
+
+      refute Logflare.Repo.get!(Logflare.User, user.id).valid_google_account
+      refute Logflare.Repo.get!(Logflare.TeamUsers.TeamUser, team_user.id).valid_google_account
+
+      job_user_members = members_for(current_policy().bindings, "roles/bigquery.jobUser")
+
+      for member <- expected_members do
+        assert member in job_user_members
+      end
+
+      flush_set_policies()
+      CloudResourceManager.set_iam_policy(async: false)
+      refute_received {:set_policy, _}
+    end
+
+    test "excludes a principal that is not a user account" do
+      team_user = insert(:team_user, provider: "google", valid_google_account: true)
+
+      paying_owner =
+        insert(:user,
+          provider: "google",
+          valid_google_account: true,
+          billing_account: insert(:billing_account, lifetime_plan: true),
+          team: team_user.team
+        )
+
+      fake_iam(%Policy{bindings: []}, %{
+        ("user:" <> team_user.email) => ~s(Principal #{team_user.email} is of type "group".)
+      })
+
+      ExUnit.CaptureLog.capture_log(fn -> CloudResourceManager.set_iam_policy(async: false) end)
+
+      refute Logflare.Repo.get!(Logflare.TeamUsers.TeamUser, team_user.id).valid_google_account
+
+      job_user_members = members_for(current_policy().bindings, "roles/bigquery.jobUser")
+      assert ("user:" <> paying_owner.email) in job_user_members
+      refute ("user:" <> team_user.email) in job_user_members
     end
   end
 
@@ -386,5 +390,45 @@ defmodule Logflare.Google.CloudResourceManagerTest do
     ]
     |> Enum.sort_by(& &1.updated_at, {:desc, Date})
     |> Enum.map(&"user:#{&1.email}")
+  end
+
+  defp fake_iam(%Policy{} = policy, rejected \\ %{}) do
+    Process.put(:fake_policy, policy)
+    Process.put(:fake_rejected, rejected)
+
+    stub(Projects, :cloudresourcemanager_projects_get_iam_policy, fn _, _, _ ->
+      {:ok, current_policy()}
+    end)
+
+    stub(Projects, :cloudresourcemanager_projects_set_iam_policy, &fake_set/3)
+  end
+
+  defp fake_set(_conn, _project, body: %Model.SetIamPolicyRequest{policy: policy}) do
+    send(self(), {:set_policy, policy})
+    members = Enum.flat_map(policy.bindings, & &1.members)
+
+    case Enum.find(Process.get(:fake_rejected), fn {member, _} -> member in members end) do
+      {_member, message} ->
+        {:error, %Tesla.Env{status: 400, body: Jason.encode!(%{error: %{message: message}})}}
+
+      nil ->
+        new_policy = %{policy | etag: "etag-#{System.unique_integer([:positive])}"}
+        Process.put(:fake_policy, new_policy)
+        {:ok, new_policy}
+    end
+  end
+
+  defp current_policy, do: Process.get(:fake_policy)
+
+  defp members_for(bindings, role) do
+    bindings |> Enum.filter(&(&1.role == role)) |> Enum.flat_map(& &1.members)
+  end
+
+  defp flush_set_policies do
+    receive do
+      {:set_policy, _} -> flush_set_policies()
+    after
+      0 -> :ok
+    end
   end
 end
