@@ -359,13 +359,9 @@ defmodule Logflare.Users do
   end
 
   defp delete_user_and_backends(user) do
-    Repo.transaction(fn ->
+    Repo.transact(fn ->
       Backends.delete_user_backends(user)
-
-      case Repo.delete(user) do
-        {:ok, deleted} -> deleted
-        {:error, reason} -> Repo.rollback(reason)
-      end
+      Repo.delete(user)
     end)
   end
 

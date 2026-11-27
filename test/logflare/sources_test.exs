@@ -262,7 +262,7 @@ defmodule Logflare.SourcesTest do
 
       assert {:ok, %Source{}} = Sources.delete_source(source)
       refute Sources.get(source.id)
-      # the backend itself is untouched
+      assert link_count("sources_backends", source.id) == 0
       assert Backends.get_backend(backend.id)
     end
 
@@ -1036,5 +1036,12 @@ defmodule Logflare.SourcesTest do
       assert is_nil(result),
              "Expected nil when querying for non-existent source name, got: #{inspect(result)}"
     end
+  end
+
+  defp link_count(table, source_id) do
+    %{rows: [[count]]} =
+      Repo.query!("SELECT count(*) FROM #{table} WHERE source_id = $1", [source_id])
+
+    count
   end
 end

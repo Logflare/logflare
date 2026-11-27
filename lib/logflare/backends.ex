@@ -675,22 +675,33 @@ defmodule Logflare.Backends do
   """
   @spec delete_user_backends(User.t()) :: {non_neg_integer(), [Backend.t()]}
   def delete_user_backends(%User{id: user_id}) do
-    from(sb in "sources_backends",
-      join: b in Backend,
-      on: b.id == sb.backend_id,
-      join: s in Source,
-      on: s.id == sb.source_id,
-      where: b.user_id == ^user_id or s.user_id == ^user_id
-    )
-    |> Repo.delete_all()
+    from(u in User, where: u.id == ^user_id, select: u.id, lock: "FOR UPDATE") |> Repo.all()
+
+    backend_ids =
+      from(b in Backend, where: b.user_id == ^user_id, select: b.id, lock: "FOR UPDATE")
+      |> Repo.all()
+
+    from(sb in "sources_backends", where: sb.backend_id in ^backend_ids) |> Repo.delete_all()
 
     {count, deleted} =
-      from(b in Backend, where: b.user_id == ^user_id, select: b)
-      |> Repo.delete_all()
+      from(b in Backend, where: b.id in ^backend_ids, select: b) |> Repo.delete_all()
 
     deleted = Enum.map(deleted, &typecast_config_string_map_to_atom_map/1)
-    Enum.each(deleted, &after_backend_deleted/1)
+
+    Repo.after_commit(fn -> Enum.each(deleted, &safe_after_backend_deleted/1) end)
+
     {count, deleted}
+  end
+
+  @spec safe_after_backend_deleted(Backend.t()) :: :ok
+  defp safe_after_backend_deleted(%Backend{id: id} = backend) do
+    after_backend_deleted(backend)
+  catch
+    kind, reason ->
+      Logger.error(
+        "backends: after-delete hooks failed for backend #{id}: " <>
+          Exception.format(kind, reason, __STACKTRACE__)
+      )
   end
 
   @spec after_backend_deleted(Backend.t()) :: :ok

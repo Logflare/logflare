@@ -2,6 +2,8 @@ defmodule Logflare.UsersTest do
   use Logflare.DataCase, async: true
   use ExUnitProperties
 
+  alias Logflare.Backends
+  alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Mailer
   alias Logflare.Sources
@@ -107,42 +109,75 @@ defmodule Logflare.UsersTest do
     refute Repo.reload(user)
   end
 
-  test "delete_user/1 deletes backends attached to sources" do
-    user = insert(:user)
-    source = insert(:source, user: user)
-    backend = insert(:backend, user: user, sources: [source])
+  describe "delete_user/1 with a backend attached to a source" do
+    setup :attached_backend
 
-    stub(
-      GoogleApi.CloudResourceManager.V1.Api.Projects,
-      :cloudresourcemanager_projects_set_iam_policy,
-      fn _, _project_number, [body: _body] -> {:ok, %Tesla.Env{status: 200, body: ""}} end
-    )
+    setup do
+      stub(
+        GoogleApi.CloudResourceManager.V1.Api.Projects,
+        :cloudresourcemanager_projects_set_iam_policy,
+        fn _, _project_number, [body: _body] -> {:ok, %Tesla.Env{status: 200, body: ""}} end
+      )
 
-    assert {:ok, _} = Users.delete_user(user)
+      :ok
+    end
 
-    refute Repo.reload(backend)
-    refute Repo.reload(source)
-    refute Repo.reload(user)
-  end
+    test "deletes the backend and its source link", %{
+      user: user,
+      source: source,
+      backend: backend
+    } do
+      expect(Adaptor, :on_backend_deleted, fn %{id: id} ->
+        assert id == backend.id
+        :ok
+      end)
 
-  test "delete_user/1 keeps backends when the user cannot be deleted" do
-    user = insert(:user)
-    source = insert(:source, user: user)
-    backend = insert(:backend, user: user, sources: [source])
-    changeset = Ecto.Changeset.change(user)
+      assert {:ok, _} = Users.delete_user(user)
 
-    stub(Logflare.Repo, :delete, fn %User{} -> {:error, changeset} end)
-    reject(&BigQueryAdaptor.update_iam_policy/0)
+      refute Repo.reload(backend)
+      refute Repo.reload(source)
+      refute Repo.reload(user)
+      assert source_backend_links(backend.id) == 0
+    end
 
-    assert {:error, ^changeset} = Users.delete_user(user)
+    test "keeps the backend when the user cannot be deleted", %{
+      user: user,
+      source: source,
+      backend: backend
+    } do
+      changeset = Ecto.Changeset.change(user)
 
-    assert Repo.reload(backend)
-    assert Repo.reload(user)
+      clickhouse_attrs = %{
+        type: :clickhouse,
+        name: "Test ClickHouse",
+        config: %{
+          url: "http://localhost",
+          port: 8123,
+          database: "test_db",
+          username: "user",
+          password: "pass"
+        }
+      }
 
-    assert %Source{backends: [%{id: backend_id}]} =
-             source |> Repo.reload() |> Repo.preload(:backends)
+      {:ok, clickhouse} = Backends.create_backend(user, clickhouse_attrs)
+      {_, pid} = List.keyfind(Backends.ConsolidatedSup.list_pipelines(), clickhouse.id, 0)
 
-    assert backend_id == backend.id
+      stub(Logflare.Repo, :delete, fn %User{} -> {:error, changeset} end)
+      reject(&BigQueryAdaptor.update_iam_policy/0)
+      reject(&Adaptor.on_backend_deleted/1)
+
+      assert {:error, ^changeset} = Users.delete_user(user)
+
+      assert Repo.reload(backend)
+      assert Repo.reload(user)
+      assert Process.alive?(pid)
+
+      assert %Source{backends: [%{id: backend_id}]} =
+               source |> Repo.reload() |> Repo.preload(:backends)
+
+      assert backend_id == backend.id
+      assert source_backend_links(backend.id) == 1
+    end
   end
 
   test "delete_user/1 deletes an account with every kind of resource" do
@@ -189,6 +224,21 @@ defmodule Logflare.UsersTest do
   # Characters illegal in a BigQuery dataset identifier: SQL delimiters,
   # identifier-quoting characters, whitespace, and shell metacharacters.
   @injection_chars ~c";`.'\" -/\\#!@$%^&*()+={}[]|<>?,~"
+
+  defp attached_backend(_context) do
+    user = insert(:user)
+    source = insert(:source, user: user)
+    backend = insert(:backend, user: user, sources: [source])
+
+    %{user: user, source: source, backend: backend}
+  end
+
+  defp source_backend_links(backend_id) do
+    %{rows: [[count]]} =
+      Repo.query!("SELECT count(*) FROM sources_backends WHERE backend_id = $1", [backend_id])
+
+    count
+  end
 
   defp dataset_id_with_injection do
     gen all prefix <- string(:alphanumeric, min_length: 1),
