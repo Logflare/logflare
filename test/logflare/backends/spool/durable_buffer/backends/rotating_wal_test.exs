@@ -5,6 +5,7 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWalTest do
   alias Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWal, as: Backend
   alias Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWal.Worker
   alias Logflare.Backends.Spool.Health
+  alias Logflare.Backends.Spool.WalPaths
   alias Logflare.Test.FakeDurableBufferBackend, as: FakeInnerBackend
 
   @interval_ms 200
@@ -164,6 +165,55 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWalTest do
     assert payloads == ["leftover"]
   end
 
+  test "an active-file tail recovered on open/2 is shipped by close/1" do
+    config = config(max_batch_bytes: 1_000_000, worker_count: 1)
+    {entry, size} = write_crashed_tail!(config, "recovered tail")
+
+    {:ok, state} = Backend.open(config, 0)
+    assert state.pending_bytes == size
+
+    assert :ok = Backend.close(state)
+
+    assert_receive {:committed, 0, body, ^size}
+    {payloads, _valid, _rest} = WAL.decode_all(body)
+    assert payloads == ["recovered tail"]
+    assert IO.iodata_to_binary(entry) == body
+  end
+
+  test "an active-file tail recovered on open/2 is shipped by the flush tick without new traffic" do
+    config =
+      config(max_batch_bytes: 1_000_000, max_rotation_interval_ms: @interval_ms, worker_count: 1)
+
+    {_entry, size} = write_crashed_tail!(config, "quiet node tail")
+
+    {:ok, state} = Backend.open(config, 0)
+
+    assert_receive {:backend, :flush_tick}, @interval_ms * 5
+    assert {[], new_state} = Backend.handle_message(:flush_tick, state)
+
+    assert new_state.pending_bytes == 0
+    assert_receive {:committed, 0, body, ^size}
+    {payloads, _valid, _rest} = WAL.decode_all(body)
+    assert payloads == ["quiet node tail"]
+
+    assert :ok = Backend.close(new_state)
+  end
+
+  test "a torn active-file tail is truncated on open/2 and only the valid entries are shipped" do
+    config = config(max_batch_bytes: 1_000_000, worker_count: 1)
+    {_entry, size} = write_crashed_tail!(config, "valid")
+    File.write!(WalPaths.active(config.wal_dir, 0), <<1, 2, 3>>, [:append])
+
+    {:ok, state} = Backend.open(config, 0)
+    assert state.pending_bytes == size
+
+    assert :ok = Backend.close(state)
+
+    assert_receive {:committed, 0, body, ^size}
+    {payloads, _valid, _rest} = WAL.decode_all(body)
+    assert payloads == ["valid"]
+  end
+
   test "each worker in the pool opens the inner backend with a distinct sub-partition index" do
     config = config(worker_count: 3)
     {:ok, state} = Backend.open(config, 5)
@@ -227,6 +277,13 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWalTest do
     assert_raise RuntimeError, ~r/does not support stream\/2/, fn ->
       Backend.stream(config(), 0)
     end
+  end
+
+  defp write_crashed_tail!(config, payload) do
+    File.mkdir_p!(config.wal_dir)
+    {entry, size} = framed(payload)
+    File.write!(WalPaths.active(config.wal_dir, 0), IO.iodata_to_binary(entry))
+    {entry, size}
   end
 
   defp write_temp!(contents) do
