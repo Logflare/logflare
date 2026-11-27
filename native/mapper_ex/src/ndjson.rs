@@ -3,12 +3,16 @@
 //! The row layout keeps every compiled field in config order and resolves the
 //! indices needed by the derived-field rules at compile time, so writing a row
 //! is a single pass over the mapped values.
+//!
+//! `NdjsonOptions` adapt the layout for consumers that cannot store it as is
+//! (e.g. BigQuery): column names are rewritten once here, at compile time, so a
+//! collision is a compile error rather than a value lost on every row.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
-use rustler::{Binary, OwnedBinary, Term};
+use rustler::{Binary, ListIterator, OwnedBinary, Term};
 use serde::ser::SerializeMap;
-use serde::Serializer;
+use serde::{Serialize, Serializer};
 
 use crate::mapper::JsonTerm;
 use crate::mapping::{CompiledField, FieldType};
@@ -22,6 +26,44 @@ pub struct CompiledLayout {
     derived: Derived,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct NdjsonOptions {
+    /// Replace `.` with `_` in column names.
+    pub underscore_names: bool,
+    /// Write each element of an `array_flat_map` column as a JSON string.
+    pub json_string_elements: bool,
+}
+
+impl NdjsonOptions {
+    /// Decodes the `column_names` and `nested_arrays` output options; a missing
+    /// option keeps the default layout.
+    pub fn decode(column_names: Option<&str>, nested_arrays: Option<&str>) -> EncodeResult<Self> {
+        let underscore_names = match column_names {
+            None | Some("dotted") => false,
+            Some("underscore") => true,
+            Some(other) => return Err(format!("unsupported NDJSON column_names '{other}'")),
+        };
+        let json_string_elements = match nested_arrays {
+            None | Some("native") => false,
+            Some("json_strings") => true,
+            Some(other) => return Err(format!("unsupported NDJSON nested_arrays '{other}'")),
+        };
+
+        Ok(Self {
+            underscore_names,
+            json_string_elements,
+        })
+    }
+
+    fn column_name(&self, field: &CompiledField) -> String {
+        if self.underscore_names {
+            field.name.replace('.', "_")
+        } else {
+            field.name.clone()
+        }
+    }
+}
+
 #[derive(Debug)]
 struct Column {
     name: String,
@@ -29,6 +71,7 @@ struct Column {
     /// Enum8 value -> label. The label is undefined when two labels share a
     /// value; `decode_enum_values` does not enforce reverse uniqueness yet.
     enum_labels: Option<HashMap<i64, String>>,
+    json_elements: bool,
 }
 
 #[derive(Debug)]
@@ -58,14 +101,18 @@ const ENVELOPE_KEYS: [&str; 5] = [
     "ingested_at",
 ];
 
-pub fn compile_layout(row_type: &str, fields: &[CompiledField]) -> EncodeResult<CompiledLayout> {
-    if let Some(field) = fields
+pub fn compile_layout(
+    row_type: &str,
+    fields: &[CompiledField],
+    options: NdjsonOptions,
+) -> EncodeResult<CompiledLayout> {
+    if let Some(name) = fields
         .iter()
-        .find(|field| ENVELOPE_KEYS.contains(&field.name.as_str()))
+        .map(|field| options.column_name(field))
+        .find(|name| ENVELOPE_KEYS.contains(&name.as_str()))
     {
         return Err(format!(
-            "field name '{}' is reserved for the NDJSON envelope",
-            field.name
+            "field name '{name}' is reserved for the NDJSON envelope"
         ));
     }
 
@@ -104,12 +151,24 @@ pub fn compile_layout(row_type: &str, fields: &[CompiledField]) -> EncodeResult<
         _ => return Err(format!("unsupported NDJSON row type '{row_type}'")),
     };
 
-    let columns = fields
-        .iter()
-        .enumerate()
-        .filter(|(_, field)| Some(field.name.as_str()) != hidden)
-        .map(|(index, field)| Column {
-            name: field.name.clone(),
+    let mut names = HashSet::new();
+    let mut columns = Vec::with_capacity(fields.len());
+
+    for (index, field) in fields.iter().enumerate() {
+        if Some(field.name.as_str()) == hidden {
+            continue;
+        }
+
+        let name = options.column_name(field);
+
+        if !names.insert(name.clone()) {
+            return Err(format!(
+                "NDJSON column name '{name}' is produced by more than one field"
+            ));
+        }
+
+        columns.push(Column {
+            name,
             index,
             enum_labels: field.enum8_data.as_ref().map(|data| {
                 data.value_map
@@ -117,10 +176,15 @@ pub fn compile_layout(row_type: &str, fields: &[CompiledField]) -> EncodeResult<
                     .map(|(label, value)| (i64::from(*value), label.clone()))
                     .collect()
             }),
-        })
-        .collect();
+            json_elements: options.json_string_elements
+                && field.field_type == FieldType::ArrayFlatMap,
+        });
+    }
 
-    Ok(CompiledLayout { columns, derived })
+    Ok(CompiledLayout {
+        columns: columns.into_boxed_slice(),
+        derived,
+    })
 }
 
 pub fn encode_row<'a>(
@@ -186,6 +250,9 @@ fn write_row<'a>(
             None if column.enum_labels.is_some() => {
                 object.serialize_entry(&column.name, &enum_label(column, value))
             }
+            None if column.json_elements => {
+                object.serialize_entry(&column.name, &JsonStringElements { value, nil })
+            }
             None => object.serialize_entry(&column.name, &JsonTerm { value, nil }),
         }
         .map_err(|error| error.to_string())?;
@@ -225,6 +292,42 @@ fn derived_value(
             )))
         }
         _ => Ok(None),
+    }
+}
+
+/// A list written as one JSON string per element, so an `array_flat_map`
+/// element (a flat attribute map) becomes a JSON object string. Values that are
+/// not lists are written as `JsonTerm` would write them.
+struct JsonStringElements<'a> {
+    value: Term<'a>,
+    nil: Term<'a>,
+}
+
+impl Serialize for JsonStringElements<'_> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        use serde::ser::SerializeSeq;
+
+        let Ok(items) = self.value.decode::<ListIterator>() else {
+            return JsonTerm {
+                value: self.value,
+                nil: self.nil,
+            }
+            .serialize(serializer);
+        };
+
+        let mut sequence = serializer.serialize_seq(None)?;
+        for value in items {
+            let json = serde_json::to_string(&JsonTerm {
+                value,
+                nil: self.nil,
+            })
+            .map_err(serde::ser::Error::custom)?;
+            sequence.serialize_element(&json)?;
+        }
+        sequence.end()
     }
 }
 
