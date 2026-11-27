@@ -30,6 +30,12 @@ defmodule Logflare.Integration.PglogicalDdlReplicationTest do
                )
   @replication_set System.get_env("PGLOGICAL_TEST_REPLICATION_SET", "my_set")
 
+  @app_schema_columns [
+    {"sources", "token", "uuid"},
+    {"backends", "enabled", "boolean"},
+    {"endpoint_queries", "description", "text"}
+  ]
+
   @migration_versions %{
     PglogicalTestMigration => 1,
     PglogicalTestMigrationAlter => 2
@@ -38,7 +44,13 @@ defmodule Logflare.Integration.PglogicalDdlReplicationTest do
   setup_all do
     {:ok, primary_conn} = Postgrex.start_link(Ecto.Repo.Supervisor.parse_url(@primary_url))
     {:ok, replica_conn} = Postgrex.start_link(Ecto.Repo.Supervisor.parse_url(@replica_url))
-    {:ok, primary_conn: primary_conn, replica_conn: replica_conn}
+
+    replica_app_schema = await_app_schema(replica_conn)
+
+    {:ok,
+     primary_conn: primary_conn,
+     replica_conn: replica_conn,
+     replica_app_schema: replica_app_schema}
   end
 
   setup %{primary_conn: primary_conn, replica_conn: replica_conn} do
@@ -52,6 +64,17 @@ defmodule Logflare.Integration.PglogicalDdlReplicationTest do
     reset_public_schema!(primary_conn)
     reset_public_schema!(replica_conn)
     :ok
+  end
+
+  describe "application migration suite" do
+    test "replicates the resulting application schema to the replica", %{
+      replica_app_schema: replica_app_schema
+    } do
+      for {table, column, data_type} <- @app_schema_columns do
+        assert Map.get(replica_app_schema, {table, column}) == data_type,
+               "expected #{table}.#{column} to be #{data_type} on the replica"
+      end
+    end
   end
 
   describe "when replication sets are configured" do
@@ -118,9 +141,7 @@ defmodule Logflare.Integration.PglogicalDdlReplicationTest do
       {:ok, _} = repo.start_link(url: @primary_url, pool_size: 2)
     end
 
-    # Versions must be stable per migration: `Ecto.Migrator` only runs a `:down`
-    # for a version already recorded in `schema_migrations`, so a freshly minted
-    # version would make the rollback a silent no-op.
+    # stable versions so `:down` finds the recorded migration
     version = Map.fetch!(@migration_versions, migration_module)
     Ecto.Migrator.run(repo, [{version, migration_module}], direction, all: true)
   end
@@ -131,14 +152,41 @@ defmodule Logflare.Integration.PglogicalDdlReplicationTest do
         :ok
 
       pid ->
-        # the repo is linked to the (now dead) test process, so it may already
-        # be shutting down by the time on_exit runs
         try do
           Supervisor.stop(pid)
         catch
           :exit, _reason -> :ok
         end
     end
+  end
+
+  @spec await_app_schema(pid()) :: %{{String.t(), String.t()} => String.t()}
+  defp await_app_schema(conn) do
+    expected = Map.new(@app_schema_columns, fn {t, c, type} -> {{t, c}, type} end)
+
+    TestUtils.retry_assert(fn ->
+      assert Map.take(app_schema(conn), Map.keys(expected)) == expected
+    end)
+
+    app_schema(conn)
+  end
+
+  @spec app_schema(pid()) :: %{{String.t(), String.t()} => String.t()}
+  defp app_schema(conn) do
+    tables = @app_schema_columns |> Enum.map(&elem(&1, 0)) |> Enum.uniq()
+
+    %{rows: rows} =
+      Postgrex.query!(
+        conn,
+        """
+        SELECT table_name, column_name, data_type
+        FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = ANY($1)
+        """,
+        [tables]
+      )
+
+    Map.new(rows, fn [table, column, type] -> {{table, column}, type} end)
   end
 
   defp table_exists?(conn, table_name) do
@@ -163,10 +211,6 @@ defmodule Logflare.Integration.PglogicalDdlReplicationTest do
     rows != []
   end
 
-  # Drops everything in `public` rather than named tables so a test never
-  # inherits a partially-migrated table, a stale `schema_migrations` row, or a
-  # replication-set membership left by a previous run. CASCADE also clears the
-  # `pglogical.replication_set_table` rows that `replicate_ddl_command` adds.
   defp reset_public_schema!(conn) do
     Postgrex.query!(
       conn,
