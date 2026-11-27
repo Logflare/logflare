@@ -3,9 +3,13 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient do
 
   alias Google.Cloud.Bigquery.Storage.V1.AppendRowsRequest
   alias Google.Cloud.Bigquery.Storage.V1.AppendRowsRequest.ArrowData
+  alias Google.Cloud.Bigquery.Storage.V1.AppendRowsRequest.ProtoData
   alias Google.Cloud.Bigquery.Storage.V1.AppendRowsResponse
   alias Google.Cloud.Bigquery.Storage.V1.ArrowRecordBatch
   alias Google.Cloud.Bigquery.Storage.V1.BigQueryWrite
+  alias Google.Cloud.Bigquery.Storage.V1.ProtoRows
+  alias Google.Cloud.Bigquery.Storage.V1.ProtoSchema
+  alias Google.Protobuf.DescriptorProto
   alias Logflare.Backends.Adaptor.BigQueryAdaptor.ArrowIPC
   alias Logflare.Networking.GrpcPool
 
@@ -47,22 +51,38 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient do
     end
   end
 
-  def append_rows({:arrow, arrow_rows}, context, table) do
+  @doc """
+  Wraps batches of protobuf-encoded rows into `ProtoData`, one per batch, for
+  `append_rows/3`.
+  """
+  @spec to_proto_data(DescriptorProto.t(), [[binary()]]) :: [ProtoData.t()]
+  def to_proto_data(%DescriptorProto{} = descriptor, batches) do
+    writer_schema = %ProtoSchema{proto_descriptor: descriptor}
+
+    for rows <- batches do
+      %ProtoData{writer_schema: writer_schema, rows: %ProtoRows{serialized_rows: rows}}
+    end
+  end
+
+  def append_rows({format, rows_batches}, context, table) when format in [:arrow, :proto] do
     project = context[:project_id]
     dataset = context[:dataset_id]
 
     requests =
-      Enum.map(arrow_rows, fn rows_batch ->
+      Enum.map(rows_batches, fn rows_batch ->
         %AppendRowsRequest{
           write_stream:
             "projects/#{project}/datasets/#{dataset}/tables/#{table}/streams/_default",
-          rows: {:arrow_rows, rows_batch},
+          rows: {rows_key(format), rows_batch},
           default_missing_value_interpretation: :NULL_VALUE
         }
       end)
 
     try_call(requests)
   end
+
+  defp rows_key(:arrow), do: :arrow_rows
+  defp rows_key(:proto), do: :proto_rows
 
   defp try_call(requests, retry_attempt \\ 0) do
     OpenTelemetry.Tracer.with_span "ingest.call_attempt", %{
