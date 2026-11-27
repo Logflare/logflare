@@ -151,6 +151,10 @@ defmodule Logflare.Mixfile do
       # Outbound Requests
       {:inet_cidr, "~> 1.0"},
       {:castore, "~> 1.0"},
+      # Stay on 0.21 until Logflare.Networking.FinchHttpClient stops
+      # passing ExAws's http_opts (follow_redirect, recv_timeout) to
+      # Finch.request/3: Finch 0.22 validates request options. 0.22 also
+      # changed error structs and pool metrics used by ClickHouse.
       {:finch, "~> 0.21.0"},
       {:mint, "~> 1.0"},
       {:httpoison, "~> 3.0"},
