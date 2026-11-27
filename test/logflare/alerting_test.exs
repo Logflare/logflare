@@ -603,6 +603,28 @@ defmodule Logflare.AlertingTest do
       assert Enum.all?(new_jobs, fn job -> job.id not in old_ids end)
     end
 
+    test "schedule_alert/1 does not schedule runs for a disabled alert", %{user: user} do
+      alert = insert(:alert, user: user, cron: "0 0 * * *", enabled: false)
+      assert :ok = Alerting.schedule_alert(alert)
+      assert Alerting.list_future_jobs(alert.id) == []
+    end
+
+    test "schedule_alert/1 schedules runs once a disabled alert is enabled", %{user: user} do
+      alert = insert(:alert, user: user, cron: "0 0 * * *", enabled: false)
+      assert :ok = Alerting.schedule_alert(alert)
+      assert Alerting.list_future_jobs(alert.id) == []
+
+      assert :ok = Alerting.schedule_alert(%{alert | enabled: true})
+      assert length(Alerting.list_future_jobs(alert.id)) == 5
+    end
+
+    test "changing cron on disabled alert does not schedule runs", %{user: user} do
+      alert = insert(:alert, user: user, cron: "0 0 * * *", enabled: false)
+
+      {:ok, %{enabled: false}} = Alerting.update_alert_query(alert, %{cron: "7 */6 * * *"})
+      assert Alerting.list_future_jobs(alert.id) == []
+    end
+
     test "schedule_alert/1 handles invalid cron gracefully", %{user: user} do
       alert = insert(:alert, user: user)
       assert :ok = Alerting.schedule_alert(%{alert | cron: "invalid"})
