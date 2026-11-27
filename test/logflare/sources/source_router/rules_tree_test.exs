@@ -237,6 +237,101 @@ defmodule Logflare.Sources.SourceRouter.RulesTreeTest do
       # twice via list traversal still appears exactly once in the result
       assert matching(rules, %{"metadata" => [%{"tag" => "x"}, %{"tag" => "x"}]}) == [0]
     end
+
+    test "single-filter matches stay unique across interleaved nested list entries" do
+      rules = [
+        rule(0, [filter("metadata.entries.tag", :=, "x")]),
+        rule(1, [filter("metadata.entries.tag", :=, "x")]),
+        rule(2, [filter("metadata.entries.tag", :"~", "^warn")]),
+        rule(3, [filter("metadata.entries.tag", :=, "blocked", %{negate: true})])
+      ]
+
+      body = %{
+        "metadata" => [
+          %{"entries" => [%{"tag" => "x"}, %{"tag" => "warn-1"}]},
+          %{"entries" => [%{"tag" => "blocked"}]},
+          %{"entries" => [%{"tag" => "warn-2"}, %{"tag" => "x"}]}
+        ]
+      }
+
+      assert matching(rules, body) == [0, 1, 2, 3]
+      assert matching(rules, %{"metadata" => []}) == []
+      assert matching(rules, %{"metadata" => [%{"entries" => [%{"tag" => "blocked"}]}]}) == []
+    end
+
+    test "shared single and multi-filter matches accumulate across nested list entries" do
+      equality = filter("metadata.entries.tag", :=, "x")
+      contains = filter("metadata.entries.message", :string_contains, "failed")
+      negated = filter("metadata.entries.state", :=, "ignored", %{negate: true})
+
+      rules = [
+        rule(0, [equality]),
+        rule(1, [contains]),
+        rule(2, [negated]),
+        rule(3, [equality, contains]),
+        rule(4, [equality, negated]),
+        rule(5, [contains, negated]),
+        rule(6, [equality, contains, filter("metadata.entries.region", :=, "required")])
+      ]
+
+      body = %{
+        "metadata" => [
+          %{"entries" => [%{"tag" => "x"}, %{"message" => "failed request"}]},
+          %{
+            "entries" => [
+              %{"state" => "active"},
+              %{"tag" => "x"},
+              %{"message" => "failed again"}
+            ]
+          }
+        ]
+      }
+
+      assert matching(rules, body) == [0, 1, 2, 3, 4, 5]
+
+      assert matching(rules, %{
+               "metadata" => [%{"entries" => [%{"tag" => "x"}, %{"state" => "ignored"}]}]
+             }) == [0]
+    end
+
+    test "flat matches before and after list traversal are preserved" do
+      pending = filter("b_multi", :=, "ready")
+      nested = filter("metadata.tag", :=, "x")
+
+      rules = [
+        rule(0, [filter("a_single", :=, "ready")]),
+        rule(1, [pending, nested]),
+        rule(2, [nested]),
+        rule(3, [pending, filter("metadata.region", :=, "required")]),
+        rule(4, [filter("z_single", :=, "ready")])
+      ]
+
+      body = %{
+        "a_single" => "ready",
+        "b_multi" => "ready",
+        "metadata" => [%{"tag" => "x"}, %{"tag" => "x"}],
+        "z_single" => "ready"
+      }
+
+      assert matching(rules, body) == [0, 1, 2, 4]
+      assert matching(rules, %{body | "metadata" => [%{"tag" => "x"}]}) == [0, 1, 2, 4]
+      assert matching(rules, %{body | "metadata" => []}) == [0, 4]
+    end
+
+    test "multi-filter matches accumulate across sibling arrays" do
+      first = filter("first.tag", :=, "x")
+      second = filter("second.tag", :=, "y")
+      rules = [rule(0, [first]), rule(1, [second]), rule(2, [first, second])]
+
+      body = %{
+        "first" => [%{"tag" => "x"}, %{"tag" => "x"}],
+        "second" => [%{"tag" => "y"}, %{"tag" => "y"}]
+      }
+
+      assert matching(rules, body) == [0, 1, 2]
+      assert matching(rules, %{body | "first" => []}) == [1]
+      assert matching(rules, %{body | "second" => []}) == [0]
+    end
   end
 
   test "filters registry" do
