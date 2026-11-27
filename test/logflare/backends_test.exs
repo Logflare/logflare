@@ -142,10 +142,57 @@ defmodule Logflare.BackendsTest do
       }
 
       assert {:ok, backend} = Backends.create_backend(user, attrs)
-      assert Backends.ConsolidatedSup.pipeline_running?(backend)
+      {_, pid} = List.keyfind(Backends.ConsolidatedSup.list_pipelines(), backend.id, 0)
+      ref = Process.monitor(pid)
 
       assert {:ok, _} = Backends.delete_backend(backend)
-      refute Backends.ConsolidatedSup.pipeline_running?(backend.id)
+      assert_receive {:DOWN, ^ref, :process, ^pid, _reason}
+    end
+
+    test "delete_user_backends/1 deletes the user's backends and stops their pipelines", %{
+      user: user
+    } do
+      attrs = %{
+        type: :clickhouse,
+        name: "Test ClickHouse",
+        config: %{
+          url: "http://localhost",
+          port: 8123,
+          database: "test_db",
+          username: "user",
+          password: "pass"
+        }
+      }
+
+      assert {:ok, backend} = Backends.create_backend(user, attrs)
+      source = insert(:source, user: user)
+      linked = insert(:backend, user: user, sources: [source])
+      other = insert(:backend, user: insert(:user))
+
+      {_, pid} = List.keyfind(Backends.ConsolidatedSup.list_pipelines(), backend.id, 0)
+      ref = Process.monitor(pid)
+
+      assert {2, _deleted} = Backends.delete_user_backends(user)
+
+      refute Repo.reload(backend)
+      refute Repo.reload(linked)
+      assert Repo.reload(source)
+      assert Repo.reload(other)
+      assert_receive {:DOWN, ^ref, :process, ^pid, _}, 5_000
+    end
+
+    test "delete_user_backends/1 runs every backend's hooks when one raises", %{user: user} do
+      [first, second] = insert_pair(:backend, user: user)
+      test_pid = self()
+
+      stub(Adaptor, :on_backend_deleted, fn
+        %{id: id} when id == first.id -> raise "boom"
+        %{id: id} -> send(test_pid, {:deleted, id})
+      end)
+
+      assert {2, _} = Backends.delete_user_backends(user)
+      second_id = second.id
+      assert_receive {:deleted, ^second_id}
     end
 
     test "update_backend/2 keeps consolidated pipeline running", %{user: user} do
