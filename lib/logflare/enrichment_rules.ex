@@ -5,7 +5,9 @@ defmodule Logflare.EnrichmentRules do
   before routing, so they run on the spool consumer for spooled events.
 
   A source's rules compile into one `Logflare.Mapper` mapping with an `enum8` field per rule,
-  which reads only the paths the conditions name.
+  which reads only the paths the conditions name. Numeric comparisons accept strings holding a
+  number. A condition on `@severity_text` reads the `severity_text` field of the ClickHouse log
+  mapping, which is added to the mapping ahead of the rules.
   """
 
   import Ecto.Query
@@ -18,6 +20,7 @@ defmodule Logflare.EnrichmentRules do
   alias Logflare.Mapper.MappingConfig.FieldConfig
   alias Logflare.Mapper.MappingConfig.InferCondition
   alias Logflare.Mapper.MappingConfig.InferRule
+  alias Logflare.Mapper.OtelDefaults
   alias Logflare.Repo
   alias Logflare.Sources.Source
 
@@ -118,7 +121,25 @@ defmodule Logflare.EnrichmentRules do
   end
 
   @spec mapping_config([EnrichmentRule.t()]) :: MappingConfig.t()
-  defp mapping_config(rules), do: rules |> Enum.map(&rule_field/1) |> MappingConfig.new()
+  defp mapping_config(rules) do
+    MappingConfig.new(derived_fields(rules) ++ Enum.map(rules, &rule_field/1))
+  end
+
+  @spec derived_fields([EnrichmentRule.t()]) :: [FieldConfig.t()]
+  defp derived_fields(rules) do
+    names =
+      for %EnrichmentRule{conditions: conditions} <- rules,
+          %{"path" => path} <- conditions,
+          name = EnrichmentRule.derived_field(path),
+          name != nil,
+          uniq: true,
+          do: name
+
+    case names do
+      [] -> []
+      names -> Enum.filter(OtelDefaults.for_log().fields, &(&1.name in names))
+    end
+  end
 
   @spec rule_field(EnrichmentRule.t()) :: FieldConfig.t()
   defp rule_field(%EnrichmentRule{match: match, conditions: conditions} = rule) do
@@ -132,20 +153,24 @@ defmodule Logflare.EnrichmentRules do
   end
 
   @spec to_condition(EnrichmentRule.condition()) :: InferCondition.t()
-  defp to_condition(%{"path" => path, "predicate" => "in"} = condition) do
+  defp to_condition(%{"path" => path, "predicate" => predicate} = condition) do
+    value_key = if predicate in ~w(in not_in), do: :comparison_values, else: :comparison_value
+
     %InferCondition{
-      path: mapper_path(path),
-      predicate: "in",
-      comparison_values: condition["value"]
+      predicate: predicate,
+      case_insensitive: Map.get(condition, "case_insensitive", false),
+      coercion: "lenient"
     }
+    |> put_source(path)
+    |> Map.put(value_key, condition["value"])
   end
 
-  defp to_condition(%{"path" => path, "predicate" => predicate} = condition) do
-    %InferCondition{
-      path: mapper_path(path),
-      predicate: predicate,
-      comparison_value: condition["value"]
-    }
+  @spec put_source(InferCondition.t(), String.t()) :: InferCondition.t()
+  defp put_source(condition, path) do
+    case EnrichmentRule.derived_field(path) do
+      nil -> %{condition | path: mapper_path(path)}
+      name -> %{condition | from_output: name}
+    end
   end
 
   @spec mapper_path(String.t()) :: String.t()

@@ -1492,6 +1492,174 @@ defmodule Logflare.MapperTest do
     end
   end
 
+  describe "condition options" do
+    defp condition_matches?(condition, document, fields \\ []) do
+      rule =
+        Field.enum8("matched",
+          values: %{"yes" => 2, "no" => 1},
+          infer: [%InferRule{result: "yes", all: [condition]}],
+          default: "1"
+        )
+
+      compile_and_map(fields ++ [rule], document)["matched"] == 2
+    end
+
+    test "defaults keep comparisons exact and type-strict" do
+      equals = %InferCondition{path: "$.level", predicate: "equals", comparison_value: "error"}
+      refute condition_matches?(equals, %{"level" => "ERROR"})
+      assert condition_matches?(equals, %{"level" => "error"})
+
+      less_than = %InferCondition{path: "$.status", predicate: "less_than", comparison_value: 400}
+      refute condition_matches?(less_than, %{"status" => "200"})
+      assert condition_matches?(less_than, %{"status" => 200})
+
+      equals_int = %InferCondition{path: "$.status", predicate: "equals", comparison_value: 500}
+      refute condition_matches?(equals_int, %{"status" => "500"})
+
+      not_equals = %InferCondition{
+        path: "$.level",
+        predicate: "not_equals",
+        comparison_value: "x"
+      }
+
+      assert condition_matches?(not_equals, %{})
+
+      in_set = %InferCondition{path: "$.level", predicate: "in", comparison_values: ["error"]}
+      refute condition_matches?(in_set, %{})
+      refute condition_matches?(in_set, %{"level" => "Error"})
+    end
+
+    test "existing conditions encode to the same NIF config" do
+      condition = %InferCondition{path: "$.gauge", predicate: "exists"}
+      rule = %InferRule{result: "gauge", any: [condition]}
+      config = MappingConfig.new([Field.enum8("t", values: %{"gauge" => 1}, infer: [rule])])
+
+      assert [%{"infer" => [%{"any" => [encoded]}]}] = MappingConfig.to_nif_map(config)["fields"]
+      assert encoded == %{"path" => "$.gauge", "predicate" => "exists"}
+    end
+
+    test "not_in matches missing values and values outside the set" do
+      not_in = %InferCondition{
+        path: "$.level",
+        predicate: "not_in",
+        comparison_values: ["error", "fatal"]
+      }
+
+      assert condition_matches?(not_in, %{})
+      assert condition_matches?(not_in, %{"level" => "info"})
+      assert condition_matches?(not_in, %{"level" => "ERROR"})
+      refute condition_matches?(not_in, %{"level" => "fatal"})
+    end
+
+    test "case_insensitive applies to equals, not_equals, in and not_in" do
+      for {predicate, value_key, value, document, expected} <- [
+            {"equals", :comparison_value, "error", %{"level" => "ERROR"}, true},
+            {"not_equals", :comparison_value, "error", %{"level" => "eRRor"}, false},
+            {"in", :comparison_values, ["error", "fatal"], %{"level" => "Fatal"}, true},
+            {"not_in", :comparison_values, ["error", "fatal"], %{"level" => "ERROR"}, false},
+            {"not_in", :comparison_values, ["error", "fatal"], %{"level" => "WARN"}, true},
+            {"equals", :comparison_value, "érror", %{"level" => "ÉRROR"}, true},
+            {"equals", :comparison_value, "error", %{"level" => 1}, false}
+          ] do
+        condition =
+          Map.put(
+            %InferCondition{path: "$.level", predicate: predicate, case_insensitive: true},
+            value_key,
+            value
+          )
+
+        assert condition_matches?(condition, document) == expected,
+               "#{predicate} #{inspect(value)} on #{inspect(document)}"
+      end
+    end
+
+    test "lenient coercion compares strings holding numbers" do
+      lenient = fn predicate, value ->
+        %InferCondition{
+          path: "$.status",
+          predicate: predicate,
+          comparison_value: value,
+          coercion: "lenient"
+        }
+      end
+
+      assert condition_matches?(lenient.("less_than", 400), %{"status" => " 200 "})
+      refute condition_matches?(lenient.("less_than", 400), %{"status" => "500"})
+      assert condition_matches?(lenient.("greater_than", 499), %{"status" => "500"})
+      assert condition_matches?(lenient.("less_than", 400), %{"status" => 200})
+      refute condition_matches?(lenient.("less_than", 400), %{"status" => "abc"})
+      refute condition_matches?(lenient.("less_than", 400), %{"status" => "NaN"})
+      refute condition_matches?(lenient.("less_than", 400), %{})
+      assert condition_matches?(lenient.("equals", 500), %{"status" => "500"})
+      refute condition_matches?(lenient.("equals", "500"), %{"status" => 500})
+    end
+
+    test "from_output reads an earlier field's resolved value" do
+      severity =
+        Field.string("severity_text",
+          paths: ["$.severity_text", "$.metadata.level"],
+          default: "INFO",
+          transform: "upcase",
+          allowed_values: ~w(INFO WARN ERROR FATAL)
+        )
+
+      condition = %InferCondition{
+        from_output: "severity_text",
+        predicate: "not_in",
+        comparison_values: ["ERROR", "FATAL"]
+      }
+
+      refute condition_matches?(condition, %{"metadata" => %{"level" => "error"}}, [severity])
+
+      refute condition_matches?(
+               condition,
+               %{"severity_text" => "", "metadata" => %{"level" => "error"}},
+               [severity]
+             )
+
+      assert condition_matches?(condition, %{"severity_text" => "bogus"}, [severity])
+      assert condition_matches?(condition, %{}, [severity])
+    end
+
+    test "rejects invalid condition options at compile time" do
+      compile = fn condition, fields ->
+        rule =
+          Field.enum8("m",
+            values: %{"yes" => 1},
+            infer: [%InferRule{result: "yes", all: [condition]}]
+          )
+
+        Mapper.compile(MappingConfig.new(fields ++ [rule]))
+      end
+
+      assert {:error, message} =
+               compile.(%InferCondition{from_output: "later", predicate: "exists"}, [])
+
+      assert message =~ "references unknown or later field"
+
+      assert {:error, message} =
+               compile.(
+                 %InferCondition{path: "$.a", from_output: "s", predicate: "exists"},
+                 [Field.string("s", path: "$.s")]
+               )
+
+      assert message =~ "not both"
+
+      assert {:error, message} =
+               compile.(
+                 %InferCondition{
+                   path: "$.a",
+                   predicate: "less_than",
+                   comparison_value: 1,
+                   coercion: "loose"
+                 },
+                 []
+               )
+
+      assert message =~ "coercion must be"
+    end
+  end
+
   # ── FromOutput ────────────────────────────────────────────────────────
 
   describe "FromOutput" do

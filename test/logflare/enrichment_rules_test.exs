@@ -46,6 +46,11 @@ defmodule Logflare.EnrichmentRulesTest do
             {[%{"path" => "a", "predicate" => "equals"}], "needs a string, number or boolean"},
             {[%{"path" => "a", "predicate" => "less_than", "value" => "4"}], "needs a number"},
             {[%{"path" => "a", "predicate" => "in", "value" => []}], "needs a list of values"},
+            {[%{"path" => "a", "predicate" => "not_in", "value" => "x"}],
+             "needs a list of values"},
+            {[%{"path" => "@bogus", "predicate" => "exists"}], "invalid field path"},
+            {[%{"path" => "a", "predicate" => "exists", "case_insensitive" => "yes"}],
+             "case_insensitive must be true or false"},
             {[%{"predicate" => "exists"}], "must have a path and a predicate"}
           ] do
         assert {:error, changeset} =
@@ -166,6 +171,81 @@ defmodule Logflare.EnrichmentRulesTest do
       refute Map.has_key?(dev_user.body, "page")
       assert dev_user.body["debug_user"] == true
       refute Map.has_key?(prod_user.body, "debug_user")
+    end
+
+    test "not_in with case_insensitive excludes every casing of the listed values",
+         %{source: source} do
+      insert(:enrichment_rule,
+        source: source,
+        conditions: [
+          %{
+            "path" => "m.level",
+            "predicate" => "not_in",
+            "value" => ["error", "fatal"],
+            "case_insensitive" => true
+          }
+        ],
+        set_fields: %{"excluded" => true}
+      )
+
+      events =
+        for level <- ["ERROR", "eRRor", "Fatal", "info", nil] do
+          build(:log_event, source: source, metadata: %{"level" => level})
+        end
+
+      assert [error, mixed, fatal, info, missing] = EnrichmentRules.apply_rules(events, source)
+      refute Map.has_key?(error.body, "excluded")
+      refute Map.has_key?(mixed.body, "excluded")
+      refute Map.has_key?(fatal.body, "excluded")
+      assert info.body["excluded"] == true
+      assert missing.body["excluded"] == true
+    end
+
+    test "numeric comparisons accept status codes sent as strings", %{source: source} do
+      insert(:enrichment_rule,
+        source: source,
+        conditions: [%{"path" => "m.status", "predicate" => "less_than", "value" => 400}],
+        set_fields: %{"excluded" => true}
+      )
+
+      events =
+        for status <- ["200", "500", 200, "abc"] do
+          build(:log_event, source: source, metadata: %{"status" => status})
+        end
+
+      assert [ok, error, int_ok, garbage] = EnrichmentRules.apply_rules(events, source)
+      assert ok.body["excluded"] == true
+      refute Map.has_key?(error.body, "excluded")
+      assert int_ok.body["excluded"] == true
+      refute Map.has_key?(garbage.body, "excluded")
+    end
+
+    test "@severity_text reads the severity the ClickHouse log mapping derives",
+         %{source: source} do
+      insert(:enrichment_rule,
+        source: source,
+        conditions: [
+          %{"path" => "@severity_text", "predicate" => "not_in", "value" => ["ERROR", "FATAL"]}
+        ],
+        set_fields: %{"excluded" => true}
+      )
+
+      events =
+        for body_fields <- [
+              %{"metadata" => %{"level" => "error"}},
+              %{"severity_text" => "", "metadata" => %{"level" => "error"}},
+              %{"severityText" => "Fatal"},
+              %{"metadata" => %{"parsed" => %{"error_severity" => "ERROR"}}},
+              %{"metadata" => %{"level" => "info"}},
+              %{"severity_text" => "bogus", "metadata" => %{"level" => "error"}},
+              %{}
+            ] do
+          build(:log_event, Map.put(body_fields, :source, source))
+        end
+
+      assert EnrichmentRules.apply_rules(events, source)
+             |> Enum.map(&Map.get(&1.body, "excluded", false)) ==
+               [false, false, false, false, true, true, true]
     end
 
     test "applies matching rules in creation order", %{source: source} do

@@ -35,7 +35,14 @@ defmodule LogflareWeb.SourceEnrichmentRulesLive do
           <label for="enrichment-rule-conditions">Conditions</label>
           <textarea id="enrichment-rule-conditions" name="rule[conditions]" class="form-control form-control-margin tw-h-[80px]" placeholder="debug_mode equals errors_only\nm.response.status_code less_than 400">{@conditions}</textarea>
           <small class="form-text text-muted">
-            One <code>field predicate value</code> per line. Predicates: {Enum.join(EnrichmentRule.predicates(), ", ")}. Separate <code>in</code> values with commas. <code>exists</code>, <code>not_exists</code>, <code>is_empty</code> and <code>not_empty</code> take no value.
+            One <code>field predicate value</code>
+            per line. Predicates: {Enum.join(EnrichmentRule.predicates(), ", ")}. Separate <code>in</code>
+            and <code>not_in</code>
+            values with commas. <code>exists</code>, <code>not_exists</code>, <code>is_empty</code>
+            and <code>not_empty</code>
+            take no value. Add <code>/i</code>
+            to a predicate to ignore case, as in <code>not_in/i</code>. <code>@severity_text</code>
+            is the event's severity as ClickHouse derives it.
           </small>
         </div>
         <div class="form-group">
@@ -124,6 +131,8 @@ defmodule LogflareWeb.SourceEnrichmentRulesLive do
   end
 
   defp format_condition(%{"path" => path, "predicate" => predicate} = condition) do
+    predicate = if condition["case_insensitive"], do: predicate <> "/i", else: predicate
+
     case Map.fetch(condition, "value") do
       {:ok, value} -> "#{path} #{predicate} #{Jason.encode!(value)}"
       :error -> "#{path} #{predicate}"
@@ -152,24 +161,31 @@ defmodule LogflareWeb.SourceEnrichmentRulesLive do
 
   defp parse_condition(line) do
     case String.split(line, ~r/\s+/, parts: 3) do
-      [path, "in", values] ->
-        {:ok,
-         %{
-           "path" => path,
-           "predicate" => "in",
-           "value" => values |> String.split(",") |> Enum.map(&parse_value(String.trim(&1)))
-         }}
-
-      [path, predicate, value] ->
-        {:ok, %{"path" => path, "predicate" => predicate, "value" => parse_value(value)}}
-
-      [path, predicate] ->
-        {:ok, %{"path" => path, "predicate" => predicate}}
+      [path, predicate | value] ->
+        {:ok, path |> base_condition(predicate) |> put_condition_value(value)}
 
       _ ->
         :error
     end
   end
+
+  defp base_condition(path, predicate) do
+    case String.split(predicate, "/", parts: 2) do
+      [name, "i"] -> %{"path" => path, "predicate" => name, "case_insensitive" => true}
+      _ -> %{"path" => path, "predicate" => predicate}
+    end
+  end
+
+  defp put_condition_value(condition, []), do: condition
+
+  defp put_condition_value(%{"predicate" => predicate} = condition, [values])
+       when predicate in ["in", "not_in"] do
+    parsed = values |> String.split(",") |> Enum.map(&parse_value(String.trim(&1)))
+    Map.put(condition, "value", parsed)
+  end
+
+  defp put_condition_value(condition, [value]),
+    do: Map.put(condition, "value", parse_value(value))
 
   defp format_set_fields(set_fields) do
     set_fields

@@ -51,6 +51,38 @@ defmodule LogflareWeb.SourceEnrichmentRulesLiveTest do
     assert rule.set_fields == %{"alert" => true, "m.retries" => 3, "team" => "core"}
   end
 
+  test "parses not_in, case-insensitive predicates and derived fields", %{
+    conn: conn,
+    source: source
+  } do
+    {view, _html} = render_view(conn, source)
+
+    html =
+      view
+      |> element("#enrichment-rule-form")
+      |> render_submit(%{
+        rule: %{
+          conditions: "m.level not_in/i error, fatal\n@severity_text not_in ERROR, FATAL",
+          set_fields: "excluded=true"
+        }
+      })
+
+    assert html =~ "Enrichment rule created."
+    assert html =~ "m.level not_in/i"
+
+    assert [rule] = EnrichmentRules.list_by_source_id(source.id)
+
+    assert rule.conditions == [
+             %{
+               "path" => "m.level",
+               "predicate" => "not_in",
+               "value" => ["error", "fatal"],
+               "case_insensitive" => true
+             },
+             %{"path" => "@severity_text", "predicate" => "not_in", "value" => ["ERROR", "FATAL"]}
+           ]
+  end
+
   test "shows errors for malformed set fields and invalid rules", %{conn: conn, source: source} do
     {view, _html} = render_view(conn, source)
     valid = "m.level equals error"

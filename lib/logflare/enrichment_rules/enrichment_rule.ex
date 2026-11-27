@@ -3,8 +3,10 @@ defmodule Logflare.EnrichmentRules.EnrichmentRule do
   Conditions on a source's events and the fields set on each event that meets them.
 
   `match` is `:all` or `:any` of `conditions`. Each condition is a map with a `"path"`, a
-  `"predicate"` and, for comparing predicates, a `"value"`. `set_fields` maps a field path to a
-  scalar value. Paths use dot syntax, with `m.` as shorthand for `metadata.`.
+  `"predicate"`, a `"value"` for comparing predicates, and an optional `"case_insensitive"`.
+  `set_fields` maps a field path to a scalar value. Paths use dot syntax, with `m.` as shorthand
+  for `metadata.`. A condition path of `@severity_text` reads the severity that the ClickHouse log
+  mapping derives from the event.
   """
   use TypedEctoSchema
 
@@ -15,9 +17,10 @@ defmodule Logflare.EnrichmentRules.EnrichmentRule do
   @reserved_heads ~w(id event_message timestamp)
   @value_predicates ~w(equals not_equals)
   @numeric_predicates ~w(greater_than less_than)
-  @list_predicates ~w(in)
+  @list_predicates ~w(in not_in)
   @presence_predicates ~w(exists not_exists is_empty not_empty)
   @predicates @value_predicates ++ @numeric_predicates ++ @list_predicates ++ @presence_predicates
+  @derived_fields ~w(severity_text)
 
   @derive {Jason.Encoder, only: [:id, :token, :source_id, :match, :conditions, :set_fields]}
 
@@ -37,6 +40,13 @@ defmodule Logflare.EnrichmentRules.EnrichmentRule do
 
   @spec predicates() :: [String.t()]
   def predicates, do: @predicates
+
+  @doc """
+  Returns the derived field a condition path names (`@severity_text`), or nil for an event path.
+  """
+  @spec derived_field(String.t()) :: String.t() | nil
+  def derived_field("@" <> name), do: name
+  def derived_field(_path), do: nil
 
   @spec changeset(t() | Ecto.Changeset.t(), map()) :: Ecto.Changeset.t()
   def changeset(rule, attrs) do
@@ -67,11 +77,14 @@ defmodule Logflare.EnrichmentRules.EnrichmentRule do
   defp condition_errors(field, %{"path" => path, "predicate" => predicate} = condition)
        when is_binary(path) and is_binary(predicate) do
     cond do
-      not valid_path?(path) ->
+      not valid_condition_path?(path) ->
         [{field, "has an invalid field path: #{inspect(path)}"}]
 
       predicate not in @predicates ->
         [{field, "has an unknown predicate: #{predicate}"}]
+
+      not is_boolean(Map.get(condition, "case_insensitive", false)) ->
+        [{field, "#{path} case_insensitive must be true or false"}]
 
       true ->
         value_errors(field, path, predicate, Map.get(condition, "value"))
@@ -131,6 +144,13 @@ defmodule Logflare.EnrichmentRules.EnrichmentRule do
 
   defp set_field_errors(field, path, _value),
     do: [{field, "has an invalid field path: #{inspect(path)}"}]
+
+  defp valid_condition_path?(path) do
+    case derived_field(path) do
+      nil -> valid_path?(path)
+      name -> name in @derived_fields
+    end
+  end
 
   defp valid_path?(path) when is_binary(path) do
     path |> parse_path() |> Enum.all?(&(&1 != "" and not String.contains?(&1, ["[", "]"])))

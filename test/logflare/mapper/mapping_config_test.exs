@@ -372,6 +372,53 @@ defmodule Logflare.Mapper.MappingConfigTest do
       assert Mapper.map(document, Mapper.compile!(restored)) == expected
     end
 
+    test "infer conditions accept from_output and comparison options" do
+      json =
+        Jason.encode!(%{
+          "fields" => [
+            %{"name" => "s", "type" => "string", "path" => "$.s"},
+            %{
+              "name" => "m",
+              "type" => "enum8",
+              "enum_values" => %{"yes" => 1},
+              "infer" => [
+                %{
+                  "result" => "yes",
+                  "all" => [
+                    %{
+                      "from_output" => "s",
+                      "predicate" => "not_in",
+                      "comparison_values" => ["ERROR"],
+                      "case_insensitive" => true,
+                      "coercion" => "lenient"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        })
+
+      assert {:ok, config} = MappingConfig.from_json(json)
+      assert [_s, %{infer: [%{all: [condition]}]}] = config.fields
+      assert condition.from_output == "s"
+      assert condition.case_insensitive
+      assert condition.coercion == "lenient"
+      assert {:ok, _compiled} = Logflare.Mapper.compile(config)
+    end
+
+    test "infer conditions need exactly one of path and from_output" do
+      for {attrs, field} <- [
+            {%{"predicate" => "exists"}, :path},
+            {%{"predicate" => "exists", "path" => "$.a", "from_output" => "s"}, :from_output},
+            {%{"predicate" => "exists", "path" => "$.a", "coercion" => "loose"}, :coercion}
+          ] do
+        changeset = InferCondition.changeset(%InferCondition{}, attrs)
+        refute changeset.valid?
+        assert Keyword.has_key?(changeset.errors, field)
+      end
+    end
+
     test "round-trip preserves infer rules" do
       config =
         MappingConfig.new([

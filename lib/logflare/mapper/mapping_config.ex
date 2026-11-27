@@ -233,6 +233,10 @@ defmodule Logflare.Mapper.MappingConfig do
   defp maybe_add(map, _key, []), do: map
   defp maybe_add(map, key, value), do: Map.put(map, key, value)
 
+  @spec maybe_add_true(map(), String.t(), boolean() | nil) :: map()
+  defp maybe_add_true(map, key, true), do: Map.put(map, key, true)
+  defp maybe_add_true(map, _key, _value), do: map
+
   @spec maybe_add_filters(map(), map() | nil) :: map()
   defp maybe_add_filters(map, nil), do: map
   defp maybe_add_filters(map, filters) when is_empty_map(filters), do: map
@@ -278,11 +282,15 @@ defmodule Logflare.Mapper.MappingConfig do
   defp maybe_add_conditions(map, key, conditions) do
     conds =
       Enum.map(conditions, fn %InferCondition{} = c ->
-        base = %{"path" => c.path, "predicate" => c.predicate}
+        base = %{"predicate" => c.predicate}
 
         base
+        |> maybe_add("path", c.path)
+        |> maybe_add("from_output", c.from_output)
         |> maybe_add("comparison_value", c.comparison_value)
         |> maybe_add("comparison_values", c.comparison_values)
+        |> maybe_add_true("case_insensitive", c.case_insensitive)
+        |> maybe_add("coercion", c.coercion)
       end)
 
     Map.put(map, key, conds)

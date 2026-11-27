@@ -279,10 +279,13 @@ Each rule has:
   | `equals`, `not_equals` | string, number or boolean | equals, or does not equal, the value. `not_equals` also matches a missing field. |
   | `greater_than`, `less_than` | number | is a number above, or below, the value |
   | `in` | comma-separated values | equals one of the values |
+  | `not_in` | comma-separated values | equals none of the values, or is missing |
   | `exists`, `not_exists` | none | is present, or missing |
   | `is_empty`, `not_empty` | none | is an empty, or non-empty, string or list |
 
-  Comparisons are type-sensitive: the string `"200"` does not equal the number `200`.
+  Add `/i` to a predicate to ignore case when comparing strings, for example `m.level not_in/i error, fatal`. Numeric comparisons also accept strings holding a number, so a status of `"500"` is greater than `499`.
+
+  The field `@severity_text` is the event's severity as the ClickHouse log mapping derives it: the first non-empty value of `severity_text`, `severityText`, `metadata.level`, `level` or `metadata.parsed.error_severity`, upper-cased, and `INFO` when none is set or the value is not a known severity.
 
 - **set fields**, one `field=value` per line. `true`, `false` and numbers are stored as booleans and numbers. Anything else is a string. The `id`, `event_message` and `timestamp` fields cannot be set.
 
