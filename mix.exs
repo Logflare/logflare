@@ -157,7 +157,6 @@ defmodule Logflare.Mixfile do
       # changed error structs and pool metrics used by ClickHouse.
       {:finch, "~> 0.21.0"},
       {:mint, "~> 1.0"},
-      {:httpoison, "~> 3.0"},
       {:poison, "~> 5.0.0", override: true},
       {:swoosh, "~> 1.0"},
       {:ex_twilio, "~> 0.8.1"},
