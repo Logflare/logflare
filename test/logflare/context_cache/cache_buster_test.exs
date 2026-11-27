@@ -14,6 +14,7 @@ defmodule Logflare.ContextCache.CacheBusterTest do
   alias Logflare.Endpoints
   alias Logflare.KeyValues
   alias Logflare.QueryContext
+  alias Logflare.SavedSearches
   alias Logflare.Sources
   alias Logflare.Sources.Catalog
   alias Logflare.Users
@@ -538,6 +539,28 @@ defmodule Logflare.ContextCache.CacheBusterTest do
     assert {Backends, backend_id} in records
     assert {QueryContext, [backend_id: backend_id, owner_id: user.id]} in records
     refute_receive {:refreshed, _user_id}, 300
+  end
+
+  test "WAL records invalidate cached saved searches for the source", %{
+    source: source
+  } do
+    %{id: id} = search = insert(:saved_search, source: source, name: "Before")
+    assert [%{id: ^id, name: "Before"}] = SavedSearches.Cache.list_by_sources([source.id])
+    assert {:ok, _updated} = SavedSearches.update(search, %{name: "After"})
+    assert [%{name: "Before"}] = SavedSearches.Cache.list_by_sources([source.id])
+
+    send(CacheBuster, %Transaction{
+      changes: [
+        %UpdatedRecord{
+          relation: {"public", "saved_searches"},
+          record: %{"source_id" => to_string(source.id)}
+        }
+      ]
+    })
+
+    TestUtils.retry_assert(fn ->
+      assert [%{id: ^id, name: "After"}] = SavedSearches.Cache.list_by_sources([source.id])
+    end)
   end
 
   test "alert changes bust alert catalogs", %{user: %{id: user_id} = user} do

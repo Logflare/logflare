@@ -42,6 +42,33 @@ defmodule LogflareWeb.DashboardLive.DashboardSourceComponents do
         </div>
       </div>
       <.source_metadata source={@source} metrics={@metrics} plan={@plan} team={@team} />
+      <div :if={@source.saved_searches != []} id={"source-#{@source.id}-saved-searches-panel"} data-expanded="false" class="saved-search-shortcuts-container tw-group/shortcuts [container:saved-search-shortcuts/inline-size] tw-ml-8 tw-mt-3">
+        <div id={"source-#{@source.id}-saved-searches"} class="saved-search-shortcuts tw-flex tw-flex-wrap tw-content-start tw-gap-1.5 tw-p-1 -tw-m-1 supports-[container-type:inline-size]:tw-grid" role="group" aria-label={"Favorite searches for #{@source.name}"}>
+          <.team_link
+            :for={saved_search <- @source.saved_searches}
+            id={"saved-search-shortcut-#{saved_search.id}"}
+            navigate={~p"/sources/#{@source.id}/search?#{%{querystring: saved_search.querystring, tailing?: saved_search.tailing}}"}
+            team={@team}
+            data-original-title={saved_search.description}
+            data-placement="top"
+            class="logflare-tooltip tw-inline-flex tw-box-border tw-w-40 tw-max-w-full tw-h-[1.875rem] tw-flex-none tw-whitespace-nowrap tw-items-center tw-gap-1.5 tw-min-w-0 tw-px-2 tw-py-1 tw-rounded tw-border tw-border-solid tw-border-[#454545] tw-text-white tw-text-[13px] tw-leading-5 hover:tw-bg-[#303030] hover:tw-border-gray-400 hover:tw-no-underline focus-visible:tw-outline focus-visible:tw-outline-2 focus-visible:tw-outline-offset-2"
+          >
+            <i class="far fa-bookmark tw-text-xs tw-shrink-0" aria-hidden="true"></i>
+            <span class="tw-truncate">{SavedSearchesModalComponent.display_name(saved_search)}</span>
+          </.team_link>
+          <button
+            id={"source-#{@source.id}-saved-searches-toggle"}
+            type="button"
+            phx-click={JS.toggle_attribute({"data-expanded", "true", "false"}, to: "#source-#{@source.id}-saved-searches-panel") |> JS.toggle_attribute({"aria-expanded", "true", "false"})}
+            aria-expanded="false"
+            aria-controls={"source-#{@source.id}-saved-searches"}
+            class="saved-search-shortcuts-toggle tw-hidden tw-box-border tw-w-40 tw-max-w-full tw-h-[1.875rem] tw-flex-none tw-text-start tw-px-2 tw-py-1 tw-border-0 tw-bg-transparent tw-text-gray-400 tw-text-[13px] tw-leading-5 tw-whitespace-nowrap tw-underline hover:tw-text-white supports-[container-type:inline-size]:group-data-[expanded=true]/shortcuts:tw-block"
+          >
+            <span class="group-data-[expanded=true]/shortcuts:tw-hidden">Show more</span>
+            <span class="tw-hidden group-data-[expanded=true]/shortcuts:tw-inline">Show less</span>
+          </button>
+        </div>
+      </div>
     </li>
     """
   end
